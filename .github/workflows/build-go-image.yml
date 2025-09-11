@@ -12,14 +12,6 @@ on:
       tag:
         description: Image tag
         required: true
-      push:
-        description: Push image to registry
-        required: true
-        default: "true"
-      ref:
-        description: Git ref to checkout. Branch, tag, or commit SHA. If empty, uses the ref selected in the Run workflow UI.
-        required: false
-        default: ""
 
 permissions:
   contents: read
@@ -32,8 +24,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
-        with:
-          ref: ${{ inputs.ref != '' && inputs.ref || github.sha }}
 
       - name: Setup Tailscale
         uses: tailscale/github-action@84a3f23bb4d843bcf4da6cf824ec1be473daf4de # v3.2.3
