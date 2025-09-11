@@ -33,6 +33,9 @@ jobs:
           sudo mkdir -p /usr/local/share/ca-certificates
           echo "${{ secrets.DEV_DOCKER_REGISTRY_CA_B64 }}" | base64 -d | sudo tee /usr/local/share/ca-certificates/registry-ca.crt >/dev/null
           sudo update-ca-certificates
+
+          sudo mkdir -p "/etc/docker/certs.d/registry"
+          echo "${{ secrets.REGISTRY_CA_B64 }}" | base64 -d | sudo tee "/etc/docker/certs.d/registry/ca.crt" >/dev/null
           sudo systemctl restart docker
 
       - name: Setup Tailscale
