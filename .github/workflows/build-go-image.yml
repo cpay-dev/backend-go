@@ -43,10 +43,14 @@ jobs:
           tags: tag:ci-github
           version: 1.86.2
 
+      - name: Smoke check registry API
+        run: |
+          curl https://${{ secrets.DEV_DOCKER_REGISTRY_HOST }}:10003/v2/
+
       - name: Log in to registry
         uses: docker/login-action@184bdaa0721073962dff0199f1fb9940f07167d1 # v3.5.0
         with:
-          registry: "https://${{ secrets.DEV_DOCKER_REGISTRY_HOST }}:10003"
+          registry: "${{ secrets.DEV_DOCKER_REGISTRY_HOST }}:10003"
           username: 'github'
           password: ${{ secrets.DEV_DOCKER_REGISTRY_PASSWORD }}
 
