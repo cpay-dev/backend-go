@@ -44,6 +44,20 @@ jobs:
           tags: tag:ci-github
           version: 1.86.2
 
+      - name: Point Docker to Tailscale DNS
+        run: |
+          set -euo pipefail
+          if [ -f /etc/docker/daemon.json ]; then
+            sudo jq '. + {"dns":["100.100.100.100"]}' /etc/docker/daemon.json | sudo tee /etc/docker/daemon.json >/dev/null
+          else
+            echo '{ "dns": ["100.100.100.100"] }' | sudo tee /etc/docker/daemon.json >/dev/null
+          fi
+          sudo systemctl restart docker
+
+      - name: Verify Docker can resolve registry via Tailscale DNS
+        run: |
+          docker run --rm busybox nslookup "${{ secrets.DEV_DOCKER_REGISTRY_HOST }}"
+
       - name: Smoke check registry API
         run: curl -s -o /dev/null -I https://${{ secrets.DEV_DOCKER_REGISTRY_HOST }}:10003/v2/
 
