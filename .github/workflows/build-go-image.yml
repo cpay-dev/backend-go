@@ -25,6 +25,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
 
+      - name: Install registry CA into OS trust and Docker
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          sudo mkdir -p /usr/local/share/ca-certificates
+          echo "${{ secrets.DEV_DOCKER_REGISTRY_CA_B64 }}" | base64 -d | sudo tee /usr/local/share/ca-certificates/registry-ca.crt >/dev/null
+          sudo update-ca-certificates
+
       - name: Setup Tailscale
         uses: tailscale/github-action@84a3f23bb4d843bcf4da6cf824ec1be473daf4de # v3.2.3
         with:
