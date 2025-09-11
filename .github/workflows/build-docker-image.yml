@@ -71,8 +71,25 @@ jobs:
           username: 'github'
           password: ${{ secrets.DEV_DOCKER_REGISTRY_PASSWORD }}
 
+      - name: Install CA for BuildKit too
+        run: |
+          set -euo pipefail
+          host="${{ secrets.DEV_DOCKER_REGISTRY_HOST }}"
+          port="10003"
+          
+          sudo mkdir -p "/etc/docker/certs.d/${host}:${port}"
+          echo "${{ secrets.DEV_DOCKER_REGISTRY_CA_B64 }}" | base64 -d | sudo tee "/etc/docker/certs.d/${host}:${port}/ca.crt" >/dev/null
+          
+          cat >/tmp/buildkit.toml <<EOF
+          [registry."${host}:${port}"]
+            ca = ["/etc/docker/certs.d/${host}:${port}/ca.crt"]
+          EOF
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+        with:
+          buildkitd-config: /tmp/buildkit.toml
+          driver-opts: network=host
 
       - name: Build and publish
         uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
