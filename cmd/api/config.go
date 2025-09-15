@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/cpay-dev/backend-go/pkg/config"
+	"github.com/rs/zerolog"
 )
 
 type (
@@ -18,7 +19,9 @@ const (
 
 type Config struct {
 	config.Server
+	config.Environment
 
+	LogLevel zerolog.Level   `json:"log_level" env:"LOG_LEVEL,notEmpty" envDefault:"1"`
 	Database config.Database `json:"database" env:"DATABASE,notEmpty"`
 
 	ServerType ServerType `json:"server_type" env:"SERVER_TYPE,notEmpty"`

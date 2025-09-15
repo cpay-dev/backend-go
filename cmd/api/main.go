@@ -26,6 +26,10 @@ func main() {
 		return
 	}
 
+	if conf.Environment != config.EnvironmentLocal {
+		logger = log.NewZerologWithLevel(conf.LogLevel)
+	}
+
 	dbPool, err := db.NewPgxPoolFromConn(ctx, conf.Database.ConnString(), nil, nil)
 	if err != nil {
 		logger.Err(err).Msg("failed to create database pool")
