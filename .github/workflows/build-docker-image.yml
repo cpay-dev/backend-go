@@ -62,10 +62,10 @@ jobs:
           set -euo pipefail
           host="${{ secrets.DEV_DOCKER_REGISTRY_HOST }}"
           port="10003"
-          
+
           sudo mkdir -p "/etc/docker/certs.d/${host}:${port}"
           echo "${{ secrets.DEV_DOCKER_REGISTRY_CA_B64 }}" | base64 -d | sudo tee "/etc/docker/certs.d/${host}:${port}/ca.crt" >/dev/null
-          
+
           cat >/tmp/buildkit.toml <<EOF
           [dns]
             nameservers = ["100.100.100.100"]
