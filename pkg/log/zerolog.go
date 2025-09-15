@@ -18,7 +18,7 @@ var DefaultRoots = []string{
 }
 
 func NewZerologWithLevel(lvl zerolog.Level) zerolog.Logger {
-	zerolog.TimeFieldFormat = time.RFC3339
+	zerolog.TimeFieldFormat = time.RFC3339Nano
 	zerolog.TimestampFieldName = "timestamp"
 	zerolog.LevelFieldName = "severity"
 	zerolog.MessageFieldName = "message"
