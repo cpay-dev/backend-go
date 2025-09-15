@@ -1,7 +1,6 @@
 package config
 
 import (
-	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -30,24 +29,6 @@ func (e Environment) String() string {
 	default:
 		return fmt.Sprintf("unknown(%d)", int(e))
 	}
-}
-
-func (e Environment) MarshalJSON() ([]byte, error) {
-	return json.Marshal(e.String())
-}
-
-func (e *Environment) UnmarshalJSON(data []byte) error {
-	var s string
-	if err := json.Unmarshal(data, &s); err == nil {
-		return e.UnmarshalText([]byte(s))
-	}
-
-	var n int
-	if err := json.Unmarshal(data, &n); err == nil {
-		return e.fromInt(n)
-	}
-
-	return fmt.Errorf("invalid environment: %s", string(data))
 }
 
 func (e Environment) MarshalText() ([]byte, error) {

@@ -19,9 +19,9 @@ const (
 
 type Config struct {
 	config.Server
-	config.Environment
+	Environment config.Environment `json:"environment" env:"ENVIRONMENT,notEmpty" envDefault:"local"`
 
-	LogLevel zerolog.Level   `json:"log_level" env:"LOG_LEVEL,notEmpty" envDefault:"1"`
+	LogLevel zerolog.Level   `json:"log_level" env:"LOG_LEVEL,notEmpty" envDefault:"debug"`
 	Database config.Database `json:"database" env:"DATABASE,notEmpty"`
 
 	ServerType ServerType `json:"server_type" env:"SERVER_TYPE,notEmpty"`
