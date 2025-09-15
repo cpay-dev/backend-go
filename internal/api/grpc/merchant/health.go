@@ -6,6 +6,7 @@ import (
 	"time"
 
 	pbmerchant "github.com/cpay-dev/proto-go/api/v1/merchant"
+	pbblockchain "github.com/cpay-dev/proto-go/blockchain/v1"
 	"google.golang.org/grpc/health/grpc_health_v1"
 )
 
@@ -13,7 +14,7 @@ func (s *Server) CheckHealth() error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*2)
 	defer cancel()
 
-	_, err := s.service.ListAssets(ctx, &pbmerchant.ListAssetsRequest{})
+	_, err := s.service.ListAssets(ctx, &pbmerchant.ListAssetsRequest{Chain: pbblockchain.Chain_CHAIN_ANY})
 	if err != nil {
 		return fmt.Errorf("check health: %w", err)
 	}

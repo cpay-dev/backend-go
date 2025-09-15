@@ -28,9 +28,10 @@ type application struct {
 }
 
 func (a *application) startMerchantGrpc() error {
-	a.logger.Info().Msg("starting merchant grpc server...")
-	appRepo := app.NewPostgresRepo(db.NewPgxPoolWrapper(a.dbPool))
-	blockchainRepo := blockchain.NewPostgresRepo(db.NewPgxPoolWrapper(a.dbPool))
+	a.logger.Info().Str("addr", a.config.ListenAddress).Msg("starting merchant grpc server...")
+	dbPool := db.NewPgxPoolWrapper(a.dbPool)
+	appRepo := app.NewPostgresRepo(dbPool)
+	blockchainRepo := blockchain.NewPostgresRepo(dbPool)
 	a.merchantServer = merchant.NewServer(
 		a.logger,
 		blockchainRepo,

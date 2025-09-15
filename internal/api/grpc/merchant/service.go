@@ -35,7 +35,6 @@ func (s *Service) ListChains(ctx context.Context, req *pbmerchant.ListChainsRequ
 }
 
 func (s *Service) ListAssets(ctx context.Context, req *pbmerchant.ListAssetsRequest) (*pbmerchant.ListAssetsResponse, error) {
-
 	switch req.Chain {
 	case pbblockchain.Chain_CHAIN_ANY_BTC, pbblockchain.Chain_CHAIN_ANY_EVM, pbblockchain.Chain_CHAIN_ANY_SVM:
 		return nil, status.Error(codes.NotFound, "chain is not supported")
