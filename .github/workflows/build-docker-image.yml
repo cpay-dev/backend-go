@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       package:
-        description: Go package to build
+        description: Package to build
         required: true
       image-name:
         description: Image name
