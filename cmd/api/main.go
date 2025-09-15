@@ -26,7 +26,7 @@ func main() {
 		return
 	}
 
-	if conf.Environment != config.EnvironmentLocal {
+	if conf.Environment > config.EnvironmentLocal {
 		logger = log.NewZerologWithLevel(conf.LogLevel)
 	}
 
