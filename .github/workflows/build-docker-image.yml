@@ -4,12 +4,12 @@ on:
   workflow_dispatch:
     inputs:
       package:
-        description: Path to Go package (used for --build-arg PACKAGE)
+        description: Go package to build
         required: true
-      service:
-        description: Image name without tag
+      image-name:
+        description: Image name
         required: true
-      tag:
+      image-tag:
         description: Image tag
         required: true
 
@@ -85,5 +85,5 @@ jobs:
           file: './Dockerfile'
           build-args: |
             PACKAGE=${{ inputs.package }}
-          tags: "${{ secrets.DEV_DOCKER_REGISTRY_HOST }}:10003/${{ inputs.service }}:${{ inputs.tag }}"
+          tags: "${{ secrets.DEV_DOCKER_REGISTRY_HOST }}:10003/backend-go/${{ inputs.image-name }}:${{ inputs.image-tag }}"
           push: true
