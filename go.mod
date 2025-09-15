@@ -7,7 +7,7 @@ require (
 	github.com/cpay-dev/proto-go v0.0.0-20250909144414-c2d43b2d2eb2
 	github.com/goccy/go-json v0.10.5
 	github.com/golang-migrate/migrate/v4 v4.19.0
-	github.com/jackc/pgx/v5 v5.7.6-0.20250831133821-95fc31294f1d
+	github.com/jackc/pgx/v5 v5.7.7-0.20250910162613-61d3c965ad44
 	github.com/rs/zerolog v1.34.0
 	github.com/stretchr/testify v1.11.1
 	github.com/testcontainers/testcontainers-go v0.38.0
