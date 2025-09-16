@@ -39,13 +39,14 @@ func NewServer(
 		server: grpc.NewServer(
 			grpc.SharedWriteBuffer(true),
 			grpc.KeepaliveParams(keepalive.ServerParameters{
-				Time:    time.Second * 30,
-				Timeout: time.Second * 30,
+				MaxConnectionIdle: time.Minute,
+				Time:              time.Second * 30,
+				Timeout:           time.Second * 10,
 			}),
 			grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
 				MinTime: time.Second * 15,
 			}),
-			grpc.ConnectionTimeout(time.Second*30),
+			grpc.ConnectionTimeout(time.Second*15),
 			grpc.WaitForHandlers(true),
 			grpc.ChainUnaryInterceptor(
 				middleware.NewCore(logger, middleware.DefaultHealthBypass),
