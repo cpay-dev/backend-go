@@ -3,7 +3,7 @@ package model
 type Chain string
 
 const (
-	ChainAny        Chain = "CHAIN_ANY"
+	ChainAny        Chain = "ANY"
 	ChainAnyBitcoin Chain = "ANY_BTC"
 	ChainAnyEVM     Chain = "ANY_EVM"
 	ChainAnySVM     Chain = "ANY_SVM"
