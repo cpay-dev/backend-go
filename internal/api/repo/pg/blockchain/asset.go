@@ -43,7 +43,7 @@ func (r *PostgresRepo) ListAssets(ctx context.Context, chain model.Chain) ([]Ass
 		SELECT 
 			id, chain_id, name, symbol, metadata 
 		FROM blockchain.assets 
-		ORDER BY name;
+		ORDER BY chain_id, name;
 	`
 
 	const queryByChain = `
@@ -51,7 +51,7 @@ func (r *PostgresRepo) ListAssets(ctx context.Context, chain model.Chain) ([]Ass
 			id, chain_id, name, symbol, metadata 
 		FROM blockchain.assets 
 		WHERE chain_id = $1 
-		ORDER BY name;
+		ORDER BY chain_id, name;
 	`
 
 	var rows pgx.Rows
