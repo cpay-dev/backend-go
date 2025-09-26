@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
+	"time"
 
 	"github.com/cpay-dev/backend-go/internal/api/migrate"
 	"github.com/cpay-dev/backend-go/pkg/config"
@@ -23,23 +25,25 @@ func main() {
 		return
 	}
 
-	switch conf.Schema {
-	case SchemaApp:
-		migrator := migrate.NewAppMigrator(conf.Database, conf.SqlSchemaDir)
-		if err := migrator.Migrate(ctx, conf.ForceVersion); err != nil {
-			logger.Err(err).Msg("failed to migrate database")
-			return
-		}
-	case SchemaBlockchain:
-		migrator := migrate.NewBlockchainMigrator(conf.Database, conf.SqlSchemaDir)
-		if err := migrator.Migrate(ctx, conf.ForceVersion); err != nil {
-			logger.Err(err).Msg("failed to migrate database")
-			return
-		}
-	default:
-		logger.Error().Str("schema", conf.Schema).Msg("invalid schema")
+	if err := run(ctx, conf); err != nil {
+		logger.Err(err).Msg("failed to migrate database")
 		return
 	}
 
 	logger.Info().Msg("database migrated successfully")
+}
+
+func run(ctx context.Context, conf Config) error {
+	migrator := migrate.NewMigrator(migrate.Config{
+		Database:     conf.Database,
+		ForceVersion: conf.ForceVersion,
+		SqlSchemaDir: conf.SqlSchemaDir,
+		Schema:       conf.Schema,
+	})
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	if err := migrator.Migrate(ctx); err != nil {
+		return fmt.Errorf("migrate: %w", err)
+	}
+	return nil
 }

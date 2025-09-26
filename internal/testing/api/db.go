@@ -1,4 +1,4 @@
-package api
+package api_test
 
 import (
 	"context"
@@ -109,13 +109,23 @@ func SetupRepos(t *testing.T, opts ...Option) Repos {
 	// Migrate required schemas
 	if needApp {
 		sqlSchemaDir := "file://" + projRoot + "/internal/api/repo/pg/app/sql"
-		m := migrate.NewAppMigrator(dbConf, sqlSchemaDir)
-		require.NoError(t, m.Migrate(ctx, 1), "migrate app schema")
+		m := migrate.NewMigrator(migrate.Config{
+			Database:     dbConf,
+			ForceVersion: 1,
+			SqlSchemaDir: sqlSchemaDir,
+			Schema:       "app",
+		})
+		require.NoError(t, m.Migrate(ctx), "migrate app schema")
 	}
 	if needBlockchain {
 		sqlSchemaDir := "file://" + projRoot + "/internal/api/repo/pg/blockchain/sql"
-		m := migrate.NewBlockchainMigrator(dbConf, sqlSchemaDir)
-		require.NoError(t, m.Migrate(ctx, 1), "migrate blockchain schema")
+		m := migrate.NewMigrator(migrate.Config{
+			Database:     dbConf,
+			ForceVersion: 1,
+			SqlSchemaDir: sqlSchemaDir,
+			Schema:       "blockchain",
+		})
+		require.NoError(t, m.Migrate(ctx), "migrate blockchain schema")
 	}
 
 	// Construct repos as needed
