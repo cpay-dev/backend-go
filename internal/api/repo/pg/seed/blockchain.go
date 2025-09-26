@@ -21,6 +21,12 @@ func NewBlockchainSeeder(repo *blockchain.PostgresRepo) *BlockchainSeeder {
 }
 
 func (s *BlockchainSeeder) Seed(ctx context.Context) error {
+	return s.repo.RunInTx(ctx, func(ctx context.Context) error {
+		return s.seed(ctx)
+	})
+}
+
+func (s *BlockchainSeeder) seed(ctx context.Context) error {
 	chains := []blockchain.Chain{
 		{ID: pgmdodel.ChainAny, Name: "Any chain"},
 		{ID: pgmdodel.ChainAnyBitcoin, Name: "Any Bitcoin chain"},
@@ -49,7 +55,7 @@ func (s *BlockchainSeeder) Seed(ctx context.Context) error {
 	assets := []asset{
 		{
 			Asset: blockchain.Asset{
-				ID:      "01K40YW14CPAYUNICHAINUSDT0",
+				ID:      "01K40YW14CPAYVN1CHA1NVSDT0",
 				ChainID: pgmdodel.ChainUnchain,
 				Name:    "USDT0",
 				Symbol:  "USDT0",

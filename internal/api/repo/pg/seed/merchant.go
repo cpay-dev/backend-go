@@ -16,6 +16,12 @@ func NewMerchantSeeder(repo *app.PostgresRepo) *MerchantSeeder {
 }
 
 func (s *MerchantSeeder) Seed(ctx context.Context) error {
+	return s.repo.RunInTx(ctx, func(ctx context.Context) error {
+		return s.seed(ctx)
+	})
+}
+
+func (s *MerchantSeeder) seed(ctx context.Context) error {
 	u := app.User{
 		ID:     "automation",
 		Status: app.UserStatusActive,

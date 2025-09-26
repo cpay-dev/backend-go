@@ -6,7 +6,7 @@ CREATE TYPE app.user_identity_type AS ENUM ('EMAIL', 'WALLET');
 CREATE TYPE app.merchant_status AS ENUM ('ACTIVE', 'INACTIVE', 'BANNED');
 
 CREATE TABLE app.users (
-  id TEXT NOT NULL,
+  id public.ulid NOT NULL,
   status app.user_status NOT NULL,
   created_at timestamptz NOT NULL,
   updated_at timestamptz NOT NULL,
@@ -15,8 +15,8 @@ CREATE TABLE app.users (
 );
 
 CREATE TABLE app.user_identities (
-  id TEXT NOT NULL,
-  user_id TEXT NOT NULL,
+  id public.ulid NOT NULL,
+  user_id public.ulid NOT NULL,
   identity_type app.user_identity_type NOT NULL,
   identity TEXT NOT NULL,
   created_at timestamptz NOT NULL,
@@ -28,8 +28,8 @@ CREATE TABLE app.user_identities (
 );
 
 CREATE TABLE app.merchants (
-  id TEXT NOT NULL,
-  user_id TEXT NOT NULL,
+  id public.ulid NOT NULL,
+  user_id public.ulid NOT NULL,
   name TEXT NOT NULL,
   status app.merchant_status NOT NULL,
   created_at timestamptz NOT NULL,
@@ -40,9 +40,9 @@ CREATE TABLE app.merchants (
 );
 
 CREATE TABLE app.merchant_api_keys (
-  id TEXT NOT NULL,
-  user_id TEXT NOT NULL,
-  merchant_id TEXT NOT NULL,
+  id public.ulid NOT NULL,
+  user_id public.ulid NOT NULL,
+  merchant_id public.ulid NOT NULL,
   name TEXT NOT NULL,
   key TEXT NOT NULL,
   created_at timestamptz NOT NULL,

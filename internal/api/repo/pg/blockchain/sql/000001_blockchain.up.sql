@@ -7,7 +7,7 @@ CREATE TABLE blockchain.chains (
 );
 
 CREATE TABLE blockchain.assets (
-  id TEXT NOT NULL,
+  id public.ulid NOT NULL,
   chain_id TEXT NOT NULL,
   name TEXT NOT NULL,
   symbol TEXT NOT NULL,
