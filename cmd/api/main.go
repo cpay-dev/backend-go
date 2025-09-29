@@ -36,14 +36,19 @@ func main() {
 		return
 	}
 
-	logger.Info().Msg("pinging database...")
-	pingCtx, cancel := context.WithTimeout(ctx, time.Second*30)
+	logger.Debug().Msg("database ping...")
+	pingCtx, cancel := context.WithTimeout(ctx, time.Second*5)
+	if conf.Environment == config.EnvironmentLocal {
+		cancel()
+		pingCtx, cancel = context.WithTimeout(ctx, time.Second*30)
+	}
 	err = dbPool.Ping(pingCtx)
 	cancel()
 	if err != nil {
 		logger.Err(err).Msg("failed to ping database")
 		return
 	}
+	logger.Debug().Msg("database ready")
 
 	app := &application{
 		config: conf,

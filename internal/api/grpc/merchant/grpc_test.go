@@ -10,8 +10,8 @@ import (
 	"github.com/cpay-dev/backend-go/internal/api/grpc/merchant"
 	testingapi "github.com/cpay-dev/backend-go/internal/testing/api"
 	"github.com/cpay-dev/backend-go/pkg/log"
-	pbblockchain "github.com/cpay-dev/proto-go/api/v1/blockchain"
 	pbmerchant "github.com/cpay-dev/proto-go/api/v1/merchant"
+	pbblockchain "github.com/cpay-dev/proto-go/blockchain/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -62,16 +62,16 @@ func TestGrpc(t *testing.T) {
 		require.NotEmpty(t, chains, "chains")
 
 		require.Equal(t, 10, len(chains.Chains), "should have 10 chains")
-		require.Equal(t, pbblockchain.ChainID_CHAIN_ID_ANY_BTC, chains.Chains[0].Id, "chain id should match")
+		require.Equal(t, pbblockchain.Chain_CHAIN_ANY_BTC, chains.Chains[0].Id, "chain id should match")
 	})
 
 	t.Run("ListAssets", func(t *testing.T) {
 		ctx := testingapi.ContextWithApiKey(t.Context(), "automation")
 
-		assets, err := merchantClient.ListAssets(ctx, &pbmerchant.ListAssetsRequest{Chain: pbblockchain.ChainID_CHAIN_ID_ANY})
+		assets, err := merchantClient.ListAssets(ctx, &pbmerchant.ListAssetsRequest{ChainId: pbblockchain.Chain_CHAIN_ANY})
 		require.NoError(t, err, "list assets")
 		require.NotEmpty(t, assets, "assets")
 		require.Equal(t, 1, len(assets.Assets), "should have 1 asset")
-		require.Equal(t, "01K40YW14CPAYUNICHAINUSDT0", assets.Assets[0].Id, "asset id should match")
+		require.Equal(t, "01K40YW14CPAY0N0CHA0N0SDT0", assets.Assets[0].Id, "asset id should match")
 	})
 }

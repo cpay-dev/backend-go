@@ -74,7 +74,7 @@ func SetupRepos(t *testing.T, opts ...Option) Repos {
 		}
 	}
 
-	container, err := postgres.Run(t.Context(), "postgres:18rc1-alpine",
+	container, err := postgres.Run(t.Context(), "ghcr.io/cpay-dev/postgres:18.0",
 		testcontainers.WithWaitStrategyAndDeadline(time.Second*10, wait.ForExposedPort()))
 	require.NoError(t, err, "run pg container")
 	defer testcontainers.CleanupContainer(t, container)
@@ -88,6 +88,9 @@ func SetupRepos(t *testing.T, opts ...Option) Repos {
 	pool, err := db.NewPgxPoolFromConn(t.Context(), connStr, nil, nil)
 	require.NoError(t, err, "create pgx pool")
 	t.Cleanup(pool.Close)
+
+	_, err = pool.Exec(t.Context(), "CREATE EXTENSION ulid;")
+	require.NoError(t, err, "create ulid extension")
 
 	// Build DB config for migrators
 	port, err := container.MappedPort(t.Context(), "5432")

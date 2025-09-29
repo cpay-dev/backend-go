@@ -8,6 +8,5 @@ type Config struct {
 	Database     config.Database `json:"database"`
 	ForceVersion int             `json:"force_version"`
 	SqlSchemaDir string          `json:"sql_schema_dir"`
-	SearchPath   string          `json:"search_path"`
 	Schema       string          `json:"schema"`
 }

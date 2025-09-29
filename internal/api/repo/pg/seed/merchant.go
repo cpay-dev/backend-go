@@ -23,19 +23,19 @@ func (s *MerchantSeeder) Seed(ctx context.Context) error {
 
 func (s *MerchantSeeder) seed(ctx context.Context) error {
 	u := app.User{
-		ID:     "automation",
+		ID:     "01K40YW14CPAYUSER000000001",
 		Status: app.UserStatusActive,
 	}
 	m := app.Merchant{
-		ID:     "automation",
-		UserID: "automation",
+		ID:     "01K40YW14CPAYMERCHANT00001",
+		UserID: "01K40YW14CPAYUSER000000001",
 		Name:   "Automation Merchant",
 		Status: app.MerchantStatusActive,
 	}
 	ak := app.MerchantAPIKey{
-		ID:         "automation",
-		UserID:     "automation",
-		MerchantID: "automation",
+		ID:         "01K40YW14CPAYAPIKEY0000001",
+		UserID:     "01K40YW14CPAYUSER000000001",
+		MerchantID: "01K40YW14CPAYMERCHANT00001",
 		Name:       "Automation API Key",
 		Key:        "automation",
 	}

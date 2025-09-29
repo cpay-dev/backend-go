@@ -24,7 +24,6 @@ type application struct {
 	merchantServer *merchant.Server
 	healthConn     *grpc.ClientConn
 	healthClient   grpc_health_v1.HealthClient
-	shutdown       bool
 }
 
 func (a *application) startMerchantGrpc() error {
@@ -70,7 +69,6 @@ func (a *application) checkMerchantGrpc(address string) error {
 }
 
 func (a *application) stop() {
-	a.shutdown = true
 	a.logger.Info().Msg("stopping application...")
 	if a.merchantServer != nil {
 		a.merchantServer.Stop()

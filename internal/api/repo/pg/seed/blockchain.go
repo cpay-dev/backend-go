@@ -9,7 +9,7 @@ import (
 	merchantmodel "github.com/cpay-dev/backend-go/internal/api/grpc/merchant/model"
 	"github.com/cpay-dev/backend-go/internal/api/repo/pg/blockchain"
 	pgmdodel "github.com/cpay-dev/backend-go/internal/api/repo/pg/blockchain/model"
-	pbapiblockchain "github.com/cpay-dev/proto-go/api/v1/blockchain"
+	pbapimerchant "github.com/cpay-dev/proto-go/api/v1/merchant"
 )
 
 type BlockchainSeeder struct {
@@ -49,18 +49,18 @@ func (s *BlockchainSeeder) seed(ctx context.Context) error {
 
 	type asset struct {
 		blockchain.Asset
-		md *pbapiblockchain.AssetMetadata
+		md *pbapimerchant.AssetMetadata
 	}
 
 	assets := []asset{
 		{
 			Asset: blockchain.Asset{
-				ID:      "01K40YW14CPAYVN1CHA1NVSDT0",
+				ID:      "01K40YW14CPAYUNICHAINUSDT0",
 				ChainID: pgmdodel.ChainUnchain,
 				Name:    "USDT0",
 				Symbol:  "USDT0",
 			},
-			md: &pbapiblockchain.AssetMetadata{
+			md: &pbapimerchant.AssetMetadata{
 				Address:  "0x9151434b16b9763660705744891fA906F660EcC5",
 				Decimals: 6,
 			},
