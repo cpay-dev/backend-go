@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"time"
 
@@ -58,33 +57,9 @@ func main() {
 	defer app.stop()
 
 	appErr := make(chan error, 1)
-	var startFn func() error
-	var checkFn func() error
-
-	switch conf.ServerType {
-	case ServerTypeHttp:
-		appErr <- errors.New("http server is not implemented")
-	case ServerTypeGrpc:
-		switch conf.ServerApp {
-		case ServerAppMerchant:
-			startFn = app.startMerchantGrpc
-			checkFn = func() error {
-				return app.checkMerchantGrpc(conf.ListenAddress)
-			}
-		}
-	}
 
 	go func() {
-		appErr <- startFn()
-	}()
-
-	go func() {
-		time.Sleep(time.Second * time.Duration(conf.HealthCheckDelay))
-		if err := checkFn(); err != nil {
-			appErr <- err
-		} else {
-			logger.Info().Msg("application is healthy")
-		}
+		appErr <- app.start()
 	}()
 
 	select {
