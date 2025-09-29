@@ -6,10 +6,10 @@ on:
       package:
         description: Package to build
         required: true
-      image-name:
+      service-name:
         description: Image name
         required: true
-      image-tag:
+      service-tag:
         description: Image tag
         required: true
 
@@ -25,59 +25,21 @@ jobs:
       - name: Checkout
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
 
-      - name: Install CA
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          sudo mkdir -p /usr/local/share/ca-certificates
-          echo "${{ secrets.DEV_DOCKER_REGISTRY_CA_B64 }}" | base64 -d | sudo tee /usr/local/share/ca-certificates/registry-ca.crt >/dev/null
-          sudo update-ca-certificates
-
-          sudo mkdir -p "/etc/docker/certs.d/${{ secrets.DEV_DOCKER_REGISTRY_HOST }}:10003"
-          echo "${{ secrets.DEV_DOCKER_REGISTRY_CA_B64 }}" | base64 -d | sudo tee "/etc/docker/certs.d/${{ secrets.DEV_DOCKER_REGISTRY_HOST }}:10003/ca.crt" >/dev/null
-          sudo systemctl restart docker
-
-      - name: Setup Tailscale
-        uses: tailscale/github-action@84a3f23bb4d843bcf4da6cf824ec1be473daf4de # v3.2.3
-        with:
-          use-cache: 'true'
-          oauth-client-id: ${{ secrets.TAILSCALE_OAUTH_CLIENT_ID }}
-          oauth-secret: ${{ secrets.TAILSCALE_OAUTH_SECRET }}
-          tags: tag:ci-github
-          version: 1.86.2
-
-      - name: Warm up Tailscale
-        run: curl -s -o /dev/null -I https://${{ secrets.DEV_DOCKER_REGISTRY_HOST }}:10003/v2/
-
-      - name: Log in to registry
-        uses: docker/login-action@184bdaa0721073962dff0199f1fb9940f07167d1 # v3.5.0
-        with:
-          registry: "${{ secrets.DEV_DOCKER_REGISTRY_HOST }}:10003"
-          username: 'github'
-          password: ${{ secrets.DEV_DOCKER_REGISTRY_PASSWORD }}
-
-      - name: Install CA for BuildKit
-        run: |
-          set -euo pipefail
-          host="${{ secrets.DEV_DOCKER_REGISTRY_HOST }}"
-          port="10003"
-
-          sudo mkdir -p "/etc/docker/certs.d/${host}:${port}"
-          echo "${{ secrets.DEV_DOCKER_REGISTRY_CA_B64 }}" | base64 -d | sudo tee "/etc/docker/certs.d/${host}:${port}/ca.crt" >/dev/null
-
-          cat >/tmp/buildkit.toml <<EOF
-          [dns]
-            nameservers = ["100.100.100.100"]
-          [registry."${host}:${port}"]
-            ca = ["/etc/docker/certs.d/${host}:${port}/ca.crt"]
-          EOF
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+
+      - name: Log in to GHCR
+        uses: docker/login-action@184bdaa0721073962dff0199f1fb9940f07167d1 # v3.5.0
         with:
-          buildkitd-config: /tmp/buildkit.toml
-          driver-opts: network=host
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GHCR_CPAY_DEV_GIT }}
+
+      - name: Normalize image name
+        id: names
+        run: |
+          IMAGE_LC="$(echo '${{ inputs.service-name }}' | tr '[:upper:]' '[:lower:]')"
+          echo "image_lc=${IMAGE_LC}" >> "$GITHUB_OUTPUT"
 
       - name: Build and publish
         uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
@@ -86,5 +48,5 @@ jobs:
           file: './Dockerfile'
           build-args: |
             PACKAGE=${{ inputs.package }}
-          tags: "${{ secrets.DEV_DOCKER_REGISTRY_HOST }}:10003/backend-go/${{ inputs.image-name }}:${{ inputs.image-tag }}"
+          tags: ghcr.io/cpay-dev/backend-go-${{ steps.names.outputs.image_lc }}:${{ inputs.service-tag }}
           push: true
