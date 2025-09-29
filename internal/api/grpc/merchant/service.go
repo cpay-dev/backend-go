@@ -31,4 +31,6 @@ func NewService(
 
 func (s *Service) Bind(server *grpc.Server) {
 	pbmerchant.RegisterAssetServiceServer(server, s)
+	pbmerchant.RegisterChainServiceServer(server, s)
+	pbmerchant.RegisterPaymentIntentServiceServer(server, s)
 }
