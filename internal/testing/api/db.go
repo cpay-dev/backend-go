@@ -8,6 +8,7 @@ import (
 	"github.com/cpay-dev/backend-go/internal/api/migrate"
 	"github.com/cpay-dev/backend-go/internal/api/repo/pg/app"
 	"github.com/cpay-dev/backend-go/internal/api/repo/pg/blockchain"
+	"github.com/cpay-dev/backend-go/internal/api/repo/pg/payment"
 	"github.com/cpay-dev/backend-go/internal/api/repo/pg/seed"
 	"github.com/cpay-dev/backend-go/pkg/config"
 	"github.com/cpay-dev/backend-go/pkg/db"
@@ -24,6 +25,7 @@ type Option func(*setupConfig)
 type setupConfig struct {
 	wantAppRepo        bool
 	wantBlockchainRepo bool
+	wantPaymentRepo    bool
 	runSeedAppMerchant bool
 	runSeedBlockchain  bool
 	customSeeders      []func(ctx context.Context, r Repos) error
@@ -34,6 +36,9 @@ func WithAppRepo() Option { return func(c *setupConfig) { c.wantAppRepo = true }
 
 // WithBlockchainRepo requests returning the blockchain repo.
 func WithBlockchainRepo() Option { return func(c *setupConfig) { c.wantBlockchainRepo = true } }
+
+// WithPaymentRepo requests returning the payment repo.
+func WithPaymentRepo() Option { return func(c *setupConfig) { c.wantPaymentRepo = true } }
 
 // WithSeedAppMerchant enables seeding default app data used in tests.
 func WithSeedAppMerchant() Option { return func(c *setupConfig) { c.runSeedAppMerchant = true } }
@@ -50,6 +55,7 @@ func WithSeeder(fn func(ctx context.Context, r Repos) error) Option {
 type Repos struct {
 	App        *app.PostgresRepo
 	Blockchain *blockchain.PostgresRepo
+	Payment    *payment.PostgresRepo
 }
 
 func SetupBlockchainRepo(t *testing.T) *blockchain.PostgresRepo {
@@ -60,6 +66,11 @@ func SetupBlockchainRepo(t *testing.T) *blockchain.PostgresRepo {
 func SetupAppRepo(t *testing.T) *app.PostgresRepo {
 	repos := SetupRepos(t, WithAppRepo(), WithSeedAppMerchant())
 	return repos.App
+}
+
+func SetupPaymentRepo(t *testing.T) *payment.PostgresRepo {
+	repos := SetupRepos(t, WithPaymentRepo())
+	return repos.Payment
 }
 
 // SetupRepos starts a temporary Postgres, migrates requested schemas, optionally seeds, and returns repos.

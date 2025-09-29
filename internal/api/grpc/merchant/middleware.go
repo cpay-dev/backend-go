@@ -2,6 +2,7 @@ package merchant
 
 import (
 	"context"
+	"fmt"
 	"slices"
 
 	"github.com/cpay-dev/backend-go/internal/api/authn"
@@ -14,7 +15,8 @@ import (
 type MerchantContextKey struct{}
 
 type MerchantInfo struct {
-	ID string
+	ID     string
+	APIKey string
 }
 
 func newMerchantMiddleware(authnService *authn.AuthnService, bypass []string) grpc.UnaryServerInterceptor {
@@ -25,12 +27,28 @@ func newMerchantMiddleware(authnService *authn.AuthnService, bypass []string) gr
 		apiKey := middleware.MustGetApiKey(ctx)
 		merchant, err := authnService.AuthenticateMerchant(ctx, apiKey)
 		if err != nil {
-			return nil, status.Errorf(codes.Internal, "authenticate merchant: %v", err)
+			return nil, fmt.Errorf("authenticate merchant: %w", err)
 		}
 		if merchant == nil {
-			return nil, status.Errorf(codes.PermissionDenied, "api key not found")
+			return nil, status.Error(codes.PermissionDenied, "api key not found")
 		}
-		ctx = context.WithValue(ctx, MerchantContextKey{}, MerchantInfo{ID: merchant.ID})
+		ctx = context.WithValue(ctx, MerchantContextKey{}, MerchantInfo{ID: merchant.ID, APIKey: apiKey})
 		return handler(ctx, req)
 	}
+}
+
+func MustGetMerchant(ctx context.Context) MerchantInfo {
+	merchant, ok := ctx.Value(MerchantContextKey{}).(MerchantInfo)
+	if !ok {
+		panic(status.Error(codes.PermissionDenied, "merchant not found"))
+	}
+	return merchant
+}
+
+func GetMerchant(ctx context.Context) (MerchantInfo, bool) {
+	merchant, ok := ctx.Value(MerchantContextKey{}).(MerchantInfo)
+	if !ok {
+		return MerchantInfo{}, false
+	}
+	return merchant, true
 }

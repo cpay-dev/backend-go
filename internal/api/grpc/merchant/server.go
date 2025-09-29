@@ -7,6 +7,7 @@ import (
 
 	"github.com/cpay-dev/backend-go/internal/api/authn"
 	pgblockchain "github.com/cpay-dev/backend-go/internal/api/repo/pg/blockchain"
+	pgpayment "github.com/cpay-dev/backend-go/internal/api/repo/pg/payment"
 	"github.com/cpay-dev/backend-go/pkg/grpc/middleware"
 	"github.com/rs/zerolog"
 	"google.golang.org/grpc"
@@ -26,13 +27,14 @@ type Server struct {
 
 func NewServer(
 	logger zerolog.Logger,
-	repo *pgblockchain.PostgresRepo,
+	blockchainRepo *pgblockchain.PostgresRepo,
+	paymentRepo *pgpayment.PostgresRepo,
 	authnService *authn.AuthnService,
 	healthInterval time.Duration,
 ) *Server {
 	return &Server{
 		logger:       logger,
-		service:      NewService(repo),
+		service:      NewService(blockchainRepo, paymentRepo),
 		healthServer: health.NewServer(),
 		healthTicker: time.NewTicker(healthInterval),
 		healthStop:   make(chan struct{}),
@@ -66,7 +68,6 @@ func (s *Server) Start(listenAddress string) error {
 		return fmt.Errorf("listen: %w", err)
 	}
 
-	// Liveness: process up
 	s.healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
 	s.updateReadiness()
 

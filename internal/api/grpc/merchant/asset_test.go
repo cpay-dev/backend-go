@@ -12,44 +12,14 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-func TestListChains(t *testing.T) {
-	t.Parallel()
-
-	blockchainRepo := testingapi.SetupBlockchainRepo(t)
-	service := merchant.NewService(blockchainRepo)
-
-	resp, err := service.ListChains(t.Context(), &pbmerchant.ListChainsRequest{})
-	require.NoError(t, err, "list chains")
-	require.NotNil(t, resp, "response should not be nil")
-	require.NotEmpty(t, resp.Chains, "response should not be empty")
-
-	for i, expected := range []struct {
-		ID   pbblockchain.Chain
-		Name string
-	}{
-		{ID: pbblockchain.Chain_CHAIN_ANY_BTC, Name: "Any Bitcoin chain"},
-		{ID: pbblockchain.Chain_CHAIN_ANY, Name: "Any chain"},
-		{ID: pbblockchain.Chain_CHAIN_ANY_EVM, Name: "Any EVM chain"},
-		{ID: pbblockchain.Chain_CHAIN_ANY_SVM, Name: "Any SVM chain"},
-
-		{ID: pbblockchain.Chain_CHAIN_EVM_ARBITRUM, Name: "Arbitrum"},
-		{ID: pbblockchain.Chain_CHAIN_BTC_BITCOIN, Name: "Bitcoin"},
-		{ID: pbblockchain.Chain_CHAIN_EVM_ETHEREUM, Name: "Ethereum"},
-
-		{ID: pbblockchain.Chain_CHAIN_EVM_POLYGON, Name: "Polygon"},
-		{ID: pbblockchain.Chain_CHAIN_SVM_SOLANA, Name: "Solana"},
-		{ID: pbblockchain.Chain_CHAIN_EVM_UNICHAIN, Name: "Unichain"},
-	} {
-		require.Equal(t, expected.ID, resp.Chains[i].Id, "chain id should match")
-		require.Equal(t, expected.Name, resp.Chains[i].Name, "chain name should match")
-	}
-}
-
 func TestListAssets(t *testing.T) {
 	t.Parallel()
 
-	blockchainRepo := testingapi.SetupBlockchainRepo(t)
-	service := merchant.NewService(blockchainRepo)
+	repos := testingapi.SetupRepos(t,
+		testingapi.WithBlockchainRepo(), testingapi.WithSeedBlockchain(),
+		testingapi.WithPaymentRepo(),
+	)
+	service := merchant.NewService(repos.Blockchain, repos.Payment)
 
 	for _, expected := range []struct {
 		Chain   pbblockchain.Chain

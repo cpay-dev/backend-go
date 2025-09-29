@@ -8,6 +8,7 @@ import (
 	"github.com/cpay-dev/backend-go/internal/api/grpc/merchant"
 	"github.com/cpay-dev/backend-go/internal/api/repo/pg/app"
 	"github.com/cpay-dev/backend-go/internal/api/repo/pg/blockchain"
+	"github.com/cpay-dev/backend-go/internal/api/repo/pg/payment"
 	"github.com/cpay-dev/backend-go/pkg/db"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog"
@@ -24,10 +25,10 @@ func (a *application) start() error {
 	a.logger.Info().Str("addr", a.config.ListenAddress).Msg("starting merchant grpc server...")
 	dbPool := db.NewPgxPoolWrapper(a.dbPool)
 	appRepo := app.NewPostgresRepo(dbPool)
-	blockchainRepo := blockchain.NewPostgresRepo(dbPool)
 	a.server = merchant.NewServer(
 		a.logger,
-		blockchainRepo,
+		blockchain.NewPostgresRepo(dbPool),
+		payment.NewPostgresRepo(dbPool),
 		authn.NewService(appRepo),
 		time.Second*time.Duration(a.config.HealthCheckInterval),
 	)

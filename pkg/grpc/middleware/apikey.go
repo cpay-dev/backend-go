@@ -14,7 +14,7 @@ const ApiKeyHeaderKey = "x-api-key"
 
 type ApiKeyContextKey struct{}
 
-var ErrApiKeyNotFound = status.Errorf(codes.Unauthenticated, "no api key provided")
+var ErrApiKeyNotFound = status.Error(codes.Unauthenticated, "no api key provided")
 
 func NewApiKey(bypass []string) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
@@ -23,14 +23,14 @@ func NewApiKey(bypass []string) grpc.UnaryServerInterceptor {
 		}
 		md, ok := metadata.FromIncomingContext(ctx)
 		if !ok {
-			return nil, status.Errorf(codes.Unauthenticated, "no authentication metadata")
+			return nil, status.Error(codes.Unauthenticated, "no authentication metadata")
 		}
 		apiKeys := md[ApiKeyHeaderKey]
 		if len(apiKeys) == 0 {
 			return nil, ErrApiKeyNotFound
 		}
 		if len(apiKeys) != 1 {
-			return nil, status.Errorf(codes.Unauthenticated, "multiple api keys provided")
+			return nil, status.Error(codes.Unauthenticated, "multiple api keys provided")
 		}
 		apiKey := apiKeys[0]
 		ctx = context.WithValue(ctx, ApiKeyContextKey{}, apiKey)

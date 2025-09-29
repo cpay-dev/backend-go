@@ -63,6 +63,7 @@ func (s *BlockchainSeeder) seed(ctx context.Context) error {
 			md: &pbapimerchant.AssetMetadata{
 				Address:  "0x9151434b16b9763660705744891fA906F660EcC5",
 				Decimals: 6,
+				IsStable: true,
 			},
 		},
 	}

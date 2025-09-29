@@ -27,8 +27,9 @@ func TestGrpc(t *testing.T) {
 	repos := testingapi.SetupRepos(t,
 		testingapi.WithBlockchainRepo(), testingapi.WithSeedBlockchain(),
 		testingapi.WithAppRepo(), testingapi.WithSeedAppMerchant(),
+		testingapi.WithPaymentRepo(),
 	)
-	server := merchant.NewServer(logger, repos.Blockchain, authn.NewService(repos.App), time.Second*30)
+	server := merchant.NewServer(logger, repos.Blockchain, repos.Payment, authn.NewService(repos.App), time.Second*30)
 	randomListenAddress := fmt.Sprintf(":%d", rand.Intn(55_535)+10_000)
 
 	go func() {
@@ -45,10 +46,11 @@ func TestGrpc(t *testing.T) {
 		assert.NoError(t, conn.Close(), "close connection")
 	})
 
-	merchantClient := pbmerchant.NewMerchantServiceClient(conn)
+	chainClient := pbmerchant.NewChainServiceClient(conn)
+	assetClient := pbmerchant.NewAssetServiceClient(conn)
 
 	t.Run("Unauthenticated", func(t *testing.T) {
-		chains, err := merchantClient.ListChains(t.Context(), &pbmerchant.ListChainsRequest{})
+		chains, err := chainClient.ListChains(t.Context(), &pbmerchant.ListChainsRequest{})
 		require.Error(t, err, "list chains")
 		require.Equal(t, codes.Unauthenticated, status.Code(err), "error code should be unauthenticated")
 		require.Nil(t, chains, "chains should be nil")
@@ -57,7 +59,7 @@ func TestGrpc(t *testing.T) {
 	t.Run("ListChains", func(t *testing.T) {
 		ctx := testingapi.ContextWithApiKey(t.Context(), "automation")
 
-		chains, err := merchantClient.ListChains(ctx, &pbmerchant.ListChainsRequest{})
+		chains, err := chainClient.ListChains(ctx, &pbmerchant.ListChainsRequest{})
 		require.NoError(t, err, "list chains")
 		require.NotEmpty(t, chains, "chains")
 
@@ -68,7 +70,7 @@ func TestGrpc(t *testing.T) {
 	t.Run("ListAssets", func(t *testing.T) {
 		ctx := testingapi.ContextWithApiKey(t.Context(), "automation")
 
-		assets, err := merchantClient.ListAssets(ctx, &pbmerchant.ListAssetsRequest{ChainId: pbblockchain.Chain_CHAIN_ANY})
+		assets, err := assetClient.ListAssets(ctx, &pbmerchant.ListAssetsRequest{ChainId: pbblockchain.Chain_CHAIN_ANY})
 		require.NoError(t, err, "list assets")
 		require.NotEmpty(t, assets, "assets")
 		require.Equal(t, 1, len(assets.Assets), "should have 1 asset")

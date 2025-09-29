@@ -1,65 +1,34 @@
 package merchant
 
 import (
-	"context"
-	"fmt"
-
-	"github.com/cpay-dev/backend-go/internal/api/grpc/merchant/model"
-	pbapimerchant "github.com/cpay-dev/proto-go/api/v1/merchant"
+	pgblockchain "github.com/cpay-dev/backend-go/internal/api/repo/pg/blockchain"
+	pgpayment "github.com/cpay-dev/backend-go/internal/api/repo/pg/payment"
 	pbmerchant "github.com/cpay-dev/proto-go/api/v1/merchant"
-	pbblockchain "github.com/cpay-dev/proto-go/blockchain/v1"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
 )
 
-func (s *Service) ListChains(ctx context.Context, req *pbmerchant.ListChainsRequest) (*pbmerchant.ListChainsResponse, error) {
-	chains, err := s.repo.ListChains(ctx)
-	if err != nil {
-		return nil, err
-	}
+type Service struct {
+	pbmerchant.UnsafeAssetServiceServer
+	pbmerchant.UnsafeChainServiceServer
+	pbmerchant.UnsafePaymentIntentServiceServer
 
-	pbchains := make([]*pbapimerchant.Chain, 0, len(chains))
-	for _, chain := range chains {
-		pbchain, err := model.ChainToProto(chain.ID)
-		if err != nil {
-			return nil, status.Error(codes.Internal, err.Error())
-		}
-
-		pbchains = append(pbchains, &pbapimerchant.Chain{
-			Id:   pbchain,
-			Name: chain.Name,
-		})
-	}
-
-	return &pbmerchant.ListChainsResponse{Chains: pbchains}, nil
+	healthServer   *health.Server
+	blockchainRepo *pgblockchain.PostgresRepo
+	paymentRepo    *pgpayment.PostgresRepo
 }
 
-func (s *Service) ListAssets(ctx context.Context, req *pbmerchant.ListAssetsRequest) (*pbmerchant.ListAssetsResponse, error) {
-	switch req.ChainId {
-	case pbblockchain.Chain_CHAIN_ANY_BTC, pbblockchain.Chain_CHAIN_ANY_EVM, pbblockchain.Chain_CHAIN_ANY_SVM:
-		return nil, status.Error(codes.NotFound, "chain is not supported")
+func NewService(
+	blockchainRepo *pgblockchain.PostgresRepo,
+	paymentRepo *pgpayment.PostgresRepo,
+) *Service {
+	return &Service{
+		blockchainRepo: blockchainRepo,
+		paymentRepo:    paymentRepo,
+		healthServer:   health.NewServer(),
 	}
+}
 
-	chain, err := model.ChainToRepo(req.ChainId)
-	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, err.Error())
-	}
-
-	assets, err := s.repo.ListAssets(ctx, chain)
-	if err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
-	}
-
-	pbasets := make([]*pbapimerchant.Asset, 0, len(assets))
-
-	for _, asset := range assets {
-		pbasset, err := model.AssetToProto(asset)
-		if err != nil {
-			return nil, status.Error(codes.Internal, fmt.Sprintf("map asset to proto: %s", err.Error()))
-		}
-
-		pbasets = append(pbasets, pbasset)
-	}
-
-	return &pbmerchant.ListAssetsResponse{Assets: pbasets}, nil
+func (s *Service) Bind(server *grpc.Server) {
+	pbmerchant.RegisterAssetServiceServer(server, s)
 }

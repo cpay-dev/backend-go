@@ -4,10 +4,12 @@ go 1.25.1
 
 require (
 	github.com/caarlos0/env/v11 v11.3.1
-	github.com/cpay-dev/proto-go v0.0.0-20250926190927-fd3d7801dde9
+	github.com/cpay-dev/proto-go v0.0.0-20250929135848-6f8807148c1e
 	github.com/goccy/go-json v0.10.5
 	github.com/golang-migrate/migrate/v4 v4.19.0
+	github.com/holiman/uint256 v1.3.3-0.20250914112826-6859da5ba646
 	github.com/jackc/pgx/v5 v5.7.7-0.20250910162613-61d3c965ad44
+	github.com/nats-io/nats.go v1.46.0
 	github.com/rs/zerolog v1.34.0
 	github.com/stretchr/testify v1.11.1
 	github.com/testcontainers/testcontainers-go v0.38.0
@@ -57,6 +59,8 @@ require (
 	github.com/moby/sys/userns v0.1.0 // indirect
 	github.com/moby/term v0.5.2 // indirect
 	github.com/morikuni/aec v1.0.0 // indirect
+	github.com/nats-io/nkeys v0.4.11 // indirect
+	github.com/nats-io/nuid v1.0.1 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.1 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
