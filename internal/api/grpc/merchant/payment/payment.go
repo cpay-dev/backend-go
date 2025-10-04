@@ -1,20 +1,24 @@
-package merchant
+package payment
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
-	"github.com/cpay-dev/backend-go/internal/api/grpc/merchant/model"
+	apiasset "github.com/cpay-dev/backend-go/internal/api/asset"
+	assetmodel "github.com/cpay-dev/backend-go/internal/api/grpc/merchant/asset/model"
+	"github.com/cpay-dev/backend-go/internal/api/grpc/merchant/middleware"
+	paymentmodel "github.com/cpay-dev/backend-go/internal/api/grpc/merchant/payment/model"
 	pgpayment "github.com/cpay-dev/backend-go/internal/api/repo/pg/payment"
 	"github.com/cpay-dev/backend-go/pkg/tokenmath"
-	pbmerchant "github.com/cpay-dev/proto-go/api/v1/merchant"
+	pbpayment "github.com/cpay-dev/proto-go/api/v1/merchant/payment"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-func (s *Service) CreatePaymentIntent(ctx context.Context, req *pbmerchant.CreatePaymentIntentRequest) (*pbmerchant.CreatePaymentIntentResponse, error) {
+func (s *Service) CreateIntent(ctx context.Context, req *pbpayment.CreateIntentRequest) (*pbpayment.CreateIntentResponse, error) {
 	asset, err := s.blockchainRepo.GetAsset(ctx, req.AssetId)
 	if err != nil {
 		return nil, fmt.Errorf("get asset: %w", err)
@@ -22,17 +26,21 @@ func (s *Service) CreatePaymentIntent(ctx context.Context, req *pbmerchant.Creat
 	if asset == nil {
 		return nil, status.Error(codes.NotFound, "asset not found")
 	}
-	assetMetadata, err := model.UnmarshalMetadata(asset.Metadata)
+	assetMetadata, err := assetmodel.UnmarshalMetadata(asset.Metadata)
 	if err != nil {
 		return nil, fmt.Errorf("unmarshal asset metadata: %w", err)
 	}
 
-	assetPriceResp, err := s.GetAssetPrice(ctx, &pbmerchant.GetAssetPriceRequest{AssetId: asset.ID})
-	if err != nil {
-		return nil, fmt.Errorf("get asset price: %w", err)
+	assetPrice, err := s.priceService.GetPrice(ctx, asset.ID)
+	if errors.Is(err, apiasset.ErrAssetNotFound) {
+		return nil, status.Error(codes.NotFound, "asset not found")
+	} else if errors.Is(err, apiasset.ErrPriceUnknown) {
+		return nil, status.Error(codes.Internal, "asset price unknown")
+	} else if err != nil {
+		return nil, fmt.Errorf("get price: %w", err)
 	}
 
-	merchant := MustGetMerchant(ctx)
+	merchant := middleware.MustGetMerchant(ctx)
 
 	paymentIntent := pgpayment.Intent{
 		MerchantID: merchant.ID,
@@ -41,7 +49,7 @@ func (s *Service) CreatePaymentIntent(ctx context.Context, req *pbmerchant.Creat
 	}
 
 	switch amount := req.Amount.(type) {
-	case *pbmerchant.CreatePaymentIntentRequest_AmountUsd:
+	case *pbpayment.CreateIntentRequest_AmountUsd:
 		if amount.AmountUsd == "" {
 			return nil, status.Error(codes.InvalidArgument, "amount should not be empty")
 		}
@@ -59,12 +67,12 @@ func (s *Service) CreatePaymentIntent(ctx context.Context, req *pbmerchant.Creat
 			return nil, status.Error(codes.InvalidArgument, "amount should be greater than 0")
 		}
 		paymentIntent.AmountUSD = amountMant.Dec()
-		amountAsset, err := tokenmath.TokensFromUSD_Ceil(amount.AmountUsd, assetPriceResp.Price, uint(assetMetadata.Decimals))
+		amountAsset, err := tokenmath.TokensFromUSD_Ceil(amount.AmountUsd, assetPrice, uint(assetMetadata.Decimals))
 		if err != nil {
-			return nil, fmt.Errorf("compute amount asset: %w (%s/%s, %d)", err, amount.AmountUsd, assetPriceResp.Price, assetMetadata.Decimals)
+			return nil, fmt.Errorf("compute amount asset: %w (%s/%s, %d)", err, amount.AmountUsd, assetPrice, assetMetadata.Decimals)
 		}
 		paymentIntent.AmountAsset = amountAsset.Dec()
-	case *pbmerchant.CreatePaymentIntentRequest_AmountAsset:
+	case *pbpayment.CreateIntentRequest_AmountAsset:
 		if amount.AmountAsset == "" {
 			return nil, status.Error(codes.InvalidArgument, "amount should not be empty")
 		}
@@ -79,9 +87,9 @@ func (s *Service) CreatePaymentIntent(ctx context.Context, req *pbmerchant.Creat
 			return nil, status.Error(codes.InvalidArgument, "amount should be greater than 0")
 		}
 		paymentIntent.AmountAsset = amountMant.Dec()
-		amountUSD, err := tokenmath.ValueUSD_ScaledFloor(amount.AmountAsset, assetPriceResp.Price, 2)
+		amountUSD, err := tokenmath.ValueUSD_ScaledFloor(amount.AmountAsset, assetPrice, 2)
 		if err != nil {
-			return nil, fmt.Errorf("compute amount USD: %w (%s*%s, 2)", err, amount.AmountAsset, assetPriceResp.Price)
+			return nil, fmt.Errorf("compute amount USD: %w (%s*%s, 2)", err, amount.AmountAsset, assetPrice)
 		}
 		paymentIntent.AmountUSD = amountUSD.Dec()
 	}
@@ -90,12 +98,16 @@ func (s *Service) CreatePaymentIntent(ctx context.Context, req *pbmerchant.Creat
 		return nil, fmt.Errorf("create payment intent: %w", err)
 	}
 
-	intentpb, err := model.PaymentIntentToProto(paymentIntent)
+	intentpb, err := paymentmodel.IntentToProto(paymentIntent)
 	if err != nil {
 		return nil, fmt.Errorf("map payment intent to proto: %w", err)
 	}
 	intentpb.CreatedAt = timestamppb.New(time.Now())
 	intentpb.UpdatedAt = intentpb.CreatedAt
 
-	return &pbmerchant.CreatePaymentIntentResponse{PaymentIntent: intentpb}, nil
+	return &pbpayment.CreateIntentResponse{Intent: intentpb}, nil
+}
+
+func (s *Service) GetIntent(ctx context.Context, req *pbpayment.GetIntentRequest) (*pbpayment.GetIntentResponse, error) {
+	return &pbpayment.GetIntentResponse{Intent: nil}, nil
 }

@@ -2,30 +2,124 @@ package merchant
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"time"
 
-	pbmerchant "github.com/cpay-dev/proto-go/api/v1/merchant"
-	pbblockchain "github.com/cpay-dev/proto-go/blockchain/v1"
+	"github.com/cpay-dev/backend-go/internal/api/grpc/merchant/asset"
+	"github.com/cpay-dev/backend-go/internal/api/grpc/merchant/chain"
+	"github.com/cpay-dev/backend-go/internal/api/grpc/merchant/payment"
+	"github.com/rs/zerolog"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
 )
 
-func (s *Server) CheckHealth() error {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*2)
-	defer cancel()
+type healthService struct {
+	doneCh         chan struct{}
+	server         *health.Server
+	assetService   *asset.Service
+	chainService   *chain.Service
+	paymentService *payment.Service
+	logger         zerolog.Logger
+}
 
-	_, err := s.service.ListAssets(ctx, &pbmerchant.ListAssetsRequest{ChainId: pbblockchain.Chain_CHAIN_ANY})
-	if err != nil {
-		return fmt.Errorf("check health: %w", err)
+func newHealthService(
+	logger zerolog.Logger,
+	assetService *asset.Service,
+	chainService *chain.Service,
+	paymentService *payment.Service,
+) *healthService {
+	return &healthService{
+		doneCh:         make(chan struct{}),
+		logger:         logger,
+		server:         health.NewServer(),
+		assetService:   assetService,
+		chainService:   chainService,
+		paymentService: paymentService,
 	}
+}
+
+func (s *healthService) Bind(server *grpc.Server) {
+	grpc_health_v1.RegisterHealthServer(server, s.server)
+}
+
+func (s *healthService) Start(interval time.Duration) error {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	defer cancel()
+	if err := s.CheckHealth(ctx); err != nil {
+		return err
+	}
+	s.server.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
+	go s.run(interval)
 	return nil
 }
 
-func (s *Server) updateReadiness() {
-	if err := s.CheckHealth(); err != nil {
-		s.healthServer.SetServingStatus("merchant", grpc_health_v1.HealthCheckResponse_NOT_SERVING)
-		s.logger.Err(err).Msg("merchant service is unhealthy")
-	} else {
-		s.healthServer.SetServingStatus("merchant", grpc_health_v1.HealthCheckResponse_SERVING)
+func (s *healthService) CheckHealth(ctx context.Context) error {
+	errCh := make(chan error, 3)
+
+	go func() { errCh <- s.CheckAssetHealth(ctx) }()
+	go func() { errCh <- s.CheckChainHealth(ctx) }()
+	go func() { errCh <- s.CheckPaymentHealth(ctx) }()
+
+	var errs []error
+	for err := range errCh {
+		errs = append(errs, err)
 	}
+
+	return errors.Join(errs...)
+}
+
+func (s *healthService) Stop() {
+	close(s.doneCh)
+	s.server.Shutdown()
+}
+
+func (s *healthService) run(interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	for {
+		select {
+		case <-s.doneCh:
+			return
+		case <-ticker.C:
+			s.checkHealth()
+		}
+	}
+}
+
+func (s *healthService) checkHealth() {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	defer cancel()
+	if err := s.CheckHealth(ctx); err != nil {
+		s.logger.Err(err).Msg("service is not healthy")
+	}
+}
+
+func (s *healthService) CheckAssetHealth(ctx context.Context) error {
+	var err error = nil
+	if err != nil {
+		s.server.SetServingStatus("asset", grpc_health_v1.HealthCheckResponse_NOT_SERVING)
+	} else {
+		s.server.SetServingStatus("asset", grpc_health_v1.HealthCheckResponse_SERVING)
+	}
+	return err
+}
+
+func (s *healthService) CheckChainHealth(ctx context.Context) error {
+	var err error = nil
+	if err != nil {
+		s.server.SetServingStatus("chain", grpc_health_v1.HealthCheckResponse_NOT_SERVING)
+	} else {
+		s.server.SetServingStatus("chain", grpc_health_v1.HealthCheckResponse_SERVING)
+	}
+	return err
+}
+
+func (s *healthService) CheckPaymentHealth(ctx context.Context) error {
+	var err error = nil
+	if err != nil {
+		s.server.SetServingStatus("payment", grpc_health_v1.HealthCheckResponse_NOT_SERVING)
+	} else {
+		s.server.SetServingStatus("payment", grpc_health_v1.HealthCheckResponse_SERVING)
+	}
+	return err
 }

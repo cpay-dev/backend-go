@@ -1,11 +1,11 @@
-package merchant_test
+package chain_test
 
 import (
 	"testing"
 
-	"github.com/cpay-dev/backend-go/internal/api/grpc/merchant"
+	"github.com/cpay-dev/backend-go/internal/api/grpc/merchant/chain"
 	testingapi "github.com/cpay-dev/backend-go/internal/testing/api"
-	pbmerchant "github.com/cpay-dev/proto-go/api/v1/merchant"
+	pbchain "github.com/cpay-dev/proto-go/api/v1/merchant/chain"
 	pbblockchain "github.com/cpay-dev/proto-go/blockchain/v1"
 	"github.com/stretchr/testify/require"
 )
@@ -15,12 +15,11 @@ func TestListChains(t *testing.T) {
 
 	repos := testingapi.SetupRepos(t,
 		testingapi.WithBlockchainRepo(), testingapi.WithSeedBlockchain(),
-		testingapi.WithPaymentRepo(),
 	)
 
-	service := merchant.NewService(repos.Blockchain, repos.Payment)
+	service := chain.NewService(repos.Blockchain)
 
-	resp, err := service.ListChains(t.Context(), &pbmerchant.ListChainsRequest{})
+	resp, err := service.ListChains(t.Context(), &pbchain.ListChainsRequest{})
 	require.NoError(t, err, "list chains")
 	require.NotNil(t, resp, "response should not be nil")
 	require.NotEmpty(t, resp.Chains, "response should not be empty")

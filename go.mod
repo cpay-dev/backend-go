@@ -4,7 +4,7 @@ go 1.25.1
 
 require (
 	github.com/caarlos0/env/v11 v11.3.1
-	github.com/cpay-dev/proto-go v0.0.0-20250929135848-6f8807148c1e
+	github.com/cpay-dev/proto-go v0.0.0-20251003223138-be02f455903c
 	github.com/goccy/go-json v0.10.5
 	github.com/golang-migrate/migrate/v4 v4.19.0
 	github.com/holiman/uint256 v1.3.3-0.20250914112826-6859da5ba646

@@ -19,8 +19,8 @@ github.com/containerd/log v0.1.0/go.mod h1:VRRf09a7mHDIRezVKTRCrOq78v577GXq3bSa3
 github.com/containerd/platforms v0.2.1 h1:zvwtM3rz2YHPQsF2CHYM8+KtB5dvhISiXh5ZpSBQv6A=
 github.com/containerd/platforms v0.2.1/go.mod h1:XHCb+2/hzowdiut9rkudds9bE5yJ7npe7dG/wG+uFPw=
 github.com/coreos/go-systemd/v22 v22.5.0/go.mod h1:Y58oyj3AT4RCenI/lSvhwexgC+NSVTIJ3seZv2GcEnc=
-github.com/cpay-dev/proto-go v0.0.0-20250929135848-6f8807148c1e h1:CDvvWB4edA0r2V6zaSIJOe24k1n4hp/bBATFGWkujoE=
-github.com/cpay-dev/proto-go v0.0.0-20250929135848-6f8807148c1e/go.mod h1:ryCVt/M+D9lZQiGPCBr88PDgC7RCiO9lzN/4n5RWWpE=
+github.com/cpay-dev/proto-go v0.0.0-20251003223138-be02f455903c h1:YEUVXneHKV5Dy5yiB6AbTNr1gJNp4sI0ccAC3r77OuM=
+github.com/cpay-dev/proto-go v0.0.0-20251003223138-be02f455903c/go.mod h1:ryCVt/M+D9lZQiGPCBr88PDgC7RCiO9lzN/4n5RWWpE=
 github.com/cpuguy83/dockercfg v0.3.2 h1:DlJTyZGBDlXqUZ2Dk2Q3xHs/FtnooJJVaad2S9GKorA=
 github.com/cpuguy83/dockercfg v0.3.2/go.mod h1:sugsbF4//dDlL/i+S+rtpIWp+5h0BHJHfjj5/jFyUJc=
 github.com/creack/pty v1.1.18 h1:n56/Zwd5o6whRC5PMGretI4IdRLlmBXYNjScPaBgsbY=

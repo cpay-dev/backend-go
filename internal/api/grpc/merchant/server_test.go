@@ -6,11 +6,16 @@ import (
 	"testing"
 	"time"
 
+	apiasset "github.com/cpay-dev/backend-go/internal/api/asset"
 	"github.com/cpay-dev/backend-go/internal/api/authn"
 	"github.com/cpay-dev/backend-go/internal/api/grpc/merchant"
+	"github.com/cpay-dev/backend-go/internal/api/grpc/merchant/asset"
+	"github.com/cpay-dev/backend-go/internal/api/grpc/merchant/chain"
+	"github.com/cpay-dev/backend-go/internal/api/grpc/merchant/payment"
 	testingapi "github.com/cpay-dev/backend-go/internal/testing/api"
 	"github.com/cpay-dev/backend-go/pkg/log"
-	pbmerchant "github.com/cpay-dev/proto-go/api/v1/merchant"
+	pbasset "github.com/cpay-dev/proto-go/api/v1/merchant/asset"
+	pbchain "github.com/cpay-dev/proto-go/api/v1/merchant/chain"
 	pbblockchain "github.com/cpay-dev/proto-go/blockchain/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -29,28 +34,34 @@ func TestGrpc(t *testing.T) {
 		testingapi.WithAppRepo(), testingapi.WithSeedAppMerchant(),
 		testingapi.WithPaymentRepo(),
 	)
-	server := merchant.NewServer(logger, repos.Blockchain, repos.Payment, authn.NewService(repos.App), time.Second*30)
+	server := merchant.NewServer(
+		logger,
+		authn.NewService(repos.App),
+		asset.NewService(repos.Blockchain, apiasset.NewPriceService(repos.Blockchain)),
+		chain.NewService(repos.Blockchain),
+		payment.NewService(repos.Blockchain, repos.Payment),
+	)
 	randomListenAddress := fmt.Sprintf(":%d", rand.Intn(55_535)+10_000)
 
 	go func() {
-		err := server.Start(randomListenAddress)
+		err := server.Start(randomListenAddress, time.Second*30)
 		assert.NoError(t, err, "start server")
 		t.Cleanup(server.Stop)
 	}()
 
 	conn, err := grpc.NewClient(randomListenAddress, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err, "connect to server")
-
 	conn.Connect()
+
 	t.Cleanup(func() {
 		assert.NoError(t, conn.Close(), "close connection")
 	})
 
-	chainClient := pbmerchant.NewChainServiceClient(conn)
-	assetClient := pbmerchant.NewAssetServiceClient(conn)
+	chainClient := pbchain.NewChainServiceClient(conn)
+	assetClient := pbasset.NewAssetServiceClient(conn)
 
 	t.Run("Unauthenticated", func(t *testing.T) {
-		chains, err := chainClient.ListChains(t.Context(), &pbmerchant.ListChainsRequest{})
+		chains, err := chainClient.ListChains(t.Context(), &pbchain.ListChainsRequest{})
 		require.Error(t, err, "list chains")
 		require.Equal(t, codes.Unauthenticated, status.Code(err), "error code should be unauthenticated")
 		require.Nil(t, chains, "chains should be nil")
@@ -59,7 +70,7 @@ func TestGrpc(t *testing.T) {
 	t.Run("ListChains", func(t *testing.T) {
 		ctx := testingapi.ContextWithApiKey(t.Context(), "automation")
 
-		chains, err := chainClient.ListChains(ctx, &pbmerchant.ListChainsRequest{})
+		chains, err := chainClient.ListChains(ctx, &pbchain.ListChainsRequest{})
 		require.NoError(t, err, "list chains")
 		require.NotEmpty(t, chains, "chains")
 
@@ -70,7 +81,7 @@ func TestGrpc(t *testing.T) {
 	t.Run("ListAssets", func(t *testing.T) {
 		ctx := testingapi.ContextWithApiKey(t.Context(), "automation")
 
-		assets, err := assetClient.ListAssets(ctx, &pbmerchant.ListAssetsRequest{ChainId: pbblockchain.Chain_CHAIN_ANY})
+		assets, err := assetClient.ListAssets(ctx, &pbasset.ListAssetsRequest{ChainId: pbblockchain.Chain_CHAIN_ANY})
 		require.NoError(t, err, "list assets")
 		require.NotEmpty(t, assets, "assets")
 		require.Equal(t, 1, len(assets.Assets), "should have 1 asset")

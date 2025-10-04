@@ -1,11 +1,12 @@
-package merchant_test
+package asset_test
 
 import (
 	"testing"
 
-	"github.com/cpay-dev/backend-go/internal/api/grpc/merchant"
+	apiasset "github.com/cpay-dev/backend-go/internal/api/asset"
+	"github.com/cpay-dev/backend-go/internal/api/grpc/merchant/asset"
 	testingapi "github.com/cpay-dev/backend-go/internal/testing/api"
-	pbmerchant "github.com/cpay-dev/proto-go/api/v1/merchant"
+	pbasset "github.com/cpay-dev/proto-go/api/v1/merchant/asset"
 	pbblockchain "github.com/cpay-dev/proto-go/blockchain/v1"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
@@ -16,10 +17,10 @@ func TestListAssets(t *testing.T) {
 	t.Parallel()
 
 	repos := testingapi.SetupRepos(t,
-		testingapi.WithBlockchainRepo(), testingapi.WithSeedBlockchain(),
-		testingapi.WithPaymentRepo(),
+		testingapi.WithBlockchainRepo(),
+		testingapi.WithSeedBlockchain(),
 	)
-	service := merchant.NewService(repos.Blockchain, repos.Payment)
+	service := asset.NewService(repos.Blockchain, apiasset.NewPriceService(repos.Blockchain))
 
 	for _, expected := range []struct {
 		Chain   pbblockchain.Chain
@@ -33,7 +34,7 @@ func TestListAssets(t *testing.T) {
 		{Chain: pbblockchain.Chain_CHAIN_BTC_BITCOIN, Assets: nil},
 		{Chain: pbblockchain.Chain_CHAIN_EVM_UNICHAIN, Assets: []string{"01K40YW14CPAY0N0CHA0N0SDT0"}},
 	} {
-		resp, err := service.ListAssets(t.Context(), &pbmerchant.ListAssetsRequest{ChainId: expected.Chain})
+		resp, err := service.ListAssets(t.Context(), &pbasset.ListAssetsRequest{ChainId: expected.Chain})
 		if expected.ErrCode == codes.OK {
 			require.NoError(t, err, "list assets")
 			require.NotNil(t, resp, "response should not be nil")

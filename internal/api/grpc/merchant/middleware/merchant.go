@@ -1,4 +1,4 @@
-package merchant
+package middleware
 
 import (
 	"context"
@@ -19,7 +19,7 @@ type MerchantInfo struct {
 	APIKey string
 }
 
-func newMerchantMiddleware(authnService *authn.AuthnService, bypass []string) grpc.UnaryServerInterceptor {
+func NewMerchant(authnService *authn.AuthnService, bypass []string) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		if slices.Contains(bypass, info.FullMethod) {
 			return handler(ctx, req)
