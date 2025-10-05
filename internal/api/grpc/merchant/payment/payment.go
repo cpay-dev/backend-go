@@ -109,5 +109,20 @@ func (s *Service) CreateIntent(ctx context.Context, req *pbpayment.CreateIntentR
 }
 
 func (s *Service) GetIntent(ctx context.Context, req *pbpayment.GetIntentRequest) (*pbpayment.GetIntentResponse, error) {
-	return &pbpayment.GetIntentResponse{Intent: nil}, nil
+	merchant := middleware.MustGetMerchant(ctx)
+
+	intent, err := s.paymentRepo.GetIntent(ctx, req.Id, merchant.ID)
+	if err != nil {
+		return nil, fmt.Errorf("get intent: %w", err)
+	}
+	if intent == nil {
+		return nil, status.Error(codes.NotFound, "intent not found")
+	}
+
+	intentpb, err := paymentmodel.IntentToProto(*intent)
+	if err != nil {
+		return nil, fmt.Errorf("map payment intent to proto: %w", err)
+	}
+
+	return &pbpayment.GetIntentResponse{Intent: intentpb}, nil
 }

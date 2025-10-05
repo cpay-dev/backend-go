@@ -12,7 +12,7 @@ var ErrMerchantNotFound = errors.New("merchant not found")
 var ErrMerchantIsNotActive = errors.New("merchant is not active")
 
 func (s *AuthnService) AuthenticateMerchant(ctx context.Context, key string) (*app.Merchant, error) {
-	merchant, err := s.repo.GetMerchantByAPIKey(ctx, key)
+	merchant, err := s.appRepo.GetMerchantByAPIKey(ctx, key)
 	if err != nil {
 		return nil, fmt.Errorf("get merchant by api key: %w", err)
 	}

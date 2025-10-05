@@ -5,9 +5,9 @@ import (
 )
 
 type AuthnService struct {
-	repo *app.PostgresRepo
+	appRepo *app.PostgresRepo
 }
 
-func NewService(repo *app.PostgresRepo) *AuthnService {
-	return &AuthnService{repo: repo}
+func NewService(appRepo *app.PostgresRepo) *AuthnService {
+	return &AuthnService{appRepo: appRepo}
 }

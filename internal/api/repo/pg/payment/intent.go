@@ -2,6 +2,7 @@ package payment
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -64,4 +65,22 @@ func (r *PostgresRepo) CreateIntent(ctx context.Context, intent Intent) error {
 		"amount_paid_asset": intent.AmountPaidAsset,
 	})
 	return err
+}
+
+func (r *PostgresRepo) GetIntent(ctx context.Context, id string, merchantID string) (*Intent, error) {
+	conn := r.GetConnectionFromCtx(ctx)
+
+	const query = `
+		SELECT 
+			id, merchant_id, asset_id, status, amount_usd, amount_asset, amount_paid_asset, created_at, updated_at
+		FROM payment.intents 
+		WHERE id = $1 AND merchant_id = $2;
+	`
+
+	rows, _ := conn.Query(ctx, query, id, merchantID)
+	intent, err := pgx.CollectExactlyOneRow(rows, pgx.RowToAddrOfStructByNameLax[Intent])
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	return intent, err
 }
