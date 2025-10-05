@@ -1,0 +1,7 @@
+BEGIN;
+
+DROP TABLE IF EXISTS wallet.wallets;
+
+DROP TYPE IF EXISTS wallet.WALLET_STATUS;
+
+COMMIT;
