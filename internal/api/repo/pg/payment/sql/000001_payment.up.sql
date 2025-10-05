@@ -6,8 +6,8 @@ CREATE TYPE payment.INTENT_STATUS AS ENUM (
   'REFUND_PENDING', 'REFUNDED'
 );
 
-CREATE TYPE payment.METHOD AS ENUM (
-  'WALLET_CUSTODIAL', 'WALLET_NON_CUSTODIAL'
+CREATE TYPE payment.INTENT_WALLET_TYPE AS ENUM (
+  'CUSTODIAL', 'NON_CUSTODIAL'
 );
 
 CREATE TYPE payment.INTENT_TRANSFER_STATUS AS ENUM (
@@ -29,15 +29,15 @@ CREATE TABLE payment.intents (
   FOREIGN KEY (asset_id) REFERENCES blockchain.assets (id)
 );
 
-CREATE TABLE payment.intent_methods (
+CREATE TABLE payment.intent_wallets (
   id public.ulid NOT NULL,
   intent_id public.ulid NOT NULL,
-  method_type payment.METHOD NOT NULL,
-  method_id TEXT NOT NULL,
-  method_data JSONB NOT NULL,
+  wallet_id TEXT NOT NULL,
+  wallet_type payment.INTENT_WALLET_TYPE NOT NULL,
+  asset_address TEXT NOT NULL,
   PRIMARY KEY (id),
   FOREIGN KEY (intent_id) REFERENCES payment.intents (id),
-  UNIQUE (intent_id, method_type, method_id)
+  FOREIGN KEY (wallet_id) REFERENCES wallet.wallets (id)
 );
 
 CREATE TABLE payment.intent_transfers (
@@ -54,7 +54,9 @@ CREATE TABLE payment.intent_transfers (
 CREATE INDEX intents_merchant_id_idx ON payment.intents (merchant_id);
 CREATE INDEX intents_status_idx ON payment.intents (status);
 
-CREATE INDEX intent_methods_intent_id_idx ON payment.intent_methods (intent_id);
+CREATE INDEX intent_wallets_intent_id_idx ON payment.intent_wallets (intent_id);
+CREATE INDEX intent_wallets_wallet_id_idx ON payment.intent_wallets (wallet_id);
+CREATE INDEX intent_wallets_asset_address_idx ON payment.intent_wallets (asset_address);
 
 CREATE INDEX intent_transfers_intent_id_idx ON payment.intent_transfers (intent_id);
 CREATE INDEX intent_transfers_status_idx ON payment.intent_transfers (status);

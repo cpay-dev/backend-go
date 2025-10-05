@@ -10,6 +10,7 @@ import (
 
 type (
 	IntentStatus         string
+	IntentWalletType     string
 	IntentTransferStatus string
 )
 
@@ -21,6 +22,9 @@ const (
 	IntentStatusAMLCheckFailed  IntentStatus = "AML_CHECK_FAILED"
 	IntentStatusRefundPending   IntentStatus = "REFUND_PENDING"
 	IntentStatusRefunded        IntentStatus = "REFUNDED"
+
+	IntentWalletTypeCustodial    IntentWalletType = "CUSTODIAL"
+	IntentWalletTypeNonCustodial IntentWalletType = "NON_CUSTODIAL"
 
 	IntentTransferStatusPending  IntentTransferStatus = "PENDING"
 	IntentTransferStatusDropped  IntentTransferStatus = "DROPPED"
@@ -37,6 +41,14 @@ type Intent struct {
 	AmountPaidAsset string       `db:"amount_paid_asset"`
 	CreatedAt       time.Time    `db:"created_at"`
 	UpdatedAt       time.Time    `db:"updated_at"`
+}
+
+type IntentWallet struct {
+	ID                 string           `db:"id"`
+	IntentID           string           `db:"intent_id"`
+	WalletID           string           `db:"wallet_id"`
+	WalletType         IntentWalletType `db:"wallet_type"`
+	WalletAssetAddress string           `db:"wallet_asset_address"`
 }
 
 type IntentTransfer struct {
@@ -83,4 +95,21 @@ func (r *PostgresRepo) GetIntent(ctx context.Context, id string, merchantID stri
 		return nil, nil
 	}
 	return intent, err
+}
+
+func (r *PostgresRepo) CreateIntentWallet(ctx context.Context, intentWallet IntentWallet) error {
+	conn := r.GetConnectionFromCtx(ctx)
+
+	const query = `
+		INSERT INTO payment.intent_wallets (id, intent_id, wallet_id, wallet_type, asset_address)
+		VALUES (gen_ulid(), @intent_id, @wallet_id, @wallet_type, @asset_address);
+	`
+
+	_, err := conn.Exec(ctx, query, pgx.NamedArgs{
+		"intent_id":     intentWallet.IntentID,
+		"wallet_id":     intentWallet.WalletID,
+		"wallet_type":   intentWallet.WalletType,
+		"asset_address": intentWallet.WalletAssetAddress,
+	})
+	return err
 }

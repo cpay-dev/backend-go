@@ -5,9 +5,9 @@ import (
 	"fmt"
 
 	chainmodel "github.com/cpay-dev/backend-go/internal/api/grpc/merchant/chain/model"
+	blockchainmodel "github.com/cpay-dev/backend-go/internal/api/repo/pg/blockchain/model"
 	pgwallet "github.com/cpay-dev/backend-go/internal/api/repo/pg/wallet"
 	pbwallet "github.com/cpay-dev/proto-go/api/v1/wallet"
-	pbblockchain "github.com/cpay-dev/proto-go/blockchain/v1"
 )
 
 type Service struct {
@@ -22,13 +22,13 @@ func NewService(walletRepo *pgwallet.PostgresRepo, walletClient pbwallet.WalletS
 	}
 }
 
-func (s *Service) GetWallet(ctx context.Context, chain pbblockchain.Chain) (*Wallet, error) {
-	chainID, err := chainmodel.ChainToRepo(chain)
+func (s *Service) GetWallet(ctx context.Context, chainId blockchainmodel.Chain) (*Wallet, error) {
+	chain, err := chainmodel.ChainToProto(chainId)
 	if err != nil {
 		return nil, fmt.Errorf("convert chain: %w", err)
 	}
 
-	acquiredWallet, err := s.walletRepo.AcquireAvailableWallet(ctx, chainID)
+	acquiredWallet, err := s.walletRepo.AcquireAvailableWallet(ctx, chainId)
 	if err != nil {
 		return nil, fmt.Errorf("acquire wallet: %w", err)
 	}
@@ -40,7 +40,7 @@ func (s *Service) GetWallet(ctx context.Context, chain pbblockchain.Chain) (*Wal
 		}
 
 		newWallet := pgwallet.Wallet{
-			ChainID:             chainID,
+			ChainID:             chainId,
 			Status:              pgwallet.WalletStatusInUse,
 			KekVersion:          createWalletResp.KekVersion,
 			PublicKey:           createWalletResp.PublicKey,

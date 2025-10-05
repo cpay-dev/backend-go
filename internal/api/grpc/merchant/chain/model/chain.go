@@ -3,58 +3,58 @@ package model
 import (
 	"fmt"
 
-	"github.com/cpay-dev/backend-go/internal/api/repo/pg/blockchain/model"
+	blockchainmodel "github.com/cpay-dev/backend-go/internal/api/repo/pg/blockchain/model"
 	pbblockchain "github.com/cpay-dev/proto-go/blockchain/v1"
 )
 
-func ChainToRepo(chain pbblockchain.Chain) (model.Chain, error) {
+func ChainToRepo(chain pbblockchain.Chain) (blockchainmodel.Chain, error) {
 	switch chain {
 	case pbblockchain.Chain_CHAIN_ANY:
-		return model.ChainAny, nil
+		return blockchainmodel.ChainAny, nil
 	case pbblockchain.Chain_CHAIN_ANY_BTC:
-		return model.ChainAnyBitcoin, nil
+		return blockchainmodel.ChainAnyBitcoin, nil
 	case pbblockchain.Chain_CHAIN_ANY_EVM:
-		return model.ChainAnyEVM, nil
+		return blockchainmodel.ChainAnyEVM, nil
 	case pbblockchain.Chain_CHAIN_ANY_SVM:
-		return model.ChainAnySVM, nil
+		return blockchainmodel.ChainAnySVM, nil
 	case pbblockchain.Chain_CHAIN_BTC_BITCOIN:
-		return model.ChainBitcoin, nil
+		return blockchainmodel.ChainBitcoin, nil
 	case pbblockchain.Chain_CHAIN_EVM_ETHEREUM:
-		return model.ChainEthereum, nil
+		return blockchainmodel.ChainEthereum, nil
 	case pbblockchain.Chain_CHAIN_EVM_ARBITRUM:
-		return model.ChainArbitrum, nil
+		return blockchainmodel.ChainArbitrum, nil
 	case pbblockchain.Chain_CHAIN_EVM_POLYGON:
-		return model.ChainPolygon, nil
+		return blockchainmodel.ChainPolygon, nil
 	case pbblockchain.Chain_CHAIN_EVM_UNICHAIN:
-		return model.ChainUnchain, nil
+		return blockchainmodel.ChainUnchain, nil
 	case pbblockchain.Chain_CHAIN_SVM_SOLANA:
-		return model.ChainSolana, nil
+		return blockchainmodel.ChainSolana, nil
 	default:
 		return "", fmt.Errorf("invalid chain: %s", chain)
 	}
 }
 
-func ChainToProto(chain model.Chain) (pbblockchain.Chain, error) {
+func ChainToProto(chain blockchainmodel.Chain) (pbblockchain.Chain, error) {
 	switch chain {
-	case model.ChainAny:
+	case blockchainmodel.ChainAny:
 		return pbblockchain.Chain_CHAIN_ANY, nil
-	case model.ChainAnyBitcoin:
+	case blockchainmodel.ChainAnyBitcoin:
 		return pbblockchain.Chain_CHAIN_ANY_BTC, nil
-	case model.ChainAnyEVM:
+	case blockchainmodel.ChainAnyEVM:
 		return pbblockchain.Chain_CHAIN_ANY_EVM, nil
-	case model.ChainAnySVM:
+	case blockchainmodel.ChainAnySVM:
 		return pbblockchain.Chain_CHAIN_ANY_SVM, nil
-	case model.ChainBitcoin:
+	case blockchainmodel.ChainBitcoin:
 		return pbblockchain.Chain_CHAIN_BTC_BITCOIN, nil
-	case model.ChainEthereum:
+	case blockchainmodel.ChainEthereum:
 		return pbblockchain.Chain_CHAIN_EVM_ETHEREUM, nil
-	case model.ChainArbitrum:
+	case blockchainmodel.ChainArbitrum:
 		return pbblockchain.Chain_CHAIN_EVM_ARBITRUM, nil
-	case model.ChainPolygon:
+	case blockchainmodel.ChainPolygon:
 		return pbblockchain.Chain_CHAIN_EVM_POLYGON, nil
-	case model.ChainUnchain:
+	case blockchainmodel.ChainUnchain:
 		return pbblockchain.Chain_CHAIN_EVM_UNICHAIN, nil
-	case model.ChainSolana:
+	case blockchainmodel.ChainSolana:
 		return pbblockchain.Chain_CHAIN_SVM_SOLANA, nil
 	default:
 		return pbblockchain.Chain_CHAIN_UNSPECIFIED, fmt.Errorf("invalid chain: %s", chain)
