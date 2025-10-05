@@ -17,5 +17,6 @@ CREATE TABLE wallet.wallets (
 
 CREATE INDEX wallets_chain_id_idx ON wallet.wallets (chain_id);
 CREATE INDEX wallets_status_idx ON wallet.wallets (status);
+CREATE INDEX wallets_updated_at_idx ON wallet.wallets (updated_at);
 
 COMMIT;
