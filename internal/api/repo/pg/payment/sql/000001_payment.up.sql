@@ -36,7 +36,8 @@ CREATE TABLE payment.intent_methods (
   method_id TEXT NOT NULL,
   method_data JSONB NOT NULL,
   PRIMARY KEY (id),
-  FOREIGN KEY (intent_id) REFERENCES payment.intents (id)
+  FOREIGN KEY (intent_id) REFERENCES payment.intents (id),
+  UNIQUE (intent_id, method_type, method_id)
 );
 
 CREATE TABLE payment.intent_transfers (
