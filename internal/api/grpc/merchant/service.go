@@ -7,6 +7,7 @@ import (
 	"github.com/cpay-dev/backend-go/internal/api/grpc/merchant/payment"
 	pgblockchain "github.com/cpay-dev/backend-go/internal/api/repo/pg/blockchain"
 	pgpayment "github.com/cpay-dev/backend-go/internal/api/repo/pg/payment"
+	apiwallet "github.com/cpay-dev/backend-go/internal/api/wallet"
 	pbasset "github.com/cpay-dev/proto-go/api/v1/merchant/asset"
 	pbchain "github.com/cpay-dev/proto-go/api/v1/merchant/chain"
 	pbpayment "github.com/cpay-dev/proto-go/api/v1/merchant/payment"
@@ -30,11 +31,12 @@ func NewService(
 	priceService *apiasset.PriceService,
 	blockchainRepo *pgblockchain.PostgresRepo,
 	paymentRepo *pgpayment.PostgresRepo,
+	walletService *apiwallet.Service,
 ) *Service {
 	return &Service{
 		assetService:   asset.NewService(blockchainRepo, priceService),
 		chainService:   chain.NewService(blockchainRepo),
-		paymentService: payment.NewService(blockchainRepo, paymentRepo),
+		paymentService: payment.NewService(blockchainRepo, paymentRepo, walletService),
 		healthServer:   health.NewServer(),
 	}
 }

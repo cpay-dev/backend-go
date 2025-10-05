@@ -3,6 +3,7 @@ package merchant
 import (
 	"context"
 	"errors"
+	"sync"
 	"time"
 
 	"github.com/cpay-dev/backend-go/internal/api/grpc/merchant/asset"
@@ -55,11 +56,27 @@ func (s *healthService) Start(interval time.Duration) error {
 }
 
 func (s *healthService) CheckHealth(ctx context.Context) error {
-	errCh := make(chan error, 3)
+	checks := []func(ctx context.Context) error{
+		s.CheckAssetHealth,
+		s.CheckChainHealth,
+		s.CheckPaymentHealth,
+	}
 
-	go func() { errCh <- s.CheckAssetHealth(ctx) }()
-	go func() { errCh <- s.CheckChainHealth(ctx) }()
-	go func() { errCh <- s.CheckPaymentHealth(ctx) }()
+	wg := sync.WaitGroup{}
+	wg.Add(len(checks))
+	errCh := make(chan error, len(checks))
+
+	for _, check := range checks {
+		go func() {
+			defer wg.Done()
+			if err := check(ctx); err != nil {
+				errCh <- err
+			}
+		}()
+	}
+
+	wg.Wait()
+	close(errCh)
 
 	var errs []error
 	for err := range errCh {

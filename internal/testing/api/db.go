@@ -10,6 +10,7 @@ import (
 	"github.com/cpay-dev/backend-go/internal/api/repo/pg/blockchain"
 	"github.com/cpay-dev/backend-go/internal/api/repo/pg/payment"
 	"github.com/cpay-dev/backend-go/internal/api/repo/pg/seed"
+	"github.com/cpay-dev/backend-go/internal/api/repo/pg/wallet"
 	"github.com/cpay-dev/backend-go/pkg/config"
 	"github.com/cpay-dev/backend-go/pkg/db"
 	"github.com/cpay-dev/backend-go/pkg/project"
@@ -26,6 +27,7 @@ type setupConfig struct {
 	wantAppRepo        bool
 	wantBlockchainRepo bool
 	wantPaymentRepo    bool
+	wantWalletRepo     bool
 	runSeedAppMerchant bool
 	runSeedBlockchain  bool
 	customSeeders      []func(ctx context.Context, r Repos) error
@@ -39,6 +41,9 @@ func WithBlockchainRepo() Option { return func(c *setupConfig) { c.wantBlockchai
 
 // WithPaymentRepo requests returning the payment repo.
 func WithPaymentRepo() Option { return func(c *setupConfig) { c.wantPaymentRepo = true } }
+
+// WithWalletRepo requests returning the wallet repo.
+func WithWalletRepo() Option { return func(c *setupConfig) { c.wantWalletRepo = true } }
 
 // WithSeedAppMerchant enables seeding default app data used in tests.
 func WithSeedAppMerchant() Option { return func(c *setupConfig) { c.runSeedAppMerchant = true } }
@@ -56,6 +61,7 @@ type Repos struct {
 	App        *app.PostgresRepo
 	Blockchain *blockchain.PostgresRepo
 	Payment    *payment.PostgresRepo
+	Wallet     *wallet.PostgresRepo
 }
 
 func SetupBlockchainRepo(t *testing.T) *blockchain.PostgresRepo {
@@ -117,11 +123,9 @@ func SetupRepos(t *testing.T, opts ...Option) Repos {
 	ctx := t.Context()
 
 	// Determine which schemas are needed (by repos requested or seeders required)
-	needApp := cfg.wantAppRepo || cfg.runSeedAppMerchant
-	needBlockchain := cfg.wantBlockchainRepo || cfg.runSeedBlockchain
 
 	// Migrate required schemas
-	if needApp {
+	if cfg.wantAppRepo {
 		sqlSchemaDir := "file://" + projRoot + "/internal/api/repo/pg/app/sql"
 		m := migrate.NewMigrator(migrate.Config{
 			Database:     dbConf,
@@ -131,7 +135,7 @@ func SetupRepos(t *testing.T, opts ...Option) Repos {
 		})
 		require.NoError(t, m.Migrate(ctx), "migrate app schema")
 	}
-	if needBlockchain {
+	if cfg.wantBlockchainRepo {
 		sqlSchemaDir := "file://" + projRoot + "/internal/api/repo/pg/blockchain/sql"
 		m := migrate.NewMigrator(migrate.Config{
 			Database:     dbConf,
@@ -141,16 +145,44 @@ func SetupRepos(t *testing.T, opts ...Option) Repos {
 		})
 		require.NoError(t, m.Migrate(ctx), "migrate blockchain schema")
 	}
+	if cfg.wantWalletRepo {
+		sqlSchemaDir := "file://" + projRoot + "/internal/api/repo/pg/wallet/sql"
+		m := migrate.NewMigrator(migrate.Config{
+			Database:     dbConf,
+			ForceVersion: 1,
+			SqlSchemaDir: sqlSchemaDir,
+			Schema:       "wallet",
+		})
+		require.NoError(t, m.Migrate(ctx), "migrate wallet schema")
+	}
+	if cfg.wantPaymentRepo {
+		sqlSchemaDir := "file://" + projRoot + "/internal/api/repo/pg/payment/sql"
+		m := migrate.NewMigrator(migrate.Config{
+			Database:     dbConf,
+			ForceVersion: 1,
+			SqlSchemaDir: sqlSchemaDir,
+			Schema:       "payment",
+		})
+		require.NoError(t, m.Migrate(ctx), "migrate payment schema")
+	}
 
 	// Construct repos as needed
 	wrapped := db.NewPgxPoolWrapper(pool)
 	var appRepo *app.PostgresRepo
-	var bcRepo *blockchain.PostgresRepo
-	if needApp {
+	var blockchainRepo *blockchain.PostgresRepo
+	var paymentRepo *payment.PostgresRepo
+	var walletRepo *wallet.PostgresRepo
+	if cfg.wantAppRepo {
 		appRepo = app.NewPostgresRepo(wrapped)
 	}
-	if needBlockchain {
-		bcRepo = blockchain.NewPostgresRepo(wrapped)
+	if cfg.wantBlockchainRepo {
+		blockchainRepo = blockchain.NewPostgresRepo(wrapped)
+	}
+	if cfg.wantPaymentRepo {
+		paymentRepo = payment.NewPostgresRepo(wrapped)
+	}
+	if cfg.wantWalletRepo {
+		walletRepo = wallet.NewPostgresRepo(wrapped)
 	}
 
 	// Run seeders if requested
@@ -159,13 +191,13 @@ func SetupRepos(t *testing.T, opts ...Option) Repos {
 		require.NoError(t, seeder.Seed(ctx), "seed app merchant data")
 	}
 	if cfg.runSeedBlockchain {
-		seeder := seed.NewBlockchainSeeder(bcRepo)
+		seeder := seed.NewBlockchainSeeder(blockchainRepo)
 		require.NoError(t, seeder.Seed(ctx), "seed blockchain data")
 	}
 
 	// Run custom seeders, if any
 	if len(cfg.customSeeders) > 0 {
-		allRepos := Repos{App: appRepo, Blockchain: bcRepo}
+		allRepos := Repos{App: appRepo, Blockchain: blockchainRepo}
 		for _, s := range cfg.customSeeders {
 			require.NoError(t, s(ctx, allRepos), "run custom seeder")
 		}
@@ -177,7 +209,13 @@ func SetupRepos(t *testing.T, opts ...Option) Repos {
 		out.App = appRepo
 	}
 	if cfg.wantBlockchainRepo {
-		out.Blockchain = bcRepo
+		out.Blockchain = blockchainRepo
+	}
+	if cfg.wantPaymentRepo {
+		out.Payment = paymentRepo
+	}
+	if cfg.wantWalletRepo {
+		out.Wallet = walletRepo
 	}
 	return out
 }

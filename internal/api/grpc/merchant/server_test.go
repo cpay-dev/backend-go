@@ -3,6 +3,7 @@ package merchant_test
 import (
 	"fmt"
 	"math/rand"
+	"os"
 	"testing"
 	"time"
 
@@ -12,10 +13,12 @@ import (
 	"github.com/cpay-dev/backend-go/internal/api/grpc/merchant/asset"
 	"github.com/cpay-dev/backend-go/internal/api/grpc/merchant/chain"
 	"github.com/cpay-dev/backend-go/internal/api/grpc/merchant/payment"
+	apiwallet "github.com/cpay-dev/backend-go/internal/api/wallet"
 	testingapi "github.com/cpay-dev/backend-go/internal/testing/api"
 	"github.com/cpay-dev/backend-go/pkg/log"
 	pbasset "github.com/cpay-dev/proto-go/api/v1/merchant/asset"
 	pbchain "github.com/cpay-dev/proto-go/api/v1/merchant/chain"
+	pbwallet "github.com/cpay-dev/proto-go/api/v1/wallet"
 	pbblockchain "github.com/cpay-dev/proto-go/blockchain/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -33,13 +36,24 @@ func TestGrpc(t *testing.T) {
 		testingapi.WithBlockchainRepo(), testingapi.WithSeedBlockchain(),
 		testingapi.WithAppRepo(), testingapi.WithSeedAppMerchant(),
 		testingapi.WithPaymentRepo(),
+		testingapi.WithWalletRepo(),
 	)
+
+	walletServiceConn, err := grpc.NewClient(os.Getenv("WALLET_SERVICE_ENDPOINT"), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	require.NoError(t, err, "connect to wallet service")
+	t.Cleanup(func() {
+		assert.NoError(t, walletServiceConn.Close(), "close wallet service connection")
+	})
+
+	walletClient := pbwallet.NewWalletServiceClient(walletServiceConn)
+	priceService := apiasset.NewPriceService(repos.Blockchain)
+	walletService := apiwallet.NewService(repos.Wallet, walletClient)
 	server := merchant.NewServer(
 		logger,
 		authn.NewService(repos.App),
-		asset.NewService(repos.Blockchain, apiasset.NewPriceService(repos.Blockchain)),
+		asset.NewService(repos.Blockchain, priceService),
 		chain.NewService(repos.Blockchain),
-		payment.NewService(repos.Blockchain, repos.Payment),
+		payment.NewService(repos.Blockchain, repos.Payment, walletService),
 	)
 	randomListenAddress := fmt.Sprintf(":%d", rand.Intn(55_535)+10_000)
 
@@ -86,5 +100,13 @@ func TestGrpc(t *testing.T) {
 		require.NotEmpty(t, assets, "assets")
 		require.Equal(t, 1, len(assets.Assets), "should have 1 asset")
 		require.Equal(t, "01K40YW14CPAY0N0CHA0N0SDT0", assets.Assets[0].Id, "asset id should match")
+	})
+
+	t.Run("GetAssetPrice", func(t *testing.T) {
+		ctx := testingapi.ContextWithApiKey(t.Context(), "automation")
+
+		price, err := assetClient.GetAssetPrice(ctx, &pbasset.GetAssetPriceRequest{AssetId: "01K40YW14CPAY0N0CHA0N0SDT0"})
+		require.NoError(t, err, "get asset price")
+		require.Equal(t, "1", price.Price, "price should match")
 	})
 }

@@ -52,3 +52,25 @@ func TestListAssets(t *testing.T) {
 		}
 	}
 }
+
+func TestGetAssetPrice(t *testing.T) {
+	t.Parallel()
+
+	repos := testingapi.SetupRepos(t,
+		testingapi.WithBlockchainRepo(),
+		testingapi.WithSeedBlockchain(),
+	)
+	service := asset.NewService(repos.Blockchain, apiasset.NewPriceService(repos.Blockchain))
+
+	for _, expected := range []struct {
+		AssetId string
+		Price   string
+	}{
+		{AssetId: "01K40YW14CPAY0N0CHA0N0SDT0", Price: "1"},
+	} {
+		resp, err := service.GetAssetPrice(t.Context(), &pbasset.GetAssetPriceRequest{AssetId: expected.AssetId})
+		require.NoError(t, err, "get asset price")
+		require.NotNil(t, resp, "response should not be nil")
+		require.Equal(t, expected.Price, resp.Price, "price should match")
+	}
+}

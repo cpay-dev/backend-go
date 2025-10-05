@@ -32,7 +32,7 @@ CREATE TABLE payment.intents (
 CREATE TABLE payment.intent_wallets (
   id public.ulid NOT NULL,
   intent_id public.ulid NOT NULL,
-  wallet_id TEXT NOT NULL,
+  wallet_id public.ulid NOT NULL,
   wallet_type payment.INTENT_WALLET_TYPE NOT NULL,
   asset_address TEXT NOT NULL,
   PRIMARY KEY (id),
