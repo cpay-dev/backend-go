@@ -1,9 +1,6 @@
 name: Build Docker image
 
 on:
-  push:
-    branches: [ automation ]
-
   workflow_dispatch:
     inputs:
       package:
