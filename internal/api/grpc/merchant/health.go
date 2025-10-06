@@ -69,9 +69,7 @@ func (s *healthService) CheckHealth(ctx context.Context) error {
 	for _, check := range checks {
 		go func() {
 			defer wg.Done()
-			if err := check(ctx); err != nil {
-				errCh <- err
-			}
+			errCh <- check(ctx)
 		}()
 	}
 
@@ -80,7 +78,9 @@ func (s *healthService) CheckHealth(ctx context.Context) error {
 
 	var errs []error
 	for err := range errCh {
-		errs = append(errs, err)
+		if err != nil {
+			errs = append(errs, err)
+		}
 	}
 
 	return errors.Join(errs...)

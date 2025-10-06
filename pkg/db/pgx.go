@@ -2,7 +2,7 @@ package db
 
 import (
 	"context"
-	"crypto/x509"
+	"crypto/tls"
 	"errors"
 	"fmt"
 
@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-var ErrPgxTlsConfigRequired = errors.New("pgx: tls config required")
+var ErrPgxTlsConfigIgnored = errors.New("pgx: config ignores tls options")
 
 type PgxConnectionCtxKey struct{}
 
@@ -33,19 +33,20 @@ func NewPgxPoolFromConn(
 	ctx context.Context,
 	conn string,
 	tracer pgx.QueryTracer,
-	certPool *x509.CertPool,
+	tls *tls.Config,
 ) (*pgxpool.Pool, error) {
 	config, err := pgxpool.ParseConfig(conn)
 	if err != nil {
 		return nil, fmt.Errorf("pgx: parse config: %w", err)
 	}
 	config.ConnConfig.Tracer = tracer
-	if certPool != nil {
+	if tls != nil {
 		if config.ConnConfig.TLSConfig == nil {
-			return nil, ErrPgxTlsConfigRequired
+			return nil, ErrPgxTlsConfigIgnored
 		}
-		config.ConnConfig.TLSConfig.RootCAs = certPool
-		config.ConnConfig.TLSConfig.InsecureSkipVerify = false
+		config.ConnConfig.TLSConfig.InsecureSkipVerify = tls.InsecureSkipVerify
+		config.ConnConfig.TLSConfig.ServerName = tls.ServerName
+		config.ConnConfig.TLSConfig.RootCAs = tls.RootCAs
 	}
 	pool, err := pgxpool.NewWithConfig(ctx, config)
 	if err != nil {
@@ -58,9 +59,9 @@ func NewPgxPoolWrappedFromConn(
 	ctx context.Context,
 	conn string,
 	tracer pgx.QueryTracer,
-	certPool *x509.CertPool,
+	tls *tls.Config,
 ) (PgxPoolWrapper, error) {
-	pool, err := NewPgxPoolFromConn(ctx, conn, tracer, certPool)
+	pool, err := NewPgxPoolFromConn(ctx, conn, tracer, tls)
 	if err != nil {
 		return nil, err
 	}

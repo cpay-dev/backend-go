@@ -9,13 +9,14 @@ import (
 
 type Config struct {
 	config.Server
-	Environment config.Environment `json:"environment" env:"ENVIRONMENT,notEmpty" envDefault:"local"`
+	Environment config.Environment `json:"environment"`
 
-	LogLevel zerolog.Level   `json:"log_level" env:"LOG_LEVEL,notEmpty" envDefault:"debug"`
-	Database config.Database `json:"database" env:"DATABASE,notEmpty"`
+	LogLevel              zerolog.Level   `json:"log_level"`
+	Database              config.Database `json:"database" `
+	WalletServiceEndpoint string          `json:"wallet_service_endpoint"`
 
-	HealthCheckDelay    int `json:"health_check_delay" env:"HEALTH_CHECK_DELAY" envDefault:"5"`
-	HealthCheckInterval int `json:"health_check_interval" env:"HEALTH_CHECK_INTERVAL" envDefault:"5"`
+	HealthCheckDelay    int `json:"health_check_delay"`
+	HealthCheckInterval int `json:"health_check_interval"`
 }
 
 func (c Config) HealthCheckIntervalDuration() time.Duration {

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"flag"
 	"time"
 
@@ -9,6 +10,8 @@ import (
 	"github.com/cpay-dev/backend-go/pkg/db"
 	"github.com/cpay-dev/backend-go/pkg/log"
 	"github.com/cpay-dev/backend-go/pkg/termination"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 )
 
 func main() {
@@ -29,7 +32,7 @@ func main() {
 		logger = log.NewZerologWithLevel(conf.LogLevel)
 	}
 
-	dbPool, err := db.NewPgxPoolFromConn(ctx, conf.Database.ConnString(), nil, nil)
+	dbPool, err := db.NewPgxPoolFromConn(ctx, conf.Database.ConnString(), nil, conf.Database.TlsConfig())
 	if err != nil {
 		logger.Err(err).Msg("failed to create database pool")
 		return
@@ -55,6 +58,16 @@ func main() {
 		dbPool: dbPool,
 	}
 	defer app.stop()
+
+	walletServiceConn, err := grpc.NewClient(
+		conf.WalletServiceEndpoint,
+		grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{})),
+	)
+	if err != nil {
+		logger.Err(err).Msg("failed to create wallet service connection")
+		return
+	}
+	app.walletServiceConn = walletServiceConn
 
 	appErr := make(chan error, 1)
 
