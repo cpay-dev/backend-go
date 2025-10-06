@@ -11,7 +11,7 @@ type Database struct {
 	Username string `json:"username" env:"DB_USERNAME,notEmpty,unset"`
 	Password string `json:"password" env:"DB_PASSWORD,notEmpty,unset"`
 	Database string `json:"database" env:"DB_DATABASE,notEmpty,unset"`
-	SSLMode  string `json:"ssl_mode" env:"DB_SSL_MODE" envDefault:"require"`
+	SSLMode  string `json:"ssl_mode" env:"DB_SSL_MODE" envDefault:"verify-full"`
 }
 
 func (d Database) ConnString() string {
