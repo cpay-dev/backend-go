@@ -37,7 +37,7 @@ func main() {
 		return
 	}
 
-	dbPool, err := db.NewPgxPoolFromConn(ctx, conf.Database.ConnString(), nil, nil)
+	dbPool, err := db.NewPgxPoolFromConn(ctx, conf.Database.ConnString(), nil, conf.Database.TlsConfig())
 	if err != nil {
 		logger.Err(err).Msg("failed to create database pool")
 		return
