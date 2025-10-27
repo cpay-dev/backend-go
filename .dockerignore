@@ -1,0 +1,10 @@
+.git
+.idea
+.helm
+.github
+.secret
+.DS_Store
+Dockerfile
+*.key
+*.env
+config*.json
