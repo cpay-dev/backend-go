@@ -12,8 +12,14 @@ COPY internal internal
 COPY cmd cmd
 
 ARG PACKAGE
+ENV CGO_ENABLED=0 GOAMD64=v4
+
 RUN --mount=type=cache,id=go-build,target=/root/.cache/go-build \
-  CGO_ENABLED=0 go build -ldflags="-s -w" -o /app $PACKAGE
+  CGO_ENABLED=0 GOAMD64=v4 \
+  go build \
+  -trimpath -buildvcs=false -mod=readonly \
+  -ldflags="-s -w" \
+  -o /app $PACKAGE
 
 FROM gcr.io/distroless/static
 WORKDIR /
