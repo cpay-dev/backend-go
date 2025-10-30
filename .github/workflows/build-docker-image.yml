@@ -14,7 +14,7 @@ jobs:
     strategy:
       matrix:
         include:
-          - package: cmd/api/authn
+          - package: ./cmd/api/authn
             service_tag: authn
 
     steps:
