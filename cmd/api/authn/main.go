@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/tls"
+	"errors"
 	"flag"
 	"fmt"
 	"net"
@@ -8,8 +10,6 @@ import (
 	"time"
 
 	"github.com/goccy/go-json"
-
-	"crypto/tls"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -47,14 +47,18 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("listen %s: %w", cfg.ListenAddress, err)
 	}
-
-	gs := grpc.NewServer(grpc.ChainUnaryInterceptor(authn.DefaultMiddleware()...))
+	defer func() {
+		if err := lis.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+			log.Error().Err(err).Msg("listen: close listener")
+		}
+	}()
 
 	vkc, err := valkey.NewClient(valkey.ClientOption{
-		InitAddress: []string{cfg.Valkey.Addr},
-		Username:    "backend-go",
+		InitAddress: []string{cfg.Valkey.Address},
 		Password:    cfg.Valkey.Password,
-		TLSConfig:   &tls.Config{},
+		TLSConfig: &tls.Config{
+			MinVersion: tls.VersionTLS13,
+		},
 	})
 	if err != nil {
 		return fmt.Errorf("valkey: new client: %w", err)
@@ -76,6 +80,7 @@ func run() error {
 		Logger:      log.Logger,
 	})
 
+	gs := grpc.NewServer(grpc.ChainUnaryInterceptor(authn.DefaultMiddleware()...))
 	srv.Register(gs)
 	srv.MarkReady()
 

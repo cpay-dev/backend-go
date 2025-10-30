@@ -27,7 +27,7 @@ type GoogleProviderConfig struct {
 }
 
 type ValkeyConfig struct {
-	Addr     string `json:"addr"`
+	Address  string `json:"address"`
 	Password string `json:"password"`
 }
 

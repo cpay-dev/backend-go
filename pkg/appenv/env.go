@@ -10,18 +10,18 @@ type Environment uint8
 const (
 	EnvLocal Environment = iota
 	EnvDev
-	EnvStg
-	EnvProd
+	EnvStaging
+	EnvProduction
 )
 
 func (e Environment) String() string {
 	switch e {
 	case EnvDev:
 		return "dev"
-	case EnvStg:
+	case EnvStaging:
 		return "staging"
-	case EnvProd:
-		return "prod"
+	case EnvProduction:
+		return "production"
 	default:
 		return "local"
 	}
@@ -43,9 +43,9 @@ func (e *Environment) UnmarshalText(text []byte) error {
 	case "dev":
 		*e = EnvDev
 	case "staging":
-		*e = EnvStg
-	case "prod":
-		*e = EnvProd
+		*e = EnvStaging
+	case "production":
+		*e = EnvProduction
 	default:
 		return errors.New("unknown environment: " + s)
 	}
