@@ -23,8 +23,6 @@ RUN --mount=type=cache,id=gobuild,target=/gocache \
 
 FROM gcr.io/distroless/static:nonroot
 WORKDIR /
-USER nonroot:nonroot # 65532:65532
-
+USER nonroot:nonroot
 COPY --from=build --chown=nonroot:nonroot /app /app
-ENV USER=nobody
 ENTRYPOINT ["/app"]
