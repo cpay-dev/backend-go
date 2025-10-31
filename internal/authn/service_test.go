@@ -21,7 +21,7 @@ func TestInitProviderAuth_GoogleConfigured(t *testing.T) {
 		ClientID:    "client-id",
 		RedirectURI: "http://localhost/callback",
 		Scopes:      []string{"openid", "email"},
-	}}, store)
+	}}, store, authn.NoopJWKS{})
 
 	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 	t.Cleanup(cancel)
@@ -74,9 +74,24 @@ func TestInitProviderAuth_GoogleConfigured(t *testing.T) {
 }
 
 func TestInitProviderAuth_UnsupportedProvider(t *testing.T) {
-	svc := authn.NewOAuthProviderService(authn.ProvidersConfig{}, authn.NewMemoryInitStateStore())
+	svc := authn.NewOAuthProviderService(authn.ProvidersConfig{}, authn.NewMemoryInitStateStore(), authn.NoopJWKS{})
 	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 	t.Cleanup(cancel)
 	_, err := svc.InitProviderAuth(ctx, authnpb.AuthProvider_AUTH_PROVIDER_UNSPECIFIED)
 	require.ErrorIs(t, err, authn.ErrProviderUnsupported, "expected ErrProviderUnsupported; got: %v", err)
+}
+
+func TestContinueProviderAuth_StateNotFound(t *testing.T) {
+	store := authn.NewMemoryInitStateStore()
+	svc := authn.NewOAuthProviderService(authn.ProvidersConfig{Google: authn.GoogleProvider{
+		ClientID:    "client-id",
+		RedirectURI: "http://localhost/callback",
+		Scopes:      []string{"openid", "email"},
+	}}, store, authn.NoopJWKS{})
+
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	t.Cleanup(cancel)
+
+	_, err := svc.ContinueProviderAuth(ctx, "missing", "code")
+	require.ErrorIs(t, err, authn.ErrStateNotFound, "expected ErrStateNotFound; got: %v", err)
 }

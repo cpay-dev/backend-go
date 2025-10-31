@@ -29,7 +29,7 @@ func (panicSrv) InitAuth(ctx context.Context, _ *authnpb.InitAuthRequest) (*auth
 	panic("boom")
 }
 
-func startTestServer(t *testing.T) (addr string, stop func()) {
+func startTestServer(t *testing.T, authService authn.AuthService) (addr string, stop func()) {
 	t.Helper()
 
 	lis, err := net.Listen("tcp", "127.0.0.1:0")
@@ -42,9 +42,12 @@ func startTestServer(t *testing.T) (addr string, stop func()) {
 	})
 
 	grpcServer := grpc.NewServer(grpc.ChainUnaryInterceptor(authn.DefaultMiddleware()...))
-	srv := authn.NewServer(authn.ServerConfig{AuthService: authn.NewMockAuthService(map[authnpb.AuthProvider]string{
-		authnpb.AuthProvider_AUTH_PROVIDER_GOOGLE: mockURL,
-	})})
+	if authService == nil {
+		authService = authn.NewMockAuthService(map[authnpb.AuthProvider]string{
+			authnpb.AuthProvider_AUTH_PROVIDER_GOOGLE: mockURL,
+		})
+	}
+	srv := authn.NewServer(authn.ServerConfig{AuthService: authService})
 	srv.Register(grpcServer)
 	srv.MarkReady()
 
@@ -58,7 +61,7 @@ func startTestServer(t *testing.T) (addr string, stop func()) {
 func TestHealthChecks(t *testing.T) {
 	t.Parallel()
 
-	addr, stop := startTestServer(t)
+	addr, stop := startTestServer(t, nil)
 	t.Cleanup(stop)
 
 	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
@@ -81,7 +84,7 @@ func TestHealthChecks(t *testing.T) {
 func TestInitAuthProviderGoogle(t *testing.T) {
 	t.Parallel()
 
-	addr, stop := startTestServer(t)
+	addr, stop := startTestServer(t, nil)
 	t.Cleanup(stop)
 
 	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
@@ -132,4 +135,76 @@ func TestPanicRecovered(t *testing.T) {
 	require.True(t, ok, "error must be a status error")
 	require.Equal(t, codes.Internal, st.Code(), "recovered panic should map to Internal")
 	require.Empty(t, st.Message(), "error message must be empty")
+}
+
+func TestContinueAuthProviderCallbackSuccess(t *testing.T) {
+	t.Parallel()
+
+	mock := authn.NewMockAuthService(map[authnpb.AuthProvider]string{})
+	mock = authn.MockAuthService{
+		URLs:        mock.URLs,
+		Err:         nil,
+		ContinueRes: authn.ProviderCallbackResult{Email: "user@example.com", EmailVerified: true},
+	}
+
+	addr, stop := startTestServer(t, mock)
+	t.Cleanup(stop)
+
+	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	require.NoError(t, err, "dial %s", addr)
+	t.Cleanup(func() { assert.NoError(t, conn.Close(), "close conn") })
+
+	client := authnpb.NewAuthnServiceClient(conn)
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	t.Cleanup(cancel)
+
+	resp, err := client.ContinueAuth(ctx, &authnpb.ContinueAuthRequest{
+		Method: &authnpb.ContinueAuthRequest_ProviderCallback{
+			ProviderCallback: &authnpb.ProviderCallbackMethod{State: "s", Code: "c"},
+		},
+	})
+	require.NoError(t, err, "ContinueAuth provider callback should succeed")
+	pd := resp.GetProviderData()
+	require.NotNil(t, pd, "provider data must be present")
+	require.Equal(t, "user@example.com", pd.GetEmail())
+	require.True(t, pd.GetEmailVerified())
+}
+
+func TestContinueAuth_InvalidState_ReturnsInvalidArgument(t *testing.T) {
+	t.Parallel()
+
+	mock := authn.MockAuthService{Err: authn.ErrStateNotFound}
+	addr, stop := startTestServer(t, mock)
+	t.Cleanup(stop)
+
+	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	require.NoError(t, err, "dial %s", addr)
+	t.Cleanup(func() { assert.NoError(t, conn.Close(), "close conn") })
+
+	client := authnpb.NewAuthnServiceClient(conn)
+	_, err = client.ContinueAuth(t.Context(), &authnpb.ContinueAuthRequest{
+		Method: &authnpb.ContinueAuthRequest_ProviderCallback{
+			ProviderCallback: &authnpb.ProviderCallbackMethod{State: "missing", Code: "code"},
+		},
+	})
+	st, ok := status.FromError(err)
+	require.True(t, ok, "error must be a status error")
+	require.Equal(t, codes.InvalidArgument, st.Code(), "invalid state should map to InvalidArgument")
+}
+
+func TestContinueAuth_Unimplemented_WhenMissingMethod(t *testing.T) {
+	t.Parallel()
+
+	addr, stop := startTestServer(t, nil)
+	t.Cleanup(stop)
+
+	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	require.NoError(t, err, "dial %s", addr)
+	t.Cleanup(func() { assert.NoError(t, conn.Close(), "close conn") })
+
+	client := authnpb.NewAuthnServiceClient(conn)
+	_, err = client.ContinueAuth(t.Context(), &authnpb.ContinueAuthRequest{})
+	st, ok := status.FromError(err)
+	require.True(t, ok, "error must be a status error")
+	require.Equal(t, codes.Unimplemented, st.Code(), "missing method should map to Unimplemented")
 }

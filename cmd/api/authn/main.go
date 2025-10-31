@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/goccy/go-json"
+	"github.com/imroc/req/v3"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -66,6 +67,13 @@ func run() error {
 	defer vkc.Close()
 
 	store := authn.NewValkeyInitStateStore(authn.NewValkeyKVAdapter(vkc))
+
+	jwksClient := req.C()
+	jwksSvc := authn.NewKeyfuncJWKSService([]string{"https://www.googleapis.com/oauth2/v3/certs"}, jwksClient)
+	if err := jwksSvc.Bootstrap(time.Second * 10); err != nil {
+		return fmt.Errorf("jwks bootstrap: %w", err)
+	}
+
 	authService := authn.NewOAuthProviderService(authn.ProvidersConfig{
 		Google: authn.GoogleProvider{
 			ClientID:     cfg.Providers.Google.ClientID,
@@ -73,7 +81,7 @@ func run() error {
 			RedirectURI:  cfg.Providers.Google.RedirectURI,
 			Scopes:       cfg.Providers.Google.Scopes,
 		},
-	}, store)
+	}, store, jwksSvc)
 
 	srv := authn.NewServer(authn.ServerConfig{
 		AuthService: authService,

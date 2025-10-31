@@ -14,8 +14,9 @@ func NewMockAuthService(urls map[authnpb.AuthProvider]string) MockAuthService {
 // MockAuthService is a simple in-memory implementation of AuthService for tests.
 // It returns URLs from the provided map or ErrProviderUnsupported when missing.
 type MockAuthService struct {
-	URLs map[authnpb.AuthProvider]string
-	Err  error
+	URLs        map[authnpb.AuthProvider]string
+	Err         error
+	ContinueRes ProviderCallbackResult
 }
 
 func (m MockAuthService) InitProviderAuth(_ context.Context, p authnpb.AuthProvider) (InitAuthResult, error) {
@@ -28,4 +29,11 @@ func (m MockAuthService) InitProviderAuth(_ context.Context, p authnpb.AuthProvi
 		}
 	}
 	return InitAuthResult{}, ErrProviderUnsupported
+}
+
+func (m MockAuthService) ContinueProviderAuth(_ context.Context, _ string, _ string) (ProviderCallbackResult, error) {
+	if m.Err != nil {
+		return ProviderCallbackResult{}, m.Err
+	}
+	return m.ContinueRes, nil
 }

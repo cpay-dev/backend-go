@@ -15,6 +15,20 @@ import (
 
 var ErrPanic = errors.New("panic")
 
+func UnaryCore() grpc.UnaryServerInterceptor {
+	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+		resp, err := handler(ctx, req)
+		if errors.Is(err, ErrPanic) {
+			err = status.Error(codes.Internal, "")
+		} else {
+			if _, ok := status.FromError(err); !ok {
+				err = status.Error(codes.Internal, "")
+			}
+		}
+		return resp, err
+	}
+}
+
 func UnaryPanicRecover() grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (res interface{}, err error) {
 		defer func() {
@@ -46,16 +60,6 @@ func UnaryRequestLogger() grpc.UnaryServerInterceptor {
 			event = log.Debug()
 		}
 		event.Str("method", info.FullMethod).Dur("dur", dur).Err(err).Msg("grpc: request end")
-		return resp, err
-	}
-}
-
-func UnaryCore() grpc.UnaryServerInterceptor {
-	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
-		resp, err := handler(ctx, req)
-		if errors.Is(err, ErrPanic) {
-			err = status.Error(codes.Internal, "")
-		}
 		return resp, err
 	}
 }
