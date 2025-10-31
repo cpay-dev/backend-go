@@ -4,7 +4,7 @@ WORKDIR /
 COPY go.mod go.mod
 COPY go.sum go.sum
 
-RUN --mount=type=cache,id=go-build,target=/go/pkg/mod \
+RUN --mount=type=cache,id=gomod,target=/go/pkg/mod \
   go mod download && go mod verify
 
 COPY pkg pkg
@@ -13,16 +13,18 @@ COPY cmd cmd
 
 ARG PACKAGE
 ENV CGO_ENABLED=0 GOAMD64=v3
+ENV GOCACHE=/gocache
 
-RUN --mount=type=cache,id=go-build,target=/root/.cache/go-build \
+RUN --mount=type=cache,id=gobuild,target=/gocache \
   go build \
   -trimpath -buildvcs=false -mod=readonly \
   -ldflags="-s -w" \
   -o /app $PACKAGE
 
-FROM gcr.io/distroless/static
+FROM gcr.io/distroless/static:nonroot
 WORKDIR /
-USER 1000:1000
-COPY --from=build --chown=1000:1000 /app /app
+USER nonroot:nonroot # 65532:65532
+
+COPY --from=build --chown=nonroot:nonroot /app /app
 ENV USER=nobody
 ENTRYPOINT ["/app"]
