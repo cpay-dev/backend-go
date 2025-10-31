@@ -2,6 +2,8 @@ package authn
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"time"
@@ -12,32 +14,29 @@ import (
 	"golang.org/x/oauth2/google"
 )
 
-type AuthService interface {
-	AuthURL(ctx context.Context, provider authnpb.AuthProvider, nonce, redirectPath string) (string, error)
-}
+const initStateTTL = 15 * time.Minute
 
 var (
 	// ErrProviderUnsupported is returned when the provider is not supported by the service.
 	ErrProviderUnsupported = errors.New("provider not supported")
 )
 
-// OAuthInitState captures parameters for an OAuth initiation flow.
-type OAuthInitState struct {
-	ID           string
-	Provider     authnpb.AuthProvider
-	Nonce        string
-	RedirectPath string
-	CreatedAt    time.Time
+type AuthService interface {
+	InitProviderAuth(ctx context.Context, provider authnpb.AuthProvider) (InitAuthResult, error)
 }
 
-const initStateTTL = 15 * time.Minute
+// InitAuthResult contains values needed by clients to continue auth with a provider.
+type InitAuthResult struct {
+	State       string
+	RedirectURL string
+}
 
-type OAuthService struct {
+type OAuthProviderService struct {
 	providers map[authnpb.AuthProvider]oauth2.Config
 	store     InitStateStore
 }
 
-func NewOAuthService(p ProvidersConfig, store InitStateStore) *OAuthService {
+func NewOAuthProviderService(p ProvidersConfig, store InitStateStore) *OAuthProviderService {
 	if store == nil {
 		panic("InitStateStore is required")
 	}
@@ -50,33 +49,39 @@ func NewOAuthService(p ProvidersConfig, store InitStateStore) *OAuthService {
 			Endpoint:     google.Endpoint,
 		},
 	}
-	return &OAuthService{providers: providers, store: store}
+	return &OAuthProviderService{providers: providers, store: store}
 }
 
-func (s *OAuthService) AuthURL(ctx context.Context, provider authnpb.AuthProvider, nonce, redirectPath string) (string, error) {
+func (s *OAuthProviderService) InitProviderAuth(ctx context.Context, provider authnpb.AuthProvider) (InitAuthResult, error) {
 	conf, ok := s.providers[provider]
 	if !ok {
-		return "", ErrProviderUnsupported
+		return InitAuthResult{}, ErrProviderUnsupported
 	}
 
-	// Generate a ULID to serve as the OAuth state parameter and storage key suffix.
-	stateID := ulid.Make().String()
+	state := ulid.Make().String()
+	nonce := ulid.Make().String()
+	pkceVerifier := ulid.Make().String()
+	pkceChallenge := sha256.Sum256([]byte(pkceVerifier))
+	challenge := hex.EncodeToString(pkceChallenge[:])
 
-	// Persist the init state for later validation on callback.
 	initState := OAuthInitState{
-		ID:           stateID,
-		Provider:     provider,
-		Nonce:        nonce,
-		RedirectPath: redirectPath,
-		CreatedAt:    time.Now().UTC(),
+		ID:            state,
+		Provider:      provider,
+		Nonce:         nonce,
+		PKCEVerifier:  pkceVerifier,
+		PKCEChallenge: challenge,
+		CreatedAt:     time.Now().UTC(),
 	}
-	if err := s.store.Save(ctx, "authn:init:"+stateID, initState, initStateTTL); err != nil {
-		return "", fmt.Errorf("save init state: %w", err)
+	if err := s.store.Save(ctx, "authn:init:"+state, initState, initStateTTL); err != nil {
+		return InitAuthResult{}, fmt.Errorf("save init state: %w", err)
 	}
 
 	url := conf.AuthCodeURL(
-		stateID,
-		oauth2.AccessTypeOffline,
+		state,
+		oauth2.SetAuthURLParam("nonce", nonce),
+		oauth2.SetAuthURLParam("code_challenge", challenge),
+		oauth2.SetAuthURLParam("code_challenge_method", "S256"),
 	)
-	return url, nil
+
+	return InitAuthResult{State: state, RedirectURL: url}, nil
 }

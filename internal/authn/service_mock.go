@@ -6,6 +6,11 @@ import (
 	authnpb "github.com/cpay-dev/proto-go/api/v1/authn"
 )
 
+// NewMockAuthService constructs a MockAuthService with the given provider URLs.
+func NewMockAuthService(urls map[authnpb.AuthProvider]string) MockAuthService {
+	return MockAuthService{URLs: urls}
+}
+
 // MockAuthService is a simple in-memory implementation of AuthService for tests.
 // It returns URLs from the provided map or ErrProviderUnsupported when missing.
 type MockAuthService struct {
@@ -13,19 +18,14 @@ type MockAuthService struct {
 	Err  error
 }
 
-func (m MockAuthService) AuthURL(_ context.Context, p authnpb.AuthProvider, _ string, _ string) (string, error) {
+func (m MockAuthService) InitProviderAuth(_ context.Context, p authnpb.AuthProvider) (InitAuthResult, error) {
 	if m.Err != nil {
-		return "", m.Err
+		return InitAuthResult{}, m.Err
 	}
 	if m.URLs != nil {
 		if u, ok := m.URLs[p]; ok && u != "" {
-			return u, nil
+			return InitAuthResult{State: "mock-state", RedirectURL: u}, nil
 		}
 	}
-	return "", ErrProviderUnsupported
-}
-
-// NewMockAuthService constructs a MockAuthService with the given provider URLs.
-func NewMockAuthService(urls map[authnpb.AuthProvider]string) MockAuthService {
-	return MockAuthService{URLs: urls}
+	return InitAuthResult{}, ErrProviderUnsupported
 }

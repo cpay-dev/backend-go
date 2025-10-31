@@ -4,7 +4,7 @@ go 1.25.3
 
 require (
 	github.com/IndexStorm/ulid v1.0.1
-	github.com/cpay-dev/proto-go v0.0.0-20251029155808-ea1bbf9c4f97
+	github.com/cpay-dev/proto-go v0.0.0-20251030204158-27dfa9b67a6e
 	github.com/goccy/go-json v0.10.5
 	github.com/rs/zerolog v1.34.0
 	github.com/stretchr/testify v1.11.1

@@ -14,14 +14,16 @@ func (s *Server) InitAuth(ctx context.Context, req *authnpb.InitAuthRequest) (*a
 	if method == nil {
 		return nil, status.Error(codes.Unimplemented, "only provider method supported")
 	}
-	url, err := s.auth.AuthURL(ctx, method.Provider, method.Nonce, method.RedirectPath)
+	res, err := s.auth.InitProviderAuth(ctx, method.Provider)
 	if err != nil {
 		switch err {
 		case ErrProviderUnsupported:
 			return nil, status.Error(codes.Unimplemented, "provider not supported")
 		default:
-			return nil, fmt.Errorf("get auth url: %w", err)
+			return nil, fmt.Errorf("init provider auth: %w", err)
 		}
 	}
-	return &authnpb.InitAuthResponse{Continuation: &authnpb.InitAuthResponse_AuthUrl{AuthUrl: url}}, nil
+	return &authnpb.InitAuthResponse{Continuation: &authnpb.InitAuthResponse_Provider{
+		Provider: &authnpb.ProviderContinuation{State: res.State, RedirectUrl: res.RedirectURL},
+	}}, nil
 }

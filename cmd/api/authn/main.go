@@ -66,7 +66,7 @@ func run() error {
 	defer vkc.Close()
 
 	store := authn.NewValkeyInitStateStore(authn.NewValkeyKVAdapter(vkc))
-	authService := authn.NewOAuthService(authn.ProvidersConfig{
+	authService := authn.NewOAuthProviderService(authn.ProvidersConfig{
 		Google: authn.GoogleProvider{
 			ClientID:     cfg.Providers.Google.ClientID,
 			ClientSecret: cfg.Providers.Google.ClientSecret,

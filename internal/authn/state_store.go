@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"time"
+
+	authnpb "github.com/cpay-dev/proto-go/api/v1/authn"
 )
 
 var (
@@ -17,4 +19,14 @@ var (
 type InitStateStore interface {
 	Save(ctx context.Context, key string, state OAuthInitState, ttl time.Duration) error
 	Pop(ctx context.Context, key string) (OAuthInitState, error)
+}
+
+// OAuthInitState captures parameters for an OAuth initiation flow.
+type OAuthInitState struct {
+	ID            string
+	Provider      authnpb.AuthProvider
+	Nonce         string
+	PKCEVerifier  string
+	PKCEChallenge string
+	CreatedAt     time.Time
 }

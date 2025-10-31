@@ -9,6 +9,8 @@ import (
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 )
 
+var _ authnpb.AuthnServiceServer = (*Server)(nil)
+
 type Server struct {
 	authnpb.UnimplementedAuthnServiceServer
 	auth      AuthService

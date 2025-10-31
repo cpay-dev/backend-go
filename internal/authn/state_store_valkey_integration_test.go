@@ -1,6 +1,3 @@
-//go:build docker
-// +build docker
-
 package authn_test
 
 import (
@@ -9,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	authnpb "github.com/cpay-dev/proto-go/api/v1/authn"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	valkeytestcontainers "github.com/testcontainers/testcontainers-go/modules/valkey"
@@ -46,11 +44,12 @@ func TestValkeyInitStateStore_SaveAndPop(t *testing.T) {
 
 	key := "authn:init:test-save-pop"
 	expected := authn.OAuthInitState{
-		ID:           "state-1",
-		Provider:     1, // authnpb.AuthProvider_AUTH_PROVIDER_GOOGLE
-		Nonce:        "nonce-xyz",
-		RedirectPath: "/welcome",
-		CreatedAt:    time.Now().UTC(),
+		ID:            "state-1",
+		Provider:      authnpb.AuthProvider_AUTH_PROVIDER_GOOGLE,
+		Nonce:         "nonce-xyz",
+		PKCEVerifier:  "verifier-abc",
+		PKCEChallenge: "challenge-abc",
+		CreatedAt:     time.Now().UTC(),
 	}
 
 	require.NoError(t, store.Save(ctx, key, expected, 15*time.Second), "save state")
@@ -61,7 +60,8 @@ func TestValkeyInitStateStore_SaveAndPop(t *testing.T) {
 	require.Equal(t, expected.ID, got.ID)
 	require.Equal(t, expected.Provider, got.Provider)
 	require.Equal(t, expected.Nonce, got.Nonce)
-	require.Equal(t, expected.RedirectPath, got.RedirectPath)
+	require.Equal(t, expected.PKCEVerifier, got.PKCEVerifier)
+	require.Equal(t, expected.PKCEChallenge, got.PKCEChallenge)
 	require.WithinDuration(t, expected.CreatedAt, got.CreatedAt, time.Second)
 
 	// Second Pop should return not found

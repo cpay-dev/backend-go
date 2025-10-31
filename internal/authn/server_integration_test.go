@@ -97,7 +97,10 @@ func TestInitAuthProviderGoogle(t *testing.T) {
 		},
 	})
 	require.NoError(t, err, "InitAuth google should succeed")
-	require.Equal(t, mockURL, resp.GetAuthUrl(), "should return mock URL")
+	pc := resp.GetProvider()
+	require.NotNil(t, pc, "provider continuation must be present")
+	require.Equal(t, mockURL, pc.GetRedirectUrl(), "should return mock URL")
+	require.NotEmpty(t, pc.GetState(), "state must be present")
 }
 
 func TestPanicRecovered(t *testing.T) {
