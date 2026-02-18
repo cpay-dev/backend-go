@@ -9,6 +9,7 @@ service ChainService {
   rpc GetBalance(GetBalanceRequest) returns (GetBalanceResponse);
   rpc GetCounterfactualAddress(GetCounterfactualAddressRequest) returns (GetCounterfactualAddressResponse);
   rpc GetTokenBalance(GetTokenBalanceRequest) returns (GetTokenBalanceResponse);
+  rpc DeployAndWithdraw(DeployAndWithdrawRequest) returns (DeployAndWithdrawResponse);
 }
 
 message HealthCheckRequest {}
@@ -44,4 +45,17 @@ message GetTokenBalanceRequest {
 
 message GetTokenBalanceResponse {
   string balance = 1;
+}
+
+// DeployAndWithdraw: deploys the MinimalWallet via CREATE2 if not yet deployed,
+// then calls execute() to transfer all token balance to the merchant's EOA.
+message DeployAndWithdrawRequest {
+  uint64 chain_id = 1;
+  string merchant_wallet = 2;  // owner / recipient
+  string token_address = 3;    // ERC-20 to withdraw
+}
+
+message DeployAndWithdrawResponse {
+  string tx_hash = 1;          // hash of the withdraw (execute) transaction
+  string amount = 2;           // amount withdrawn (decimal string, token units)
 }

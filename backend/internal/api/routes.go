@@ -99,6 +99,7 @@ func RegisterRoutes(
 			// Counterfactual account
 			r.Get("/cf-address", h.getMyCFAddress)
 			r.Get("/cf-balance", h.getCFBalance)
+			r.Get("/cf-withdraw-info", h.getCFWithdrawInfo)
 
 			// Upload
 			r.Post("/upload/avatar", h.uploadAvatar)

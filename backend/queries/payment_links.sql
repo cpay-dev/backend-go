@@ -11,7 +11,7 @@ SELECT pl.*, ca.address AS merchant_address
 FROM payment_links pl
 JOIN shops s ON s.id = pl.shop_id
 JOIN users u ON u.id = s.user_id
-LEFT JOIN counterfactual_accounts ca ON ca.user_id = u.id
+LEFT JOIN counterfactual_accounts ca ON ca.user_id = u.id AND ca.chain_id = 80002
 WHERE pl.id = $1;
 
 -- name: ListShopPaymentLinks :many

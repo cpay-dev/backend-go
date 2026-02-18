@@ -60,3 +60,39 @@ func (c *ChainClient) GetTokenBalance(ctx context.Context, chainID uint64, token
 	}
 	return resp.Balance, nil
 }
+
+// CFWalletInfo holds info returned by DeployAndWithdraw for frontend use.
+type CFWalletInfo struct {
+	CFAddress  string // CF wallet address
+	Balance    string // raw token balance (U256 decimal string)
+	IsDeployed bool   // whether MinimalWallet is already deployed at CFAddress
+}
+
+// GetCFWalletInfo returns the CF wallet address, token balance, and deployment status.
+// The actual deploy+withdraw transactions are signed by the merchant in the frontend.
+func (c *ChainClient) GetCFWalletInfo(ctx context.Context, chainID uint64, merchantWallet, tokenAddress string) (*CFWalletInfo, error) {
+	resp, err := c.client.DeployAndWithdraw(ctx, &chainv1.DeployAndWithdrawRequest{
+		ChainId:        chainID,
+		MerchantWallet: merchantWallet,
+		TokenAddress:   tokenAddress,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("GetCFWalletInfo: %w", err)
+	}
+	// resp.TxHash holds the CF address, resp.Amount holds "balance:deployed|not_deployed"
+	balance, deployStatus := splitLast(resp.Amount, ':')
+	return &CFWalletInfo{
+		CFAddress:  resp.TxHash,
+		Balance:    balance,
+		IsDeployed: deployStatus == "deployed",
+	}, nil
+}
+
+func splitLast(s string, sep byte) (string, string) {
+	for i := len(s) - 1; i >= 0; i-- {
+		if s[i] == sep {
+			return s[:i], s[i+1:]
+		}
+	}
+	return s, ""
+}

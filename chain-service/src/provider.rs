@@ -21,6 +21,7 @@ impl ChainProviders {
 
         let chain_configs = [
             (137u64, "RPC_URL_POLYGON"),
+            (80002u64, "RPC_URL_POLYGON_AMOY"),
         ];
 
         for (chain_id, env_key) in chain_configs {

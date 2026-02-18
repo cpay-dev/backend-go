@@ -171,6 +171,10 @@ export const api = {
     getAddress: () => request<{ address: string }>("/api/cf-address"),
     getBalance: (token: string) =>
       request<{ address: string; balance: string }>(`/api/cf-balance?token=${encodeURIComponent(token)}`),
+    getWithdrawInfo: (token: string) =>
+      request<{ cf_address: string; balance: string; is_deployed: boolean; token: string; chain_id: number }>(
+        `/api/cf-withdraw-info?token=${encodeURIComponent(token)}`
+      ),
   },
 };
 

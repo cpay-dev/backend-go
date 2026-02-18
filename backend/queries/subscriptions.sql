@@ -14,7 +14,7 @@ SELECT s.*, ca.address AS merchant_address
 FROM subscriptions s
 JOIN shops sh ON sh.id = s.shop_id
 JOIN users u ON u.id = sh.user_id
-LEFT JOIN counterfactual_accounts ca ON ca.user_id = u.id
+LEFT JOIN counterfactual_accounts ca ON ca.user_id = u.id AND ca.chain_id = 80002
 WHERE s.id = $1 AND s.active = true;
 
 -- name: ListMySubscriptions :many

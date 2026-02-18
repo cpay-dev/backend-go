@@ -17,7 +17,6 @@ const config = createConfig({
           projectId: walletConnectProjectId,
           showQrModal: true,
           metadata: { name: "CPay", description: "Crypto Payments", url: "https://cpay.dev", icons: [] },
-          optionalChains: [polygonAmoy.id],
         })]
       : []),
   ],

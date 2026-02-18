@@ -11,7 +11,7 @@ SELECT p.*, ca.address AS merchant_address
 FROM products p
 JOIN shops s ON s.id = p.shop_id
 JOIN users u ON u.id = s.user_id
-LEFT JOIN counterfactual_accounts ca ON ca.user_id = u.id
+LEFT JOIN counterfactual_accounts ca ON ca.user_id = u.id AND ca.chain_id = 80002
 WHERE p.id = $1 AND p.active = true;
 
 -- name: ListShopProducts :many
