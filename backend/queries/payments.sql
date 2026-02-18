@@ -30,3 +30,9 @@ SELECT * FROM payments
 WHERE product_id = $1 AND payer_address = $2
 ORDER BY created_at DESC
 LIMIT 1;
+
+-- name: GetPaymentByLinkAndPayer :one
+SELECT * FROM payments
+WHERE payment_link_id = $1 AND payer_address = $2
+ORDER BY created_at DESC
+LIMIT 1;

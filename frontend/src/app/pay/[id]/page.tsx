@@ -44,6 +44,14 @@ export default function PayPage({ params }: { params: Promise<{ id: string }> })
       .finally(() => setLoading(false));
   }, [id]);
 
+  // Restore success state if this wallet already paid
+  useEffect(() => {
+    if (!address || !id) return;
+    api.paymentLinks.checkPayment(id, address).then((payment) => {
+      if (payment) setPayStatus("success");
+    }).catch(() => {});
+  }, [id, address]);
+
   const handleConnect = async () => {
     const connector = connectors[0];
     if (connector) await connectAsync({ connector });

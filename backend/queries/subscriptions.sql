@@ -10,10 +10,11 @@ SELECT * FROM subscriptions
 WHERE id = $1;
 
 -- name: GetPublicSubscription :one
-SELECT s.*, u.wallet_address AS merchant_address
+SELECT s.*, ca.address AS merchant_address
 FROM subscriptions s
 JOIN shops sh ON sh.id = s.shop_id
 JOIN users u ON u.id = sh.user_id
+LEFT JOIN counterfactual_accounts ca ON ca.user_id = u.id
 WHERE s.id = $1 AND s.active = true;
 
 -- name: ListMySubscriptions :many
@@ -55,3 +56,9 @@ ORDER BY created_at DESC;
 SELECT * FROM subscription_payments
 WHERE shop_id = $1
 ORDER BY created_at DESC;
+
+-- name: GetSubscriptionPaymentByPayer :one
+SELECT * FROM subscription_payments
+WHERE subscription_id = $1 AND payer_address = $2
+ORDER BY created_at DESC
+LIMIT 1;

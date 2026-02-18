@@ -30,7 +30,7 @@ type subscriptionResponse struct {
 
 type publicSubscriptionResponse struct {
 	subscriptionResponse
-	MerchantAddress string `json:"merchant_address"`
+	MerchantAddress *string `json:"merchant_address"`
 }
 
 type subscriptionPaymentResponse struct {
@@ -232,6 +232,27 @@ func (h *handlers) deleteSubscription(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// checkSubscriptionPayment handles GET /api/sub/:id/payment?payer=0x... — check if a payer has already paid this subscription.
+func (h *handlers) checkSubscriptionPayment(w http.ResponseWriter, r *http.Request) {
+	subID := chi.URLParam(r, "id")
+	payer := r.URL.Query().Get("payer")
+	if payer == "" {
+		writeError(w, http.StatusBadRequest, "payer query param required")
+		return
+	}
+
+	payment, err := h.queries.GetSubscriptionPaymentByPayer(r.Context(), db.GetSubscriptionPaymentByPayerParams{
+		SubscriptionID: subID,
+		PayerAddress:   payer,
+	})
+	if err != nil {
+		writeJSON(w, http.StatusOK, nil)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, payment)
 }
 
 // recordSubscriptionPayment handles POST /api/sub/:id/payment (public — payer calls this)

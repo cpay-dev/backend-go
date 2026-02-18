@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"sort"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -113,6 +114,27 @@ func (h *handlers) recordPaymentLinkPayment(w http.ResponseWriter, r *http.Reque
 	writeJSON(w, http.StatusCreated, toPaymentResponse(payment))
 }
 
+// checkPaymentLinkPayment handles GET /api/pay/:id/payment?payer=0x... — check if a payer has already paid this link.
+func (h *handlers) checkPaymentLinkPayment(w http.ResponseWriter, r *http.Request) {
+	linkID := chi.URLParam(r, "id")
+	payer := r.URL.Query().Get("payer")
+	if payer == "" {
+		writeError(w, http.StatusBadRequest, "payer query param required")
+		return
+	}
+
+	payment, err := h.queries.GetPaymentByLinkAndPayer(r.Context(), db.GetPaymentByLinkAndPayerParams{
+		PaymentLinkID: &linkID,
+		PayerAddress:  &payer,
+	})
+	if err != nil {
+		writeJSON(w, http.StatusOK, nil)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, toPaymentResponse(payment))
+}
+
 // checkProductPayment handles GET /api/p/:id/payment?payer=0x... — check if a payer has already paid.
 func (h *handlers) checkProductPayment(w http.ResponseWriter, r *http.Request) {
 	productID := chi.URLParam(r, "id")
@@ -191,7 +213,7 @@ func (h *handlers) recordProductPayment(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusCreated, toPaymentResponse(payment))
 }
 
-// listMyPayments handles GET /api/payments — returns all payments for the merchant's shop.
+// listMyPayments handles GET /api/payments — returns all payments (products, links, subscriptions) for the merchant's shop.
 func (h *handlers) listMyPayments(w http.ResponseWriter, r *http.Request) {
 	userID := auth.UserIDFromContext(r.Context())
 	if userID == "" {
@@ -216,6 +238,33 @@ func (h *handlers) listMyPayments(w http.ResponseWriter, r *http.Request) {
 	for _, p := range payments {
 		resp = append(resp, toPaymentResponse(p))
 	}
+
+	// Also include subscription payments, normalised to the same shape
+	subPayments, err := h.queries.ListSubscriptionPaymentsByShop(r.Context(), shop.ID)
+	if err != nil {
+		slog.Error("ListSubscriptionPaymentsByShop failed", "error", err)
+	} else {
+		for _, sp := range subPayments {
+			payer := sp.PayerAddress
+			resp = append(resp, paymentResponse{
+				ID:           sp.ID,
+				ShopID:       sp.ShopID,
+				Kind:         "subscription",
+				PayerAddress: &payer,
+				TokenAddress: sp.TokenAddress,
+				ChainID:      sp.ChainID,
+				Amount:       numericToString(sp.Amount),
+				TxHash:       sp.TxHash,
+				CreatedAt:    sp.CreatedAt,
+			})
+		}
+	}
+
+	// Sort combined list by created_at descending
+	sort.Slice(resp, func(i, j int) bool {
+		return resp[i].CreatedAt.After(resp[j].CreatedAt)
+	})
+
 	writeJSON(w, http.StatusOK, resp)
 }
 

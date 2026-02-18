@@ -130,7 +130,7 @@ type productResponse struct {
 
 type publicProductResponse struct {
 	productResponse
-	MerchantAddress string `json:"merchant_address"`
+	MerchantAddress *string `json:"merchant_address"`
 }
 
 func toProductResponse(p db.Product) productResponse {

@@ -129,6 +129,8 @@ export const api = {
     getPublic: (id: string) => request<PaymentLink>(`/api/pay/${id}`),
     recordUse: (id: string) =>
       request<{ use_count: number }>(`/api/pay/${id}/use`, { method: "POST" }),
+    checkPayment: (linkId: string, payer: string) =>
+      request<Payment | null>(`/api/pay/${linkId}/payment?payer=${encodeURIComponent(payer)}`),
     recordPayment: (id: string, data: RecordPaymentData) =>
       request<Payment>(`/api/pay/${id}/payment`, { method: "POST", body: JSON.stringify(data) }),
   },
@@ -149,6 +151,8 @@ export const api = {
       }),
     delete: (id: string) => request<void>(`/api/subscriptions/${id}`, { method: "DELETE" }),
     getPublic: (id: string) => request<Subscription>(`/api/sub/${id}`),
+    checkPayment: (subId: string, payer: string) =>
+      request<SubscriptionPayment | null>(`/api/sub/${subId}/payment?payer=${encodeURIComponent(payer)}`),
     recordPayment: (id: string, data: RecordPaymentData) =>
       request<SubscriptionPayment>(`/api/sub/${id}/payment`, { method: "POST", body: JSON.stringify(data) }),
     listPayments: (id: string) =>

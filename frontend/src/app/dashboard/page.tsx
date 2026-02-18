@@ -343,7 +343,7 @@ export default function DashboardPage() {
                         </p>
                       </div>
                       <a
-                        href={`https://polygonscan.com/tx/${payment.tx_hash}`}
+                        href={`https://${payment.chain_id === 80002 ? "amoy.polygonscan.com" : "polygonscan.com"}/tx/${payment.tx_hash}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="ml-3 shrink-0 text-muted-foreground hover:text-foreground"

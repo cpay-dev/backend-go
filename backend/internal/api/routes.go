@@ -49,11 +49,13 @@ func RegisterRoutes(
 
 		// Public payment link page
 		r.Get("/pay/{id}", h.getPublicPaymentLink)
+		r.Get("/pay/{id}/payment", h.checkPaymentLinkPayment)
 		r.Post("/pay/{id}/use", h.recordPaymentLinkUse)
 		r.Post("/pay/{id}/payment", h.recordPaymentLinkPayment)
 
 		// Public subscription page
 		r.Get("/sub/{id}", h.getPublicSubscription)
+		r.Get("/sub/{id}/payment", h.checkSubscriptionPayment)
 		r.Post("/sub/{id}/payment", h.recordSubscriptionPayment)
 
 		// Protected routes

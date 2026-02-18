@@ -29,7 +29,7 @@ type paymentLinkResponse struct {
 
 type publicPaymentLinkResponse struct {
 	paymentLinkResponse
-	MerchantAddress string `json:"merchant_address"`
+	MerchantAddress *string `json:"merchant_address"`
 }
 
 func toPaymentLinkResponse(l db.PaymentLink) paymentLinkResponse {
