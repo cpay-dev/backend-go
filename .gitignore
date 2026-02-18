@@ -1,0 +1,39 @@
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Dependencies
+node_modules/
+vendor/
+
+# Build artifacts
+/backend/bin/
+/chain-service/target/
+/frontend/.next/
+/frontend/out/
+
+# Generated code
+/backend/internal/db/
+/backend/internal/grpc/gen/
+/chain-service/src/gen/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker volumes
+pgdata/
+minio-data/
+nats-data/
+
+# Test
+coverage.out
+coverage.html
+*.prof

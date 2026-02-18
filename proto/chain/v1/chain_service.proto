@@ -1,0 +1,47 @@
+syntax = "proto3";
+
+package chain.v1;
+
+option go_package = "github.com/cpay-dev/backend/internal/grpc/gen/chainv1";
+
+service ChainService {
+  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+  rpc GetBalance(GetBalanceRequest) returns (GetBalanceResponse);
+  rpc GetCounterfactualAddress(GetCounterfactualAddressRequest) returns (GetCounterfactualAddressResponse);
+  rpc GetTokenBalance(GetTokenBalanceRequest) returns (GetTokenBalanceResponse);
+}
+
+message HealthCheckRequest {}
+
+message HealthCheckResponse {
+  bool ok = 1;
+  repeated uint64 supported_chains = 2;
+}
+
+message GetBalanceRequest {
+  uint64 chain_id = 1;
+  string address = 2;
+}
+
+message GetBalanceResponse {
+  string balance = 1;
+}
+
+message GetCounterfactualAddressRequest {
+  uint64 chain_id = 1;
+  string merchant_wallet = 2;
+}
+
+message GetCounterfactualAddressResponse {
+  string address = 1;
+}
+
+message GetTokenBalanceRequest {
+  uint64 chain_id = 1;
+  string token_address = 2;
+  string wallet_address = 3;
+}
+
+message GetTokenBalanceResponse {
+  string balance = 1;
+}
