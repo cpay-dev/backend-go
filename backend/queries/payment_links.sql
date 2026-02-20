@@ -7,7 +7,7 @@ RETURNING *;
 SELECT * FROM payment_links WHERE id = $1;
 
 -- name: GetPublicPaymentLink :one
-SELECT pl.*, ca.address AS merchant_address
+SELECT pl.*, u.wallet_address AS merchant_wallet, ca.address AS merchant_address
 FROM payment_links pl
 JOIN shops s ON s.id = pl.shop_id
 JOIN users u ON u.id = s.user_id

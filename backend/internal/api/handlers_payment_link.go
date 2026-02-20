@@ -168,6 +168,15 @@ func (h *handlers) getPublicPaymentLink(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	// If CF address cache is empty, derive it from chain service and backfill.
+	merchantAddr := link.MerchantAddress
+	if merchantAddr == nil && link.MerchantWallet != "" {
+		addr, err := h.resolveMerchantCFAddress(r.Context(), link.MerchantWallet)
+		if err == nil {
+			merchantAddr = &addr
+		}
+	}
+
 	resp := publicPaymentLinkResponse{
 		paymentLinkResponse: paymentLinkResponse{
 			ID:           link.ID,
@@ -183,7 +192,7 @@ func (h *handlers) getPublicPaymentLink(w http.ResponseWriter, r *http.Request) 
 			CreatedAt:    link.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 			UpdatedAt:    link.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		},
-		MerchantAddress: link.MerchantAddress,
+		MerchantAddress: merchantAddr,
 	}
 	writeJSON(w, http.StatusOK, resp)
 }

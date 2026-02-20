@@ -1,4 +1,4 @@
-.PHONY: dev dev-db migrate migrate-down migrate-reset sqlc proto build test clean
+.PHONY: dev dev-db migrate migrate-down migrate-reset sqlc proto compile-sol build test clean
 
 # Development
 dev:
@@ -33,6 +33,10 @@ proto:
 		-f proto/chain/v1/chain_service.proto \
 		-l go -o backend/internal/grpc/gen/chainv1 \
 		--go-source-relative
+
+compile-sol:
+	docker run --rm -v "$(PWD)/contracts:/contracts" ethereum/solc:0.8.20 \
+		--optimize --optimize-runs 1 --bin --abi -o /contracts/out /contracts/PaymentWallet.sol
 
 # Build
 build-go:

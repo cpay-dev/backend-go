@@ -13,43 +13,42 @@ import { PaymentLinkCard } from "@/components/payment-link-card";
 import { SubscriptionCard } from "@/components/subscription-card";
 import Link from "next/link";
 import type { Product, PaymentLink, Subscription, Payment } from "@/lib/api";
-import { useAccount, useWriteContract, useSendTransaction, useSwitchChain } from "wagmi";
-import { encodeFunctionData } from "viem";
+import { useAccount, useWriteContract, useSendTransaction, useSwitchChain, usePublicClient } from "wagmi";
+import { keccak256, toBytes, getContractAddress, type Hex } from "viem";
 
 // Universal CREATE2 factory (deployed on all EVM chains)
 const CREATE2_FACTORY = "0x4e59b44847b379578588920cA78FbF26c0B4956C" as const;
 const CF_CHAIN_ID = 80002; // Polygon Amoy testnet
 const CF_TOKEN_ADDRESS = "0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582" as const;
-// MinimalWallet init bytecode (solc 0.8.20)
-const MINIMAL_WALLET_BYTECODE =
-  "0x60a060405234801561000f575f80fd5b5060405161036883038061036883398101604081905261002e9161003f565b6001600160a01b031660805261006c565b5f6020828403121561004f575f80fd5b81516001600160a01b0381168114610065575f80fd5b9392505050565b6080516102df6100895f395f81816047015260bf01526102df5ff3fe60806040526004361061002b575f3560e01c80638da5cb5b14610036578063b61d27f614610086575f80fd5b3661003257005b5f80fd5b348015610041575f80fd5b506100697f000000000000000000000000000000000000000000000000000000000000000081565b6040516001600160a01b0390911681526020015b60405180910390f35b348015610091575f80fd5b506100a56100a03660046101c3565b6100b2565b60405161007d919061024f565b6060336001600160a01b037f0000000000000000000000000000000000000000000000000000000000000000161461011d5760405162461bcd60e51b81526020600482015260096024820152683737ba1037bbb732b960b91b60448201526064015b60405180910390fd5b5f80866001600160a01b031686868660405161013a92919061029a565b5f6040518083038185875af1925050503d805f8114610174576040519150601f19603f3d011682016040523d82523d5f602084013e610179565b606091505b5091509150816101b95760405162461bcd60e51b815260206004820152600b60248201526a18d85b1b0819985a5b195960aa1b6044820152606401610114565b9695505050505050565b5f805f80606085870312156101d6575f80fd5b84356001600160a01b03811681146101ec575f80fd5b93506020850135925060408501356001600160401b038082111561020e575f80fd5b818701915087601f830112610221575f80fd5b81358181111561022f575f80fd5b886020828501011115610240575f80fd5b95989497505060200194505050565b5f6020808352835180828501525f5b8181101561027a5785810183015185820160400152820161025e565b505f604082860101526040601f19601f8301168501019250505092915050565b818382375f910190815291905056fea2646970667358221220a9640b5094688010a419fc9d0f8507ab64efb2167ad7daa81f98994eefcf3ab464736f6c63430008140033" as const;
+// PaymentWallet init bytecode (solc 0.8.20)
+// withdraw(token) permissionless, withdrawNative() permissionless, execute(to,value,data) onlyOwner
+const PAYMENT_WALLET_BYTECODE =
+  "0x60a060405234801561000f575f80fd5b5060405161070b38038061070b83398101604081905261002e9161003f565b6001600160a01b031660805261006c565b5f6020828403121561004f575f80fd5b81516001600160a01b0381168114610065575f80fd5b9392505050565b6080516106736100985f395f8181609201528181610120015281816102b101526103bc01526106735ff3fe608060405260043610610041575f3560e01c806350431ce41461004c57806351cff8d9146100625780638da5cb5b14610081578063b61d27f6146100ca575f80fd5b3661004857005b5f80fd5b348015610057575f80fd5b506100606100f6565b005b34801561006d575f80fd5b5061006061007c3660046104d6565b61020c565b34801561008c575f80fd5b506100b47f000000000000000000000000000000000000000000000000000000000000000081565b6040516100c191906104f6565b60405180910390f35b3480156100d5575f80fd5b506100e96100e436600461050a565b6103af565b6040516100c19190610589565b478061011d5760405162461bcd60e51b8152600401610114906105d4565b60405180910390fd5b5f7f00000000000000000000000000000000000000000000000000000000000000006001600160a01b0316826040515f6040518083038185875af1925050503d805f8114610186576040519150601f19603f3d011682016040523d82523d5f602084013e61018b565b606091505b50509050806101d55760405162461bcd60e51b81526020600482015260166024820152751b985d1a5d99481d1c985b9cd9995c8819985a5b195960521b6044820152606401610114565b6040518281527fe1abb8128ba4c3d7694c033a0a48ca4f62651a7e8a6356204348ea23841e6db69060200160405180910390a15050565b6040516370a0823160e01b81525f906001600160a01b038316906370a082319061023a9030906004016104f6565b602060405180830381865afa158015610255573d5f803e3d5ffd5b505050506040513d601f19601f8201168201806040525081019061027991906105f8565b90505f811161029a5760405162461bcd60e51b8152600401610114906105d4565b60405163a9059cbb60e01b81526001600160a01b037f0000000000000000000000000000000000000000000000000000000000000000811660048301526024820183905283169063a9059cbb906044016020604051808303815f875af1158015610306573d5f803e3d5ffd5b505050506040513d601f19601f8201168201806040525081019061032a919061060f565b6103685760405162461bcd60e51b815260206004820152600f60248201526e1d1c985b9cd9995c8819985a5b1959608a1b6044820152606401610114565b816001600160a01b03167f7084f5476618d8e60b11ef0d7d3f06914655adb8793e28ff7f018d4c76d505d5826040516103a391815260200190565b60405180910390a25050565b6060336001600160a01b037f000000000000000000000000000000000000000000000000000000000000000016146104155760405162461bcd60e51b81526020600482015260096024820152683737ba1037bbb732b960b91b6044820152606401610114565b5f80866001600160a01b031686868660405161043292919061062e565b5f6040518083038185875af1925050503d805f811461046c576040519150601f19603f3d011682016040523d82523d5f602084013e610471565b606091505b5091509150816104b15760405162461bcd60e51b815260206004820152600b60248201526a18d85b1b0819985a5b195960aa1b6044820152606401610114565b9695505050505050565b80356001600160a01b03811681146104d1575f80fd5b919050565b5f602082840312156104e6575f80fd5b6104ef826104bb565b9392505050565b6001600160a01b0391909116815260200190565b5f805f806060858703121561051d575f80fd5b610526856104bb565b93506020850135925060408501356001600160401b0380821115610548575f80fd5b818701915087601f83011261055b575f80fd5b813581811115610569575f80fd5b88602082850101111561057a575f80fd5b95989497505060200194505050565b5f6020808352835180828501525f5b818110156105b457858101830151858201604001528201610598565b505f604082860101526040601f19601f8301168501019250505092915050565b6020808252600a90820152696e6f2062616c616e636560b01b604082015260600190565b5f60208284031215610608575f80fd5b5051919050565b5f6020828403121561061f575f80fd5b815180151581146104ef575f80fd5b818382375f910190815291905056fea2646970667358221220f3431f894c4699a0abeaae1ac6b7a442c6f9bc4158bcf5b0308f4b6d2434e31164736f6c63430008140033" as const;
 
-const EXECUTE_ABI = [
+const PAYMENT_WALLET_ABI = [
   {
-    name: "execute",
+    name: "withdraw",
     type: "function",
-    inputs: [
-      { name: "to", type: "address" },
-      { name: "value", type: "uint256" },
-      { name: "data", type: "bytes" },
-    ],
-    outputs: [{ name: "", type: "bytes" }],
+    inputs: [{ name: "token", type: "address" }],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    name: "withdrawNative",
+    type: "function",
+    inputs: [],
+    outputs: [],
     stateMutability: "nonpayable",
   },
 ] as const;
 
-const ERC20_TRANSFER_ABI = [
-  {
-    name: "transfer",
-    type: "function",
-    inputs: [
-      { name: "to", type: "address" },
-      { name: "amount", type: "uint256" },
-    ],
-    outputs: [{ name: "", type: "bool" }],
-    stateMutability: "nonpayable",
-  },
-] as const;
+/** Compute the CREATE2 counterfactual address locally from the frontend bytecode. */
+function computeLocalCFAddress(owner: `0x${string}`): `0x${string}` {
+  const ownerPadded = owner.toLowerCase().replace("0x", "").padStart(64, "0");
+  const initCode = ("0x" + PAYMENT_WALLET_BYTECODE.slice(2) + ownerPadded) as Hex;
+  const salt = keccak256(toBytes(owner));
+  return getContractAddress({ bytecode: initCode, from: CREATE2_FACTORY, opcode: "CREATE2", salt });
+}
 
 interface WithdrawInfo {
   cf_address: string;
@@ -73,6 +72,7 @@ export default function DashboardPage() {
   const { writeContractAsync } = useWriteContract();
   const { sendTransactionAsync } = useSendTransaction();
   const { switchChainAsync } = useSwitchChain();
+  const publicClient = usePublicClient({ chainId: CF_CHAIN_ID });
   const [shop, setShop] = useState<Shop | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(false);
@@ -217,6 +217,19 @@ export default function DashboardPage() {
     setWithdrawTxHash(null);
 
     try {
+      // Compute CF address locally from frontend bytecode — this is the
+      // address the CREATE2 factory will actually deploy to.
+      const localCFAddr = computeLocalCFAddress(walletAddress);
+
+      // Safety check: if backend derived a different address, the bytecodes
+      // are out of sync and withdraw would silently no-op on an empty address.
+      if (localCFAddr.toLowerCase() !== withdrawInfo.cf_address.toLowerCase()) {
+        setWithdrawError(
+          `CF address mismatch: backend=${withdrawInfo.cf_address.slice(0, 10)}… local=${localCFAddr.slice(0, 10)}…. Rebuild chain service.`
+        );
+        return;
+      }
+
       // Switch to Amoy if needed
       try {
         await switchChainAsync({ chainId: CF_CHAIN_ID });
@@ -224,7 +237,6 @@ export default function DashboardPage() {
         // ignore if already on correct chain
       }
 
-      const cfAddr = withdrawInfo.cf_address as `0x${string}`;
       const balanceRaw = BigInt(withdrawInfo.balance);
 
       if (balanceRaw === BigInt(0)) {
@@ -232,41 +244,32 @@ export default function DashboardPage() {
         return;
       }
 
-      // Step 1: Deploy MinimalWallet via CREATE2 factory if not deployed
+      // Step 1: Deploy PaymentWallet via CREATE2 factory if not deployed
       if (!withdrawInfo.is_deployed) {
-        // Build initCode: bytecode + abi.encode(owner)
-        const bytecode = MINIMAL_WALLET_BYTECODE.slice(2); // strip 0x
+        const bytecode = PAYMENT_WALLET_BYTECODE.slice(2); // strip 0x
         const ownerPadded = walletAddress.toLowerCase().replace("0x", "").padStart(64, "0");
         const initCode = ("0x" + bytecode + ownerPadded) as `0x${string}`;
-
-        // salt = keccak256(merchant address) — computed off-chain via viem
-        const { keccak256: viemKeccak256, toBytes } = await import("viem");
-        const salt = viemKeccak256(toBytes(walletAddress)) as `0x${string}`;
-
-        // Call CREATE2 factory: factory(bytes32 salt, bytes initCode)
-        // The Nick's factory just takes salt + initCode as calldata: salt ++ initCode
+        const salt = keccak256(toBytes(walletAddress));
         const factoryCalldata = (salt + initCode.slice(2)) as `0x${string}`;
 
-        await sendTransactionAsync({
+        const deployHash = await sendTransactionAsync({
           chainId: CF_CHAIN_ID,
           to: CREATE2_FACTORY,
           data: factoryCalldata,
         });
+
+        if (publicClient) {
+          await publicClient.waitForTransactionReceipt({ hash: deployHash });
+        }
       }
 
-      // Step 2: Call execute(token, 0, transfer(merchantEOA, balance)) on the CF wallet
-      const transferCalldata = encodeFunctionData({
-        abi: ERC20_TRANSFER_ABI,
-        functionName: "transfer",
-        args: [walletAddress, balanceRaw],
-      });
-
+      // Step 2: Call withdraw(token) on the locally-computed address
       const hash = await writeContractAsync({
         chainId: CF_CHAIN_ID,
-        address: cfAddr,
-        abi: EXECUTE_ABI,
-        functionName: "execute",
-        args: [CF_TOKEN_ADDRESS, BigInt(0), transferCalldata],
+        address: localCFAddr,
+        abi: PAYMENT_WALLET_ABI,
+        functionName: "withdraw",
+        args: [CF_TOKEN_ADDRESS],
       });
 
       setWithdrawTxHash(hash);

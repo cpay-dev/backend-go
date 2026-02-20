@@ -283,6 +283,15 @@ func (h *handlers) getPublicProduct(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// If CF address cache is empty, derive it from chain service and backfill.
+	merchantAddr := product.MerchantAddress
+	if merchantAddr == nil && product.MerchantWallet != "" {
+		addr, err := h.resolveMerchantCFAddress(r.Context(), product.MerchantWallet)
+		if err == nil {
+			merchantAddr = &addr
+		}
+	}
+
 	resp := publicProductResponse{
 		productResponse: productResponse{
 			ID:           product.ID,
@@ -298,7 +307,7 @@ func (h *handlers) getPublicProduct(w http.ResponseWriter, r *http.Request) {
 			CreatedAt:    product.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 			UpdatedAt:    product.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		},
-		MerchantAddress: product.MerchantAddress,
+		MerchantAddress: merchantAddr,
 	}
 	writeJSON(w, http.StatusOK, resp)
 }

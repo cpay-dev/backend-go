@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 
@@ -9,7 +10,18 @@ import (
 )
 
 const cfChainID = 80002 // Polygon Amoy testnet
-const cfTokenAddress = "0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582" // test USDC on Amoy
+const cfTokenAddress = "0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582" // USDC on Amoy
+
+// resolveMerchantCFAddress derives the CF address for a merchant wallet via the
+// chain service. Used by public endpoints when the cache is empty.
+func (h *handlers) resolveMerchantCFAddress(ctx context.Context, wallet string) (string, error) {
+	addr, err := h.chainClient.GetCounterfactualAddress(ctx, cfChainID, wallet)
+	if err != nil {
+		slog.Error("resolveMerchantCFAddress failed", "wallet", wallet, "error", err)
+		return "", err
+	}
+	return addr, nil
+}
 
 // getMyCFAddress returns (and caches) the counterfactual account address for the
 // authenticated merchant on Polygon Amoy (chain 80002).
@@ -21,17 +33,8 @@ func (h *handlers) getMyCFAddress(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Try cache first
-	existing, err := h.queries.GetCounterfactualAccount(r.Context(), db.GetCounterfactualAccountParams{
-		UserID:  userID,
-		ChainID: cfChainID,
-	})
-	if err == nil {
-		writeJSON(w, http.StatusOK, map[string]string{"address": existing.Address})
-		return
-	}
-
-	// Derive via chain service
+	// Always derive from chain service (source of truth) and upsert cache.
+	// This ensures stale cached addresses get corrected after bytecode changes.
 	addr, err := h.chainClient.GetCounterfactualAddress(r.Context(), cfChainID, wallet)
 	if err != nil {
 		slog.Error("GetCounterfactualAddress failed", "error", err)
@@ -39,7 +42,6 @@ func (h *handlers) getMyCFAddress(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Cache it
 	_, err = h.queries.UpsertCounterfactualAccount(r.Context(), db.UpsertCounterfactualAccountParams{
 		UserID:  userID,
 		ChainID: cfChainID,
@@ -66,23 +68,20 @@ func (h *handlers) getCFBalance(w http.ResponseWriter, r *http.Request) {
 		tokenAddress = cfTokenAddress
 	}
 
-	// Get CF address (from cache or derive)
-	cfAcct, err := h.queries.GetCounterfactualAccount(r.Context(), db.GetCounterfactualAccountParams{
+	// Always derive from chain service to avoid stale cache.
+	cfAddr, err := h.chainClient.GetCounterfactualAddress(r.Context(), cfChainID, wallet)
+	if err != nil {
+		slog.Error("GetCounterfactualAddress failed", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to derive counterfactual address")
+		return
+	}
+
+	// Backfill cache.
+	_, _ = h.queries.UpsertCounterfactualAccount(r.Context(), db.UpsertCounterfactualAccountParams{
 		UserID:  userID,
 		ChainID: cfChainID,
+		Address: cfAddr,
 	})
-	cfAddr := ""
-	if err != nil {
-		addr, err2 := h.chainClient.GetCounterfactualAddress(r.Context(), cfChainID, wallet)
-		if err2 != nil {
-			slog.Error("GetCounterfactualAddress failed", "error", err2)
-			writeError(w, http.StatusInternalServerError, "failed to derive counterfactual address")
-			return
-		}
-		cfAddr = addr
-	} else {
-		cfAddr = cfAcct.Address
-	}
 
 	balance, err := h.chainClient.GetTokenBalance(r.Context(), cfChainID, tokenAddress, cfAddr)
 	if err != nil {
@@ -119,18 +118,13 @@ func (h *handlers) getCFWithdrawInfo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Also cache the CF address if not already cached
-	_, cacheErr := h.queries.GetCounterfactualAccount(r.Context(), db.GetCounterfactualAccountParams{
+	// Always upsert the cached CF address so stale entries get corrected
+	// (e.g. after a bytecode change the chain service derives a new address).
+	_, _ = h.queries.UpsertCounterfactualAccount(r.Context(), db.UpsertCounterfactualAccountParams{
 		UserID:  userID,
 		ChainID: cfChainID,
+		Address: info.CFAddress,
 	})
-	if cacheErr != nil {
-		_, _ = h.queries.UpsertCounterfactualAccount(r.Context(), db.UpsertCounterfactualAccountParams{
-			UserID:  userID,
-			ChainID: cfChainID,
-			Address: info.CFAddress,
-		})
-	}
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"cf_address":   info.CFAddress,

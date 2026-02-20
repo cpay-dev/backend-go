@@ -169,6 +169,15 @@ func (h *handlers) getPublicSubscription(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	// If CF address cache is empty, derive it from chain service and backfill.
+	merchantAddr := row.MerchantAddress
+	if merchantAddr == nil && row.MerchantWallet != "" {
+		addr, err := h.resolveMerchantCFAddress(r.Context(), row.MerchantWallet)
+		if err == nil {
+			merchantAddr = &addr
+		}
+	}
+
 	resp := publicSubscriptionResponse{
 		subscriptionResponse: subscriptionResponse{
 			ID:           row.ID,
@@ -183,7 +192,7 @@ func (h *handlers) getPublicSubscription(w http.ResponseWriter, r *http.Request)
 			CreatedAt:    row.CreatedAt,
 			UpdatedAt:    row.UpdatedAt,
 		},
-		MerchantAddress: row.MerchantAddress,
+		MerchantAddress: merchantAddr,
 	}
 	writeJSON(w, http.StatusOK, resp)
 }

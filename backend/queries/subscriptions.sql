@@ -10,7 +10,7 @@ SELECT * FROM subscriptions
 WHERE id = $1;
 
 -- name: GetPublicSubscription :one
-SELECT s.*, ca.address AS merchant_address
+SELECT s.*, u.wallet_address AS merchant_wallet, ca.address AS merchant_address
 FROM subscriptions s
 JOIN shops sh ON sh.id = s.shop_id
 JOIN users u ON u.id = sh.user_id

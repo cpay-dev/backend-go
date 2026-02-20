@@ -7,7 +7,7 @@ RETURNING *;
 SELECT * FROM products WHERE id = $1;
 
 -- name: GetPublicProduct :one
-SELECT p.*, ca.address AS merchant_address
+SELECT p.*, u.wallet_address AS merchant_wallet, ca.address AS merchant_address
 FROM products p
 JOIN shops s ON s.id = p.shop_id
 JOIN users u ON u.id = s.user_id
