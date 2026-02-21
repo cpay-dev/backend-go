@@ -2,8 +2,9 @@ package api
 
 import (
 	"encoding/json"
-	"log/slog"
 	"net/http"
+
+	"github.com/rs/zerolog/log"
 
 	"github.com/cpay-dev/backend/internal/auth"
 	"github.com/cpay-dev/backend/internal/db"
@@ -20,6 +21,34 @@ func (h *handlers) getProfile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, user)
+}
+
+func (h *handlers) updateEmail(w http.ResponseWriter, r *http.Request) {
+	userID := auth.UserIDFromContext(r.Context())
+
+	var req struct {
+		Email string `json:"email"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if req.Email == "" {
+		writeError(w, http.StatusBadRequest, "email is required")
+		return
+	}
+
+	updated, err := h.queries.UpdateUserEmail(r.Context(), db.UpdateUserEmailParams{
+		ID:    userID,
+		Email: &req.Email,
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to update email")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, updated)
 }
 
 func (h *handlers) setRole(w http.ResponseWriter, r *http.Request) {
@@ -65,7 +94,7 @@ func (h *handlers) setRole(w http.ResponseWriter, r *http.Request) {
 	})
 	if err == nil {
 		if pubErr := h.eventPub.Publish(r.Context(), evt); pubErr != nil {
-			slog.Error("failed to publish user updated event", "error", pubErr)
+			log.Error().Err(pubErr).Msg("failed to publish user updated event")
 		}
 	}
 

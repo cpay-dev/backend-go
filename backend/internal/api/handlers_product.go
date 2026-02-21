@@ -3,11 +3,13 @@ package api
 import (
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"math/big"
 	"net/http"
 	"path/filepath"
 	"strings"
+
+	"github.com/google/uuid"
+	"github.com/rs/zerolog/log"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -209,10 +211,10 @@ func (h *handlers) createProduct(w http.ResponseWriter, r *http.Request) {
 		req.Currency = "USD"
 	}
 	if req.TokenAddress == "" {
-		req.TokenAddress = "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359" // USDC on Polygon
+		req.TokenAddress = "0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582" // USDC on Polygon Amoy
 	}
 	if req.ChainID == 0 {
-		req.ChainID = 137
+		req.ChainID = 80002
 	}
 
 	product, err := h.queries.CreateProduct(r.Context(), db.CreateProductParams{
@@ -226,7 +228,7 @@ func (h *handlers) createProduct(w http.ResponseWriter, r *http.Request) {
 		ImageUrl:     req.ImageURL,
 	})
 	if err != nil {
-		slog.Error("failed to create product", "error", err)
+		log.Error().Err(err).Msg("failed to create product")
 		writeError(w, http.StatusInternalServerError, "failed to create product")
 		return
 	}
@@ -237,7 +239,7 @@ func (h *handlers) createProduct(w http.ResponseWriter, r *http.Request) {
 	})
 	if err == nil {
 		if pubErr := h.eventPub.Publish(r.Context(), evt); pubErr != nil {
-			slog.Error("failed to publish product created event", "error", pubErr)
+			log.Error().Err(pubErr).Msg("failed to publish product created event")
 		}
 	}
 
@@ -384,7 +386,7 @@ func (h *handlers) updateProduct(w http.ResponseWriter, r *http.Request) {
 		ImageUrl:     req.ImageURL,
 	})
 	if err != nil {
-		slog.Error("failed to update product", "error", err)
+		log.Error().Err(err).Msg("failed to update product")
 		writeError(w, http.StatusInternalServerError, "failed to update product")
 		return
 	}
@@ -395,7 +397,7 @@ func (h *handlers) updateProduct(w http.ResponseWriter, r *http.Request) {
 	})
 	if err == nil {
 		if pubErr := h.eventPub.Publish(r.Context(), evt); pubErr != nil {
-			slog.Error("failed to publish product updated event", "error", pubErr)
+			log.Error().Err(pubErr).Msg("failed to publish product updated event")
 		}
 	}
 
@@ -518,10 +520,11 @@ func (h *handlers) uploadProductImage(w http.ResponseWriter, r *http.Request) {
 			ext = ".webp"
 		}
 	}
-	filename := fmt.Sprintf("product-%s%s", strings.ToLower(strings.Replace(r.FormValue("product_id"), " ", "", -1)), strings.ToLower(ext))
-	if r.FormValue("product_id") == "" {
-		filename = fmt.Sprintf("product%s", strings.ToLower(ext))
+	productID := r.FormValue("product_id")
+	if productID == "" {
+		productID = uuid.New().String()
 	}
+	filename := fmt.Sprintf("product-%s%s", strings.ToLower(strings.ReplaceAll(productID, " ", "")), strings.ToLower(ext))
 
 	url, err := h.storage.UploadProductImage(r.Context(), shop.ID, filename, file, header.Size, contentType)
 	if err != nil {

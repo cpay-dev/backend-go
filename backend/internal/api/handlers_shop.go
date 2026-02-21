@@ -2,8 +2,9 @@ package api
 
 import (
 	"encoding/json"
-	"log/slog"
 	"net/http"
+
+	"github.com/rs/zerolog/log"
 
 	"github.com/go-chi/chi/v5"
 
@@ -54,7 +55,7 @@ func (h *handlers) createShop(w http.ResponseWriter, r *http.Request) {
 	})
 	if err == nil {
 		if pubErr := h.eventPub.Publish(r.Context(), evt); pubErr != nil {
-			slog.Error("failed to publish shop created event", "error", pubErr)
+			log.Error().Err(pubErr).Msg("failed to publish shop created event")
 		}
 	}
 

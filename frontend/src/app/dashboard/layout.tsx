@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { ConnectWalletButton } from "@/components/connect-wallet-button";
 import { Separator } from "@/components/ui/separator";
+import { Settings } from "lucide-react";
+import Link from "next/link";
 
 export default function DashboardLayout({
   children,
@@ -37,8 +39,18 @@ export default function DashboardLayout({
     <div className="min-h-screen">
       <header className="border-b">
         <div className="container flex h-16 items-center justify-between px-4">
-          <h1 className="text-xl font-bold">CPay</h1>
-          <ConnectWalletButton />
+          <h1 className="text-xl font-bold">
+            <Link href="/dashboard">CPay</Link>
+          </h1>
+          <div className="flex items-center gap-2">
+            <Link
+              href="/dashboard/settings"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:text-foreground"
+            >
+              <Settings className="h-5 w-5" />
+            </Link>
+            <ConnectWalletButton />
+          </div>
         </div>
       </header>
       <Separator />

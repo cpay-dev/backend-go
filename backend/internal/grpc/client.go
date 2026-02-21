@@ -88,6 +88,56 @@ func (c *ChainClient) GetCFWalletInfo(ctx context.Context, chainID uint64, merch
 	}, nil
 }
 
+// VerifyTransaction checks an on-chain tx receipt and returns whether it succeeded.
+func (c *ChainClient) VerifyTransaction(ctx context.Context, chainID uint64, txHash string) (success bool, from, to string, err error) {
+	resp, err := c.client.VerifyTransaction(ctx, &chainv1.VerifyTransactionRequest{
+		ChainId: chainID,
+		TxHash:  txHash,
+	})
+	if err != nil {
+		return false, "", "", fmt.Errorf("VerifyTransaction: %w", err)
+	}
+	return resp.Success, resp.FromAddress, resp.ToAddress, nil
+}
+
+// CheckAllowance returns the ERC-20 allowance(owner, spender) as a decimal string.
+func (c *ChainClient) CheckAllowance(ctx context.Context, chainID uint64, tokenAddress, owner, spender string) (string, error) {
+	resp, err := c.client.CheckAllowance(ctx, &chainv1.CheckAllowanceRequest{
+		ChainId:      chainID,
+		TokenAddress: tokenAddress,
+		Owner:        owner,
+		Spender:      spender,
+	})
+	if err != nil {
+		return "", fmt.Errorf("CheckAllowance: %w", err)
+	}
+	return resp.Allowance, nil
+}
+
+// ExecuteTransferFrom signs and submits a transferFrom via the relayer. Returns tx hash.
+func (c *ChainClient) ExecuteTransferFrom(ctx context.Context, chainID uint64, tokenAddress, from, to, amount string) (string, error) {
+	resp, err := c.client.ExecuteTransferFrom(ctx, &chainv1.ExecuteTransferFromRequest{
+		ChainId:      chainID,
+		TokenAddress: tokenAddress,
+		From:         from,
+		To:           to,
+		Amount:       amount,
+	})
+	if err != nil {
+		return "", fmt.Errorf("ExecuteTransferFrom: %w", err)
+	}
+	return resp.TxHash, nil
+}
+
+// GetRelayerAddress returns the relayer EOA address (for frontend approve target).
+func (c *ChainClient) GetRelayerAddress(ctx context.Context) (string, error) {
+	resp, err := c.client.GetRelayerAddress(ctx, &chainv1.GetRelayerAddressRequest{})
+	if err != nil {
+		return "", fmt.Errorf("GetRelayerAddress: %w", err)
+	}
+	return resp.Address, nil
+}
+
 func splitLast(s string, sep byte) (string, string) {
 	for i := len(s) - 1; i >= 0; i-- {
 		if s[i] == sep {

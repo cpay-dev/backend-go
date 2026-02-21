@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use alloy::primitives::{Address, U256};
+use alloy::primitives::{Address, B256, U256};
 use alloy::providers::{Provider, ProviderBuilder};
 use alloy::sol;
 use alloy::sol_types::SolCall;
@@ -9,6 +9,14 @@ use anyhow::{Context, Result};
 
 sol! {
     function balanceOf(address owner) external view returns (uint256);
+    function allowance(address owner, address spender) external view returns (uint256);
+}
+
+pub struct TxReceiptInfo {
+    pub success: bool,
+    pub from: Address,
+    pub to: Option<Address>,
+    pub block_number: u64,
 }
 
 pub struct ChainProviders {
@@ -72,5 +80,52 @@ impl ChainProviders {
         // ABI decode: 32-byte big-endian uint256
         let balance = U256::from_be_slice(result.as_ref());
         Ok(balance)
+    }
+
+    pub async fn verify_transaction(
+        &self,
+        chain_id: u64,
+        tx_hash: B256,
+    ) -> Result<TxReceiptInfo> {
+        let provider = self.providers.get(&chain_id)
+            .ok_or_else(|| anyhow::anyhow!("unsupported chain: {}", chain_id))?;
+
+        let receipt = provider.get_transaction_receipt(tx_hash).await
+            .context("get_transaction_receipt")?
+            .ok_or_else(|| anyhow::anyhow!("receipt not found for tx {}", tx_hash))?;
+
+        let tx = provider.get_transaction_by_hash(tx_hash).await
+            .context("get_transaction_by_hash")?
+            .ok_or_else(|| anyhow::anyhow!("tx not found: {}", tx_hash))?;
+
+        Ok(TxReceiptInfo {
+            success: receipt.status(),
+            from: tx.from,
+            to: tx.to(),
+            block_number: receipt.block_number.unwrap_or(0),
+        })
+    }
+
+    pub async fn check_allowance(
+        &self,
+        chain_id: u64,
+        token_address: Address,
+        owner: Address,
+        spender: Address,
+    ) -> Result<U256> {
+        let provider = self.providers.get(&chain_id)
+            .ok_or_else(|| anyhow::anyhow!("unsupported chain: {}", chain_id))?;
+
+        let call_data = allowanceCall { owner, spender }.abi_encode();
+
+        let tx = alloy::rpc::types::TransactionRequest::default()
+            .to(token_address)
+            .input(call_data.into());
+
+        let result = provider.call(&tx).await
+            .with_context(|| "allowance call failed")?;
+
+        let value = U256::from_be_slice(result.as_ref());
+        Ok(value)
     }
 }

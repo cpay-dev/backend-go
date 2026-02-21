@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
-const USDC_POLYGON = "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359";
+const USDC_AMOY = "0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582";
 
 interface SubscriptionFormData {
   title: string;
@@ -49,8 +49,8 @@ export function SubscriptionForm({ onSubmit, submitLabel = "Create Subscription 
         title: title.trim(),
         description: description.trim() || undefined,
         amount: amount.trim(),
-        token_address: USDC_POLYGON,
-        chain_id: 137,
+        token_address: USDC_AMOY,
+        chain_id: 80002,
         period,
       });
     } catch (err) {

@@ -1,7 +1,7 @@
 "use client";
 
 import { WagmiProvider, createConfig, http } from "wagmi";
-import { polygon, polygonAmoy } from "wagmi/chains";
+import { polygonAmoy } from "wagmi/chains";
 import { injected, walletConnect } from "wagmi/connectors";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { type ReactNode, useState } from "react";
@@ -9,7 +9,7 @@ import { type ReactNode, useState } from "react";
 const walletConnectProjectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID;
 
 const config = createConfig({
-  chains: [polygon, polygonAmoy],
+  chains: [polygonAmoy],
   connectors: [
     injected({ shimDisconnect: true }),
     ...(walletConnectProjectId
@@ -21,7 +21,6 @@ const config = createConfig({
       : []),
   ],
   transports: {
-    [polygon.id]: http("https://polygon-rpc.com"),
     [polygonAmoy.id]: http("https://rpc-amoy.polygon.technology"),
   },
 });

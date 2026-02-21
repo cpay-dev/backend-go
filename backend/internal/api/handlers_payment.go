@@ -2,10 +2,11 @@ package api
 
 import (
 	"encoding/json"
-	"log/slog"
 	"net/http"
 	"sort"
 	"time"
+
+	"github.com/rs/zerolog/log"
 
 	"github.com/go-chi/chi/v5"
 
@@ -22,6 +23,7 @@ type paymentResponse struct {
 	ProductID     *string   `json:"product_id,omitempty"`
 	PaymentLinkID *string   `json:"payment_link_id,omitempty"`
 	PayerAddress  *string   `json:"payer_address,omitempty"`
+	PayerEmail    *string   `json:"payer_email,omitempty"`
 	TokenAddress  string    `json:"token_address"`
 	ChainID       int64     `json:"chain_id"`
 	Amount        string    `json:"amount"`
@@ -37,6 +39,7 @@ func toPaymentResponse(p db.Payment) paymentResponse {
 		ProductID:     p.ProductID,
 		PaymentLinkID: p.PaymentLinkID,
 		PayerAddress:  p.PayerAddress,
+		PayerEmail:    p.PayerEmail,
 		TokenAddress:  p.TokenAddress,
 		ChainID:       p.ChainID,
 		Amount:        numericToString(p.Amount),
@@ -45,15 +48,31 @@ func toPaymentResponse(p db.Payment) paymentResponse {
 	}
 }
 
-func publishPaymentEvent(h *handlers, r *http.Request, payment db.Payment) {
+func publishPaymentEvent(h *handlers, r *http.Request, payment db.Payment, itemTitle string) {
+	payerEmail := ""
+	if payment.PayerEmail != nil {
+		payerEmail = *payment.PayerEmail
+	}
+	payerAddress := ""
+	if payment.PayerAddress != nil {
+		payerAddress = *payment.PayerAddress
+	}
 	evt, err := events.NewEvent(events.EventPaymentRecorded, events.SubjectPayments, map[string]string{
-		"payment_id": payment.ID,
-		"shop_id":    payment.ShopID,
-		"kind":       string(payment.Kind),
-		"tx_hash":    payment.TxHash,
+		"payment_id":    payment.ID,
+		"shop_id":       payment.ShopID,
+		"kind":          string(payment.Kind),
+		"tx_hash":       payment.TxHash,
+		"amount":        numericToString(payment.Amount),
+		"payer_email":   payerEmail,
+		"payer_address": payerAddress,
+		"title":         itemTitle,
 	})
-	if err == nil {
-		_ = h.eventPub.Publish(r.Context(), evt)
+	if err != nil {
+		log.Error().Err(err).Str("payment_id", payment.ID).Msg("failed to create payment event")
+		return
+	}
+	if err := h.eventPub.Publish(r.Context(), evt); err != nil {
+		log.Error().Err(err).Str("payment_id", payment.ID).Msg("failed to publish payment event")
 	}
 }
 
@@ -64,6 +83,7 @@ func (h *handlers) recordPaymentLinkPayment(w http.ResponseWriter, r *http.Reque
 
 	var req struct {
 		PayerAddress string      `json:"payer_address"`
+		PayerEmail   string      `json:"payer_email"`
 		TokenAddress string      `json:"token_address"`
 		ChainID      int64       `json:"chain_id"`
 		Amount       interface{} `json:"amount"`
@@ -93,24 +113,29 @@ func (h *handlers) recordPaymentLinkPayment(w http.ResponseWriter, r *http.Reque
 
 	payer := req.PayerAddress
 	linkIDRef := linkID
+	var payerEmail *string
+	if req.PayerEmail != "" {
+		payerEmail = &req.PayerEmail
+	}
 	payment, err := h.queries.CreatePayment(r.Context(), db.CreatePaymentParams{
 		ShopID:        link.ShopID,
 		Kind:          db.PaymentKindPaymentLink,
 		ProductID:     nil,
 		PaymentLinkID: &linkIDRef,
 		PayerAddress:  &payer,
+		PayerEmail:    payerEmail,
 		TokenAddress:  req.TokenAddress,
 		ChainID:       req.ChainID,
 		Amount:        amount,
 		TxHash:        req.TxHash,
 	})
 	if err != nil {
-		slog.Error("CreatePayment (link) failed", "error", err)
+		log.Error().Err(err).Msg("CreatePayment (link) failed")
 		writeError(w, http.StatusInternalServerError, "failed to record payment")
 		return
 	}
 
-	publishPaymentEvent(h, r, payment)
+	publishPaymentEvent(h, r, payment, link.Title)
 	writeJSON(w, http.StatusCreated, toPaymentResponse(payment))
 }
 
@@ -163,6 +188,7 @@ func (h *handlers) recordProductPayment(w http.ResponseWriter, r *http.Request) 
 
 	var req struct {
 		PayerAddress string      `json:"payer_address"`
+		PayerEmail   string      `json:"payer_email"`
 		TokenAddress string      `json:"token_address"`
 		ChainID      int64       `json:"chain_id"`
 		Amount       interface{} `json:"amount"`
@@ -192,24 +218,29 @@ func (h *handlers) recordProductPayment(w http.ResponseWriter, r *http.Request) 
 
 	payer := req.PayerAddress
 	pidRef := productID
+	var payerEmail *string
+	if req.PayerEmail != "" {
+		payerEmail = &req.PayerEmail
+	}
 	payment, err := h.queries.CreatePayment(r.Context(), db.CreatePaymentParams{
 		ShopID:        product.ShopID,
 		Kind:          db.PaymentKindProduct,
 		ProductID:     &pidRef,
 		PaymentLinkID: nil,
 		PayerAddress:  &payer,
+		PayerEmail:    payerEmail,
 		TokenAddress:  req.TokenAddress,
 		ChainID:       req.ChainID,
 		Amount:        amount,
 		TxHash:        req.TxHash,
 	})
 	if err != nil {
-		slog.Error("CreatePayment (product) failed", "error", err)
+		log.Error().Err(err).Msg("CreatePayment (product) failed")
 		writeError(w, http.StatusInternalServerError, "failed to record payment")
 		return
 	}
 
-	publishPaymentEvent(h, r, payment)
+	publishPaymentEvent(h, r, payment, product.Name)
 	writeJSON(w, http.StatusCreated, toPaymentResponse(payment))
 }
 
@@ -229,7 +260,7 @@ func (h *handlers) listMyPayments(w http.ResponseWriter, r *http.Request) {
 
 	payments, err := h.queries.ListPaymentsByShop(r.Context(), shop.ID)
 	if err != nil {
-		slog.Error("ListPaymentsByShop failed", "error", err)
+		log.Error().Err(err).Msg("ListPaymentsByShop failed")
 		writeError(w, http.StatusInternalServerError, "failed to list payments")
 		return
 	}
@@ -242,7 +273,7 @@ func (h *handlers) listMyPayments(w http.ResponseWriter, r *http.Request) {
 	// Also include subscription payments, normalised to the same shape
 	subPayments, err := h.queries.ListSubscriptionPaymentsByShop(r.Context(), shop.ID)
 	if err != nil {
-		slog.Error("ListSubscriptionPaymentsByShop failed", "error", err)
+		log.Error().Err(err).Msg("ListSubscriptionPaymentsByShop failed")
 	} else {
 		for _, sp := range subPayments {
 			payer := sp.PayerAddress
@@ -292,7 +323,7 @@ func (h *handlers) listProductPayments(w http.ResponseWriter, r *http.Request) {
 
 	payments, err := h.queries.ListPaymentsByProduct(r.Context(), &productID)
 	if err != nil {
-		slog.Error("ListPaymentsByProduct failed", "error", err)
+		log.Error().Err(err).Msg("ListPaymentsByProduct failed")
 		writeError(w, http.StatusInternalServerError, "failed to list payments")
 		return
 	}

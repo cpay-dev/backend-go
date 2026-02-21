@@ -9,12 +9,14 @@ import (
 )
 
 const (
-	SubjectUsers              = "users"
-	SubjectShops              = "shops"
-	SubjectProducts           = "products"
-	SubjectPaymentLinks       = "payment_links"
-	SubjectPayments           = "payments"
-	SubjectSubscriptions      = "subscriptions"
+	SubjectUsers         = "users"
+	SubjectShops         = "shops"
+	SubjectProducts      = "products"
+	SubjectPaymentLinks  = "payment_links"
+	SubjectPayments      = "payments"
+	SubjectSubscriptions = "subscriptions"
+	SubjectSubscribers   = "subscribers"
+	SubjectEmails        = "emails"
 )
 
 const (
@@ -35,6 +37,16 @@ const (
 	EventSubscriptionCreated = "subscription.created"
 	EventSubscriptionUpdated = "subscription.updated"
 	EventSubscriptionPayment = "subscription.payment"
+
+	EventSubscriberCreated   = "subscriber.created"
+	EventSubscriberCancelled = "subscriber.cancelled"
+	EventSubscriberExpired   = "subscriber.expired"
+	EventSubscriberCharged   = "subscriber.charged"
+	EventSubscriberFailed    = "subscriber.failed"
+
+	EventEmailQueued = "email.queued"
+	EventEmailSent   = "email.sent"
+	EventEmailFailed = "email.failed"
 )
 
 type Event struct {
@@ -43,6 +55,29 @@ type Event struct {
 	Subject   string          `json:"subject"`
 	Timestamp time.Time       `json:"timestamp"`
 	Data      json.RawMessage `json:"data"`
+}
+
+// Email types for EventEmailQueued payloads.
+const (
+	EmailTypeUpcomingPayment      = "upcoming_payment"
+	EmailTypeReceipt              = "receipt"
+	EmailTypePaymentReceipt       = "payment_receipt"
+	EmailTypeFailed               = "failed"
+	EmailTypeCancelled            = "cancelled"
+	EmailTypeExpired              = "expired"
+	EmailTypeMerchantNotification = "merchant_notification"
+)
+
+// EmailQueuedData is the payload for EventEmailQueued events.
+type EmailQueuedData struct {
+	EmailType    string `json:"email_type"`
+	To           string `json:"to"`
+	Title        string `json:"title"`
+	Amount       string `json:"amount,omitempty"`
+	TxHash       string `json:"tx_hash,omitempty"`
+	NextDue      string `json:"next_due,omitempty"`
+	Reason       string `json:"reason,omitempty"`
+	PayerAddress string `json:"payer_address,omitempty"`
 }
 
 func NewEvent(eventType, subject string, data interface{}) (*Event, error) {

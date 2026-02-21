@@ -1,3 +1,4 @@
+use std::str::FromStr;
 use std::sync::Arc;
 
 use alloy::primitives::{keccak256, Address, B256, U256};
@@ -6,13 +7,18 @@ use tonic::{Request, Response, Status};
 
 use crate::gen::chain::v1::chain_service_server::ChainService;
 use crate::gen::chain::v1::{
+    CheckAllowanceRequest, CheckAllowanceResponse,
     DeployAndWithdrawRequest, DeployAndWithdrawResponse,
+    ExecuteTransferFromRequest, ExecuteTransferFromResponse,
     GetBalanceRequest, GetBalanceResponse,
     GetCounterfactualAddressRequest, GetCounterfactualAddressResponse,
+    GetRelayerAddressRequest, GetRelayerAddressResponse,
     GetTokenBalanceRequest, GetTokenBalanceResponse,
     HealthCheckRequest, HealthCheckResponse,
+    VerifyTransactionRequest, VerifyTransactionResponse,
 };
 use crate::provider::ChainProviders;
+use crate::relayer::Relayer;
 
 // Universal CREATE2 factory (deployed on all EVM chains including Amoy)
 const CREATE2_FACTORY: &str = "0x4e59b44847b379578588920cA78FbF26c0B4956C";
@@ -24,24 +30,21 @@ const PAYMENT_WALLET_BYTECODE: &str = "60a060405234801561000f575f80fd5b506040516
 
 pub struct ChainServiceImpl {
     providers: Arc<ChainProviders>,
+    relayer: Option<Arc<Relayer>>,
 }
 
 impl ChainServiceImpl {
-    pub fn new(providers: ChainProviders) -> Self {
+    pub fn new(providers: ChainProviders, relayer: Option<Relayer>) -> Self {
         Self {
             providers: Arc::new(providers),
+            relayer: relayer.map(Arc::new),
         }
     }
 
     /// Derive the CREATE2 counterfactual address for a merchant's MinimalWallet.
-    /// Uses universal CREATE2 factory at 0x4e59b44847b379578588920cA78FbF26c0B4956C
-    /// salt = keccak256(abi.encodePacked(merchant_wallet))
-    /// initCode = PAYMENT_WALLET_BYTECODE ++ abi.encode(merchant_wallet)
     pub fn derive_cf_address(&self, merchant: Address) -> Address {
-        // salt = keccak256(merchant address bytes)
         let salt: B256 = keccak256(merchant.as_slice());
 
-        // initCode = bytecode + abi.encode(address) (32-byte left-padded)
         let bytecode = hex::decode(PAYMENT_WALLET_BYTECODE).expect("valid hex");
         let mut init_code = bytecode;
         let mut abi_owner = [0u8; 32];
@@ -50,7 +53,6 @@ impl ChainServiceImpl {
 
         let init_code_hash: B256 = keccak256(&init_code);
 
-        // CREATE2 preimage: 0xff ++ factory(20) ++ salt(32) ++ initCodeHash(32) = 85 bytes
         let factory: Address = CREATE2_FACTORY.parse().expect("valid factory address");
         let mut preimage = [0u8; 85];
         preimage[0] = 0xff;
@@ -154,25 +156,102 @@ impl ChainService for ChainServiceImpl {
         let provider = self.providers.get(req.chain_id)
             .ok_or_else(|| Status::invalid_argument(format!("unsupported chain: {}", req.chain_id)))?;
 
-        // Check token balance
         let balance = self.providers
             .get_token_balance(req.chain_id, token, cf_address)
             .await
             .map_err(|e| Status::internal(format!("get_token_balance: {e}")))?;
 
-        // Check if CF wallet is already deployed
         let code = provider.get_code_at(cf_address).await
             .map_err(|e| Status::internal(format!("get_code: {e}")))?;
 
         let deployed = !code.is_empty();
 
-        // Return info for the frontend to perform deploy+withdraw
-        // The frontend will:
-        // 1. If not deployed: call CREATE2 factory to deploy PaymentWallet
-        // 2. Call withdraw(token) on the CF wallet (permissionless)
         Ok(Response::new(DeployAndWithdrawResponse {
-            tx_hash: cf_address.to_checksum(None), // reuse field: cf address
+            tx_hash: cf_address.to_checksum(None),
             amount: format!("{}:{}", balance, if deployed { "deployed" } else { "not_deployed" }),
+        }))
+    }
+
+    async fn verify_transaction(
+        &self,
+        request: Request<VerifyTransactionRequest>,
+    ) -> Result<Response<VerifyTransactionResponse>, Status> {
+        let req = request.into_inner();
+
+        let tx_hash: B256 = req.tx_hash.parse()
+            .map_err(|_| Status::invalid_argument("invalid tx_hash"))?;
+
+        let info = self.providers
+            .verify_transaction(req.chain_id, tx_hash)
+            .await
+            .map_err(|e| Status::internal(format!("verify_transaction: {e}")))?;
+
+        Ok(Response::new(VerifyTransactionResponse {
+            success: info.success,
+            from_address: info.from.to_checksum(None),
+            to_address: info.to.map(|a| a.to_checksum(None)).unwrap_or_default(),
+            block_number: info.block_number,
+        }))
+    }
+
+    async fn check_allowance(
+        &self,
+        request: Request<CheckAllowanceRequest>,
+    ) -> Result<Response<CheckAllowanceResponse>, Status> {
+        let req = request.into_inner();
+
+        let token: Address = req.token_address.parse()
+            .map_err(|_| Status::invalid_argument("invalid token_address"))?;
+        let owner: Address = req.owner.parse()
+            .map_err(|_| Status::invalid_argument("invalid owner"))?;
+        let spender: Address = req.spender.parse()
+            .map_err(|_| Status::invalid_argument("invalid spender"))?;
+
+        let allowance = self.providers
+            .check_allowance(req.chain_id, token, owner, spender)
+            .await
+            .map_err(|e| Status::internal(format!("check_allowance: {e}")))?;
+
+        Ok(Response::new(CheckAllowanceResponse {
+            allowance: allowance.to_string(),
+        }))
+    }
+
+    async fn execute_transfer_from(
+        &self,
+        request: Request<ExecuteTransferFromRequest>,
+    ) -> Result<Response<ExecuteTransferFromResponse>, Status> {
+        let relayer = self.relayer.as_ref()
+            .ok_or_else(|| Status::unavailable("relayer not configured"))?;
+
+        let req = request.into_inner();
+
+        let token: Address = req.token_address.parse()
+            .map_err(|_| Status::invalid_argument("invalid token_address"))?;
+        let from: Address = req.from.parse()
+            .map_err(|_| Status::invalid_argument("invalid from"))?;
+        let to: Address = req.to.parse()
+            .map_err(|_| Status::invalid_argument("invalid to"))?;
+        let amount = U256::from_str(&req.amount)
+            .map_err(|_| Status::invalid_argument("invalid amount"))?;
+
+        let tx_hash = relayer
+            .execute_transfer_from(req.chain_id, token, from, to, amount)
+            .await
+            .map_err(|e| Status::internal(format!("execute_transfer_from: {e}")))?;
+
+        Ok(Response::new(ExecuteTransferFromResponse { tx_hash }))
+    }
+
+    async fn get_relayer_address(
+        &self,
+        _request: Request<GetRelayerAddressRequest>,
+    ) -> Result<Response<GetRelayerAddressResponse>, Status> {
+        let relayer = self.relayer.as_ref()
+            .ok_or_else(|| Status::unavailable("relayer not configured"))?;
+
+        Ok(Response::new(GetRelayerAddressResponse {
+            address: relayer.address().to_checksum(None),
         }))
     }
 }

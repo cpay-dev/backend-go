@@ -2,8 +2,9 @@ package api
 
 import (
 	"encoding/json"
-	"log/slog"
 	"net/http"
+
+	"github.com/rs/zerolog/log"
 
 	"github.com/go-chi/chi/v5"
 
@@ -102,10 +103,10 @@ func (h *handlers) createPaymentLink(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.TokenAddress == "" {
-		req.TokenAddress = "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"
+		req.TokenAddress = "0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582" // USDC on Polygon Amoy
 	}
 	if req.ChainID == 0 {
-		req.ChainID = 137
+		req.ChainID = 80002
 	}
 
 	link, err := h.queries.CreatePaymentLink(r.Context(), db.CreatePaymentLinkParams{
@@ -118,7 +119,7 @@ func (h *handlers) createPaymentLink(w http.ResponseWriter, r *http.Request) {
 		MaxUses:      req.MaxUses,
 	})
 	if err != nil {
-		slog.Error("failed to create payment link", "error", err)
+		log.Error().Err(err).Msg("failed to create payment link")
 		writeError(w, http.StatusInternalServerError, "failed to create payment link")
 		return
 	}
@@ -129,7 +130,7 @@ func (h *handlers) createPaymentLink(w http.ResponseWriter, r *http.Request) {
 	})
 	if err == nil {
 		if pubErr := h.eventPub.Publish(r.Context(), evt); pubErr != nil {
-			slog.Error("failed to publish payment link created event", "error", pubErr)
+			log.Error().Err(pubErr).Msg("failed to publish payment link created event")
 		}
 	}
 
@@ -213,7 +214,7 @@ func (h *handlers) recordPaymentLinkUse(w http.ResponseWriter, r *http.Request) 
 
 	updated, err := h.queries.IncrementPaymentLinkUseCount(r.Context(), linkID)
 	if err != nil {
-		slog.Error("failed to increment payment link use count", "error", err)
+		log.Error().Err(err).Msg("failed to increment payment link use count")
 		writeError(w, http.StatusInternalServerError, "failed to record use")
 		return
 	}
@@ -224,7 +225,7 @@ func (h *handlers) recordPaymentLinkUse(w http.ResponseWriter, r *http.Request) 
 	})
 	if err == nil {
 		if pubErr := h.eventPub.Publish(r.Context(), evt); pubErr != nil {
-			slog.Error("failed to publish payment link used event", "error", pubErr)
+			log.Error().Err(pubErr).Msg("failed to publish payment link used event")
 		}
 	}
 

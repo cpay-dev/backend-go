@@ -1,9 +1,9 @@
 -- name: CreatePayment :one
 INSERT INTO payments (
     shop_id, kind, product_id, payment_link_id,
-    payer_address, token_address, chain_id, amount, tx_hash
+    payer_address, payer_email, token_address, chain_id, amount, tx_hash
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
 ) RETURNING *;
 
 -- name: ListPaymentsByShop :many

@@ -1,5 +1,6 @@
 mod gen;
 mod provider;
+mod relayer;
 mod service;
 
 use anyhow::Result;
@@ -8,6 +9,7 @@ use tracing_subscriber::EnvFilter;
 
 use gen::chain::v1::chain_service_server::ChainServiceServer;
 use provider::ChainProviders;
+use relayer::Relayer;
 use service::ChainServiceImpl;
 
 #[tokio::main]
@@ -20,7 +22,8 @@ async fn main() -> Result<()> {
         .init();
 
     let providers = ChainProviders::from_env()?;
-    let service = ChainServiceImpl::new(providers);
+    let relayer = Relayer::from_env()?;
+    let service = ChainServiceImpl::new(providers, relayer);
 
     let port: u16 = std::env::var("GRPC_PORT")
         .unwrap_or_else(|_| "50051".to_string())

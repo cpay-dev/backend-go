@@ -42,10 +42,14 @@ DELETE FROM subscriptions WHERE id = $1;
 -- name: CreateSubscriptionPayment :one
 INSERT INTO subscription_payments (
     subscription_id, shop_id, payer_address,
-    amount, token_address, chain_id, tx_hash
+    amount, token_address, chain_id, tx_hash,
+    subscriber_id, verified, method
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
 ) RETURNING *;
+
+-- name: MarkPaymentVerified :exec
+UPDATE subscription_payments SET verified = true WHERE id = $1;
 
 -- name: ListSubscriptionPayments :many
 SELECT * FROM subscription_payments

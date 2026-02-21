@@ -2,9 +2,10 @@ package api
 
 import (
 	"encoding/json"
-	"log/slog"
 	"net/http"
 	"time"
+
+	"github.com/rs/zerolog/log"
 
 	"github.com/go-chi/chi/v5"
 
@@ -114,7 +115,7 @@ func (h *handlers) createSubscription(w http.ResponseWriter, r *http.Request) {
 
 	chainID := req.ChainID
 	if chainID == 0 {
-		chainID = 137
+		chainID = 80002
 	}
 
 	sub, err := h.queries.CreateSubscription(r.Context(), db.CreateSubscriptionParams{
@@ -127,7 +128,7 @@ func (h *handlers) createSubscription(w http.ResponseWriter, r *http.Request) {
 		Period:       db.BillingPeriod(req.Period),
 	})
 	if err != nil {
-		slog.Error("CreateSubscription failed", "error", err)
+		log.Error().Err(err).Msg("CreateSubscription failed")
 		writeError(w, http.StatusInternalServerError, "failed to create subscription")
 		return
 	}
@@ -148,7 +149,7 @@ func (h *handlers) listMySubscriptions(w http.ResponseWriter, r *http.Request) {
 
 	subs, err := h.queries.ListMySubscriptions(r.Context(), userID)
 	if err != nil {
-		slog.Error("ListMySubscriptions failed", "error", err)
+		log.Error().Err(err).Msg("ListMySubscriptions failed")
 		writeError(w, http.StatusInternalServerError, "failed to list subscriptions")
 		return
 	}
@@ -236,7 +237,7 @@ func (h *handlers) deleteSubscription(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.queries.DeleteSubscription(r.Context(), id); err != nil {
-		slog.Error("DeleteSubscription failed", "error", err)
+		log.Error().Err(err).Msg("DeleteSubscription failed")
 		writeError(w, http.StatusInternalServerError, "failed to delete subscription")
 		return
 	}
@@ -274,6 +275,8 @@ func (h *handlers) recordSubscriptionPayment(w http.ResponseWriter, r *http.Requ
 		ChainID      int64       `json:"chain_id"`
 		Amount       interface{} `json:"amount"`
 		TxHash       string      `json:"tx_hash"`
+		SubscriberID *string     `json:"subscriber_id"`
+		Method       string      `json:"method"` // "prepaid", "approved", or "manual" (default)
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -302,6 +305,25 @@ func (h *handlers) recordSubscriptionPayment(w http.ResponseWriter, r *http.Requ
 		chainID = sub.ChainID
 	}
 
+	method := db.PaymentMethodManual
+	if req.Method == "prepaid" {
+		method = db.PaymentMethodPrepaid
+	} else if req.Method == "approved" {
+		method = db.PaymentMethodApproved
+	}
+
+	// If no subscriber_id provided, try to find existing subscriber
+	subscriberID := req.SubscriberID
+	if subscriberID == nil {
+		if existing, err := h.queries.GetActiveSubscriber(r.Context(), db.GetActiveSubscriberParams{
+			SubscriptionID: subID,
+			PayerAddress:   req.PayerAddress,
+		}); err == nil {
+			subscriberID = &existing.ID
+			method = existing.Method
+		}
+	}
+
 	payment, err := h.queries.CreateSubscriptionPayment(r.Context(), db.CreateSubscriptionPaymentParams{
 		SubscriptionID: subID,
 		ShopID:         sub.ShopID,
@@ -310,17 +332,25 @@ func (h *handlers) recordSubscriptionPayment(w http.ResponseWriter, r *http.Requ
 		TokenAddress:   req.TokenAddress,
 		ChainID:        chainID,
 		TxHash:         req.TxHash,
+		SubscriberID:   subscriberID,
+		Verified:       false,
+		Method:         method,
 	})
 	if err != nil {
-		slog.Error("CreateSubscriptionPayment failed", "error", err)
+		log.Error().Err(err).Msg("CreateSubscriptionPayment failed")
 		writeError(w, http.StatusInternalServerError, "failed to record subscription payment")
 		return
 	}
 
-	if evt, err := events.NewEvent(events.EventSubscriptionPayment, events.SubjectSubscriptions, map[string]string{
+	evt, err := events.NewEvent(events.EventSubscriptionPayment, events.SubjectSubscriptions, map[string]interface{}{
 		"id": payment.ID, "subscription_id": subID, "tx_hash": payment.TxHash,
-	}); err == nil {
-		_ = h.eventPub.Publish(r.Context(), evt)
+		"chain_id": chainID, "payer_address": req.PayerAddress, "shop_id": sub.ShopID,
+		"amount": numericToString(amount),
+	})
+	if err != nil {
+		log.Error().Err(err).Str("payment_id", payment.ID).Msg("failed to create subscription payment event")
+	} else if err := h.eventPub.Publish(r.Context(), evt); err != nil {
+		log.Error().Err(err).Str("payment_id", payment.ID).Msg("failed to publish subscription payment event")
 	}
 	writeJSON(w, http.StatusCreated, toSubscriptionPaymentResponse(payment))
 }
@@ -336,7 +366,7 @@ func (h *handlers) listSubscriptionPayments(w http.ResponseWriter, r *http.Reque
 
 	payments, err := h.queries.ListSubscriptionPayments(r.Context(), subID)
 	if err != nil {
-		slog.Error("ListSubscriptionPayments failed", "error", err)
+		log.Error().Err(err).Msg("ListSubscriptionPayments failed")
 		writeError(w, http.StatusInternalServerError, "failed to list subscription payments")
 		return
 	}

@@ -16,6 +16,8 @@ alloy = { version = "0.8", features = [
     "sol-types",
     "contract",
     "rpc-types",
+    "signers",
+    "signer-local",
 ] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }

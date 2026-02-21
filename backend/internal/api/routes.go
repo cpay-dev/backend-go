@@ -57,6 +57,12 @@ func RegisterRoutes(
 		r.Get("/sub/{id}", h.getPublicSubscription)
 		r.Get("/sub/{id}/payment", h.checkSubscriptionPayment)
 		r.Post("/sub/{id}/payment", h.recordSubscriptionPayment)
+		r.Post("/sub/{id}/subscribe", h.createSubscriber)
+		r.Post("/sub/{id}/cancel", h.cancelSubscription)
+		r.Get("/sub/{id}/subscriber", h.getSubscriber)
+
+		// Relayer address (public — frontend needs it for approve target)
+		r.Get("/relayer-address", h.getRelayerAddress)
 
 		// Protected routes
 		r.Group(func(r chi.Router) {
@@ -65,6 +71,7 @@ func RegisterRoutes(
 			// User
 			r.Get("/user/profile", h.getProfile)
 			r.Put("/user/role", h.setRole)
+			r.Put("/user/email", h.updateEmail)
 
 			// Shops
 			r.Post("/shops", h.createShop)
@@ -92,6 +99,7 @@ func RegisterRoutes(
 			r.Patch("/subscriptions/{id}/active", h.toggleSubscriptionActive)
 			r.Delete("/subscriptions/{id}", h.deleteSubscription)
 			r.Get("/subscriptions/{id}/payments", h.listSubscriptionPayments)
+			r.Get("/subscriptions/{id}/subscribers", h.listSubscribers)
 
 			// Payments ledger
 			r.Get("/payments", h.listMyPayments)

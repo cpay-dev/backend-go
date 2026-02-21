@@ -3,7 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
-	"log/slog"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -16,15 +17,18 @@ import (
 
 	"github.com/cpay-dev/backend/internal/api"
 	"github.com/cpay-dev/backend/internal/auth"
+	"github.com/cpay-dev/backend/internal/consumer"
 	"github.com/cpay-dev/backend/internal/db"
+	"github.com/cpay-dev/backend/internal/email"
 	"github.com/cpay-dev/backend/internal/events"
 	grpcclient "github.com/cpay-dev/backend/internal/grpc"
+	"github.com/cpay-dev/backend/internal/scheduler"
 	"github.com/cpay-dev/backend/internal/storage"
 )
 
 func main() {
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
-	slog.SetDefault(logger)
+	zerolog.TimeFieldFormat = zerolog.TimeFormatUnixMs
+	log.Logger = zerolog.New(os.Stdout).With().Timestamp().Logger()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -33,16 +37,14 @@ func main() {
 	dbURL := mustEnv("DATABASE_URL")
 	pool, err := pgxpool.New(ctx, dbURL)
 	if err != nil {
-		slog.Error("failed to connect to database", "error", err)
-		os.Exit(1)
+		log.Fatal().Err(err).Msg("failed to connect to database")
 	}
 	defer pool.Close()
 
 	if err := pool.Ping(ctx); err != nil {
-		slog.Error("failed to ping database", "error", err)
-		os.Exit(1)
+		log.Fatal().Err(err).Msg("failed to ping database")
 	}
-	slog.Info("connected to database")
+	log.Info().Msg("connected to database")
 
 	queries := db.New(pool)
 
@@ -60,17 +62,15 @@ func main() {
 		minioUseSSL,
 	)
 	if err != nil {
-		slog.Error("failed to create minio client", "error", err)
-		os.Exit(1)
+		log.Fatal().Err(err).Msg("failed to create minio client")
 	}
-	slog.Info("connected to minio")
+	log.Info().Msg("connected to minio")
 
 	// NATS
 	natsURL := envOr("NATS_URL", "nats://localhost:4222")
 	eventPublisher, err := events.NewPublisher(natsURL)
 	if err != nil {
-		slog.Error("failed to create NATS publisher", "error", err)
-		os.Exit(1)
+		log.Fatal().Err(err).Msg("failed to create NATS publisher")
 	}
 	defer eventPublisher.Close()
 
@@ -78,11 +78,30 @@ func main() {
 	chainServiceAddr := envOr("CHAIN_SERVICE_ADDR", "localhost:50051")
 	chainClient, err := grpcclient.NewChainClient(chainServiceAddr)
 	if err != nil {
-		slog.Error("failed to connect to chain service", "error", err)
-		os.Exit(1)
+		log.Fatal().Err(err).Msg("failed to connect to chain service")
 	}
 	defer chainClient.Close()
-	slog.Info("connected to chain service", "addr", chainServiceAddr)
+	log.Info().Str("addr", chainServiceAddr).Msg("connected to chain service")
+
+	// Email service (optional — disabled if no API key)
+	var emailSvc *email.Service
+	if apiKey := os.Getenv("RESEND_API_KEY"); apiKey != "" {
+		fromEmail := envOr("FROM_EMAIL", "receipt@cpay.dev")
+		emailSvc = email.NewService(apiKey, fromEmail)
+		log.Info().Str("from", fromEmail).Msg("email service enabled")
+	} else {
+		log.Warn().Msg("RESEND_API_KEY not set, email service disabled")
+	}
+
+	// NATS consumers
+	cons := consumer.New(eventPublisher.JetStream(), queries, emailSvc, chainClient)
+	if err := cons.Start(ctx); err != nil {
+		log.Fatal().Err(err).Msg("failed to start NATS consumers")
+	}
+
+	// Scheduler
+	sched := scheduler.New(queries, chainClient, eventPublisher)
+	go sched.Start(ctx)
 
 	// Router
 	r := chi.NewRouter()
@@ -115,27 +134,25 @@ func main() {
 		sigCh := make(chan os.Signal, 1)
 		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 		<-sigCh
-		slog.Info("shutting down server")
+		log.Info().Msg("shutting down server")
 		cancel()
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer shutdownCancel()
 		if err := srv.Shutdown(shutdownCtx); err != nil {
-			slog.Error("server shutdown error", "error", err)
+			log.Error().Err(err).Msg("server shutdown error")
 		}
 	}()
 
-	slog.Info("starting server", "port", port)
+	log.Info().Str("port", port).Msg("starting server")
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		slog.Error("server error", "error", err)
-		os.Exit(1)
+		log.Fatal().Err(err).Msg("server error")
 	}
 }
 
 func mustEnv(key string) string {
 	v := os.Getenv(key)
 	if v == "" {
-		slog.Error("required environment variable not set", "key", key)
-		os.Exit(1)
+		log.Fatal().Str("key", key).Msg("required environment variable not set")
 	}
 	return v
 }

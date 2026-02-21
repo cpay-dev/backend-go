@@ -5,6 +5,8 @@ import { useAccount, useConnect, useConnectors, useWriteContract, useSwitchChain
 import { parseUnits } from "viem";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Wallet } from "lucide-react";
 import { api } from "@/lib/api";
 import type { Product } from "@/lib/api";
@@ -28,6 +30,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [payStatus, setPayStatus] = useState<"idle" | "sending" | "success" | "error">("idle");
+  const [email, setEmail] = useState("");
 
   const { address, isConnected, chainId } = useAccount();
   const connectors = useConnectors();
@@ -57,7 +60,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
   };
 
   const handlePay = async () => {
-    if (!product || !isConnected || !product.merchant_address || !address) return;
+    if (!product || !isConnected || !product.merchant_address || !address || !email.trim()) return;
     setPayStatus("sending");
     try {
       // Switch chain first if needed (must be in user gesture context)
@@ -84,6 +87,7 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
       // Record payment
       await api.payments.recordForProduct(id, {
         payer_address: address,
+        payer_email: email.trim(),
         token_address: product.token_address,
         chain_id: product.chain_id,
         amount: product.price,
@@ -168,13 +172,25 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
               Connect Wallet to Pay
             </Button>
           ) : (
-            <Button
-              className="w-full"
-              onClick={handlePay}
-              disabled={payStatus === "sending"}
-            >
-              {payStatus === "sending" ? "Sending..." : `Pay ${product.price} ${product.currency}`}
-            </Button>
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="email">Email for receipt</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="you@example.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+              </div>
+              <Button
+                className="w-full"
+                onClick={handlePay}
+                disabled={payStatus === "sending" || !email.trim()}
+              >
+                {payStatus === "sending" ? "Sending..." : `Pay ${product.price} ${product.currency}`}
+              </Button>
+            </>
           )}
 
           {isConnected && (

@@ -2,8 +2,9 @@ package api
 
 import (
 	"context"
-	"log/slog"
 	"net/http"
+
+	"github.com/rs/zerolog/log"
 
 	"github.com/cpay-dev/backend/internal/auth"
 	"github.com/cpay-dev/backend/internal/db"
@@ -17,7 +18,7 @@ const cfTokenAddress = "0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582" // USDC on A
 func (h *handlers) resolveMerchantCFAddress(ctx context.Context, wallet string) (string, error) {
 	addr, err := h.chainClient.GetCounterfactualAddress(ctx, cfChainID, wallet)
 	if err != nil {
-		slog.Error("resolveMerchantCFAddress failed", "wallet", wallet, "error", err)
+		log.Error().Err(err).Str("wallet", wallet).Msg("resolveMerchantCFAddress failed")
 		return "", err
 	}
 	return addr, nil
@@ -37,7 +38,7 @@ func (h *handlers) getMyCFAddress(w http.ResponseWriter, r *http.Request) {
 	// This ensures stale cached addresses get corrected after bytecode changes.
 	addr, err := h.chainClient.GetCounterfactualAddress(r.Context(), cfChainID, wallet)
 	if err != nil {
-		slog.Error("GetCounterfactualAddress failed", "error", err)
+		log.Error().Err(err).Msg("GetCounterfactualAddress failed")
 		writeError(w, http.StatusInternalServerError, "failed to derive counterfactual address")
 		return
 	}
@@ -48,7 +49,7 @@ func (h *handlers) getMyCFAddress(w http.ResponseWriter, r *http.Request) {
 		Address: addr,
 	})
 	if err != nil {
-		slog.Warn("failed to cache CF address", "error", err)
+		log.Warn().Err(err).Msg("failed to cache CF address")
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"address": addr})
@@ -71,7 +72,7 @@ func (h *handlers) getCFBalance(w http.ResponseWriter, r *http.Request) {
 	// Always derive from chain service to avoid stale cache.
 	cfAddr, err := h.chainClient.GetCounterfactualAddress(r.Context(), cfChainID, wallet)
 	if err != nil {
-		slog.Error("GetCounterfactualAddress failed", "error", err)
+		log.Error().Err(err).Msg("GetCounterfactualAddress failed")
 		writeError(w, http.StatusInternalServerError, "failed to derive counterfactual address")
 		return
 	}
@@ -85,7 +86,7 @@ func (h *handlers) getCFBalance(w http.ResponseWriter, r *http.Request) {
 
 	balance, err := h.chainClient.GetTokenBalance(r.Context(), cfChainID, tokenAddress, cfAddr)
 	if err != nil {
-		slog.Error("GetTokenBalance failed", "error", err)
+		log.Error().Err(err).Msg("GetTokenBalance failed")
 		writeError(w, http.StatusInternalServerError, "failed to fetch token balance")
 		return
 	}
@@ -113,7 +114,7 @@ func (h *handlers) getCFWithdrawInfo(w http.ResponseWriter, r *http.Request) {
 
 	info, err := h.chainClient.GetCFWalletInfo(r.Context(), cfChainID, wallet, tokenAddress)
 	if err != nil {
-		slog.Error("GetCFWalletInfo failed", "error", err)
+		log.Error().Err(err).Msg("GetCFWalletInfo failed")
 		writeError(w, http.StatusInternalServerError, "failed to get CF wallet info")
 		return
 	}

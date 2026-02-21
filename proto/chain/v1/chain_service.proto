@@ -10,6 +10,18 @@ service ChainService {
   rpc GetCounterfactualAddress(GetCounterfactualAddressRequest) returns (GetCounterfactualAddressResponse);
   rpc GetTokenBalance(GetTokenBalanceRequest) returns (GetTokenBalanceResponse);
   rpc DeployAndWithdraw(DeployAndWithdrawRequest) returns (DeployAndWithdrawResponse);
+
+  // New: verify an on-chain transaction receipt
+  rpc VerifyTransaction(VerifyTransactionRequest) returns (VerifyTransactionResponse);
+
+  // New: check ERC-20 allowance(owner, spender)
+  rpc CheckAllowance(CheckAllowanceRequest) returns (CheckAllowanceResponse);
+
+  // New: sign+submit transferFrom using relayer key
+  rpc ExecuteTransferFrom(ExecuteTransferFromRequest) returns (ExecuteTransferFromResponse);
+
+  // New: return relayer EOA address (frontend approve target)
+  rpc GetRelayerAddress(GetRelayerAddressRequest) returns (GetRelayerAddressResponse);
 }
 
 message HealthCheckRequest {}
@@ -58,4 +70,49 @@ message DeployAndWithdrawRequest {
 message DeployAndWithdrawResponse {
   string tx_hash = 1;          // hash of the withdraw (execute) transaction
   string amount = 2;           // amount withdrawn (decimal string, token units)
+}
+
+// VerifyTransaction: fetch receipt and validate status
+message VerifyTransactionRequest {
+  uint64 chain_id = 1;
+  string tx_hash = 2;
+}
+
+message VerifyTransactionResponse {
+  bool   success = 1;       // receipt status == 1
+  string from_address = 2;
+  string to_address = 3;
+  uint64 block_number = 4;
+}
+
+// CheckAllowance: query ERC-20 allowance(owner, spender)
+message CheckAllowanceRequest {
+  uint64 chain_id = 1;
+  string token_address = 2;
+  string owner = 3;
+  string spender = 4;
+}
+
+message CheckAllowanceResponse {
+  string allowance = 1;  // raw token units (U256 decimal string)
+}
+
+// ExecuteTransferFrom: relayer signs and submits transferFrom(from, to, amount)
+message ExecuteTransferFromRequest {
+  uint64 chain_id = 1;
+  string token_address = 2;
+  string from = 3;           // payer address (must have approved relayer)
+  string to = 4;             // merchant CF address
+  string amount = 5;         // raw token units
+}
+
+message ExecuteTransferFromResponse {
+  string tx_hash = 1;
+}
+
+// GetRelayerAddress: returns the relayer EOA address
+message GetRelayerAddressRequest {}
+
+message GetRelayerAddressResponse {
+  string address = 1;
 }

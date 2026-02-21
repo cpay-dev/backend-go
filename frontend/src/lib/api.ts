@@ -53,11 +53,16 @@ export const api = {
       ),
   },
   user: {
-    profile: () => request<{ id: string; wallet_address: string; role: string }>("/api/user/profile"),
+    profile: () => request<{ id: string; wallet_address: string; role: string; email?: string }>("/api/user/profile"),
     setRole: (role: string) =>
       request("/api/user/role", {
         method: "PUT",
         body: JSON.stringify({ role }),
+      }),
+    updateEmail: (email: string) =>
+      request("/api/user/email", {
+        method: "PUT",
+        body: JSON.stringify({ email }),
       }),
   },
   shops: {
@@ -157,6 +162,16 @@ export const api = {
       request<SubscriptionPayment>(`/api/sub/${id}/payment`, { method: "POST", body: JSON.stringify(data) }),
     listPayments: (id: string) =>
       request<SubscriptionPayment[]>(`/api/subscriptions/${id}/payments`),
+    subscribe: (id: string, data: { payer_address: string; email: string; method: string; periods?: number; approved_amount?: string }) =>
+      request<Subscriber>(`/api/sub/${id}/subscribe`, { method: "POST", body: JSON.stringify(data) }),
+    cancel: (id: string, data: { payer_address: string }) =>
+      request<Subscriber>(`/api/sub/${id}/cancel`, { method: "POST", body: JSON.stringify(data) }),
+    getSubscriber: (subId: string, payer: string) =>
+      request<Subscriber | null>(`/api/sub/${subId}/subscriber?payer=${encodeURIComponent(payer)}`),
+    getRelayerAddress: () =>
+      request<{ address: string }>("/api/relayer-address"),
+    listSubscribers: (id: string) =>
+      request<Subscriber[]>(`/api/subscriptions/${id}/subscribers`),
   },
   payments: {
     listMine: () => request<Payment[]>("/api/payments"),
@@ -232,6 +247,7 @@ export interface Payment {
   product_id?: string;
   payment_link_id?: string;
   payer_address?: string;
+  payer_email?: string;
   token_address: string;
   chain_id: number;
   amount: string;
@@ -251,8 +267,28 @@ export interface SubscriptionPayment {
   created_at: string;
 }
 
+export interface Subscriber {
+  id: string;
+  subscription_id: string;
+  shop_id: string;
+  payer_address: string;
+  payer_email: string;
+  status: string;
+  method: string;
+  periods_paid: number;
+  periods_used: number;
+  approved_amount?: string;
+  spent_amount?: string;
+  next_due?: string;
+  cancelled_at?: string;
+  expires_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface RecordPaymentData {
   payer_address: string;
+  payer_email?: string;
   token_address: string;
   chain_id: number;
   amount: string;

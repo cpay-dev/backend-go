@@ -39,6 +39,9 @@ export function ImageUpload({ value, onChange, label = "Upload Image" }: ImageUp
         alert("Failed to upload image");
       } finally {
         setIsUploading(false);
+        if (fileRef.current) {
+          fileRef.current.value = "";
+        }
       }
     },
     [onChange]
