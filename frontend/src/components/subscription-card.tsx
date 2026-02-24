@@ -1,10 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Copy, ToggleLeft, ToggleRight, Trash2, RefreshCw } from "lucide-react";
 import type { Subscription } from "@/lib/api";
+import { EmbedButton, EmbedPanel } from "@/components/embed-snippet";
 
 const PERIOD_LABELS: Record<string, string> = {
   daily: "Daily",
@@ -20,6 +22,7 @@ interface SubscriptionCardProps {
 }
 
 export function SubscriptionCard({ subscription: sub, onToggleActive, onDelete }: SubscriptionCardProps) {
+  const [showEmbed, setShowEmbed] = useState(false);
   const publicUrl = `${window.location.origin}/sub/${sub.id}`;
 
   return (
@@ -60,6 +63,7 @@ export function SubscriptionCard({ subscription: sub, onToggleActive, onDelete }
             >
               <Copy className="h-4 w-4" />
             </Button>
+            <EmbedButton onClick={() => setShowEmbed(!showEmbed)} />
             <Button
               variant="ghost"
               size="icon"
@@ -84,6 +88,7 @@ export function SubscriptionCard({ subscription: sub, onToggleActive, onDelete }
             </Button>
           </div>
         </div>
+        {showEmbed && <EmbedPanel type="subscription" id={sub.id} />}
       </CardContent>
     </Card>
   );

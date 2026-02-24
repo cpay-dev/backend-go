@@ -56,6 +56,8 @@ func (p *Publisher) initStreams(ctx context.Context) error {
 		{name: "SUBSCRIPTIONS", subjects: []string{SubjectSubscriptions + ".>"}},
 		{name: "SUBSCRIBERS", subjects: []string{SubjectSubscribers + ".>"}},
 		{name: "EMAILS", subjects: []string{SubjectEmails + ".>"}},
+		{name: "WITHDRAWALS", subjects: []string{SubjectWithdrawals + ".>"}},
+		{name: "INVOICES", subjects: []string{SubjectInvoices + ".>"}},
 	}
 
 	for _, s := range streams {

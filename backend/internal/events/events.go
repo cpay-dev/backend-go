@@ -17,6 +17,8 @@ const (
 	SubjectSubscriptions = "subscriptions"
 	SubjectSubscribers   = "subscribers"
 	SubjectEmails        = "emails"
+	SubjectWithdrawals   = "withdrawals"
+	SubjectInvoices      = "invoices"
 )
 
 const (
@@ -47,6 +49,14 @@ const (
 	EventEmailQueued = "email.queued"
 	EventEmailSent   = "email.sent"
 	EventEmailFailed = "email.failed"
+
+	EventWithdrawalCompleted = "withdrawal.completed"
+
+	EventInvoiceCreated   = "invoice.created"
+	EventInvoiceUpdated   = "invoice.updated"
+	EventInvoiceSent      = "invoice.sent"
+	EventInvoicePaid      = "invoice.paid"
+	EventInvoiceCancelled = "invoice.cancelled"
 )
 
 type Event struct {

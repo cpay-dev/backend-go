@@ -61,6 +61,10 @@ func RegisterRoutes(
 		r.Post("/sub/{id}/cancel", h.cancelSubscription)
 		r.Get("/sub/{id}/subscriber", h.getSubscriber)
 
+		// Public invoice page
+		r.Get("/inv/{id}", h.getPublicInvoice)
+		r.Post("/inv/{id}/payment", h.recordInvoicePayment)
+
 		// Relayer address (public — frontend needs it for approve target)
 		r.Get("/relayer-address", h.getRelayerAddress)
 
@@ -101,6 +105,15 @@ func RegisterRoutes(
 			r.Get("/subscriptions/{id}/payments", h.listSubscriptionPayments)
 			r.Get("/subscriptions/{id}/subscribers", h.listSubscribers)
 
+			// Invoices
+			r.Post("/invoices", h.createInvoice)
+			r.Get("/invoices", h.listMyInvoices)
+			r.Get("/invoices/{id}", h.getInvoice)
+			r.Put("/invoices/{id}", h.updateInvoice)
+			r.Post("/invoices/{id}/send", h.sendInvoice)
+			r.Post("/invoices/{id}/cancel", h.cancelInvoice)
+			r.Delete("/invoices/{id}", h.deleteInvoice)
+
 			// Payments ledger
 			r.Get("/payments", h.listMyPayments)
 
@@ -108,6 +121,16 @@ func RegisterRoutes(
 			r.Get("/cf-address", h.getMyCFAddress)
 			r.Get("/cf-balance", h.getCFBalance)
 			r.Get("/cf-withdraw-info", h.getCFWithdrawInfo)
+
+			// Webhooks
+			r.Post("/webhooks", h.createWebhook)
+			r.Get("/webhooks", h.listWebhooks)
+			r.Put("/webhooks/{id}", h.updateWebhook)
+			r.Delete("/webhooks/{id}", h.deleteWebhook)
+			r.Get("/webhooks/{id}/deliveries", h.listWebhookDeliveries)
+
+			// Withdrawals
+			r.Post("/withdrawals", h.recordWithdrawal)
 
 			// Upload
 			r.Post("/upload/avatar", h.uploadAvatar)

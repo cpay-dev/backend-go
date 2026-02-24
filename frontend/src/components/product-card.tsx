@@ -1,11 +1,13 @@
 "use client";
 
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Copy, Pencil, ToggleLeft, ToggleRight, Trash2 } from "lucide-react";
 import Link from "next/link";
 import type { Product } from "@/lib/api";
+import { EmbedButton, EmbedPanel } from "@/components/embed-snippet";
 
 interface ProductCardProps {
   product: Product;
@@ -14,6 +16,7 @@ interface ProductCardProps {
 }
 
 export function ProductCard({ product, onToggleActive, onDelete }: ProductCardProps) {
+  const [showEmbed, setShowEmbed] = useState(false);
   const publicUrl = typeof window !== "undefined"
     ? `${window.location.origin}/p/${product.id}`
     : `/p/${product.id}`;
@@ -64,6 +67,7 @@ export function ProductCard({ product, onToggleActive, onDelete }: ProductCardPr
             >
               <Copy className="h-4 w-4" />
             </Button>
+            <EmbedButton onClick={() => setShowEmbed(!showEmbed)} />
             <Button
               variant="ghost"
               size="icon"
@@ -95,6 +99,7 @@ export function ProductCard({ product, onToggleActive, onDelete }: ProductCardPr
             </Button>
           </div>
         </div>
+        {showEmbed && <EmbedPanel type="product" id={product.id} />}
       </CardContent>
     </Card>
   );

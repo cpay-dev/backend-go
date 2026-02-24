@@ -133,7 +133,13 @@ func (h *handlers) createSubscription(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if evt, err := events.NewEvent(events.EventSubscriptionCreated, events.SubjectSubscriptions, map[string]string{"id": sub.ID}); err == nil {
+	if evt, err := events.NewEvent(events.EventSubscriptionCreated, events.SubjectSubscriptions, map[string]string{
+		"id":      sub.ID,
+		"shop_id": shop.ID,
+		"title":   sub.Title,
+		"amount":  numericToString(sub.Amount),
+		"period":  string(sub.Period),
+	}); err == nil {
 		_ = h.eventPub.Publish(r.Context(), evt)
 	}
 	writeJSON(w, http.StatusCreated, toSubscriptionResponse(sub))

@@ -236,6 +236,9 @@ func (h *handlers) createProduct(w http.ResponseWriter, r *http.Request) {
 	evt, err := events.NewEvent(events.EventProductCreated, events.SubjectProducts, map[string]string{
 		"product_id": product.ID,
 		"shop_id":    shop.ID,
+		"name":       product.Name,
+		"price":      numericToString(product.Price),
+		"currency":   product.Currency,
 	})
 	if err == nil {
 		if pubErr := h.eventPub.Publish(r.Context(), evt); pubErr != nil {

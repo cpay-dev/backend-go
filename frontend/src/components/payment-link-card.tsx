@@ -1,10 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Copy, ToggleLeft, ToggleRight, Trash2 } from "lucide-react";
 import type { PaymentLink } from "@/lib/api";
+import { EmbedButton, EmbedPanel } from "@/components/embed-snippet";
 
 interface PaymentLinkCardProps {
   link: PaymentLink;
@@ -13,6 +15,7 @@ interface PaymentLinkCardProps {
 }
 
 export function PaymentLinkCard({ link, onToggleActive, onDelete }: PaymentLinkCardProps) {
+  const [showEmbed, setShowEmbed] = useState(false);
   const publicUrl = `${window.location.origin}/pay/${link.id}`;
 
   const usageLabel = link.max_uses
@@ -49,6 +52,7 @@ export function PaymentLinkCard({ link, onToggleActive, onDelete }: PaymentLinkC
             >
               <Copy className="h-4 w-4" />
             </Button>
+            <EmbedButton onClick={() => setShowEmbed(!showEmbed)} />
             <Button
               variant="ghost"
               size="icon"
@@ -71,6 +75,7 @@ export function PaymentLinkCard({ link, onToggleActive, onDelete }: PaymentLinkC
             </Button>
           </div>
         </div>
+        {showEmbed && <EmbedPanel type="paymentLink" id={link.id} />}
       </CardContent>
     </Card>
   );

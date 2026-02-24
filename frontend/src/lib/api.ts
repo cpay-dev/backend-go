@@ -182,6 +182,41 @@ export const api = {
     recordForProduct: (productId: string, data: RecordPaymentData) =>
       request<Payment>(`/api/p/${productId}/payment`, { method: "POST", body: JSON.stringify(data) }),
   },
+  invoices: {
+    create: (data: {
+      title: string;
+      memo?: string;
+      amount: string;
+      token_address?: string;
+      chain_id?: number;
+      recipient_email?: string;
+      due_date?: string;
+      line_items?: { description: string; quantity: number; unit_price: string; amount: string }[];
+      notes?: string;
+    }) => request<Invoice>("/api/invoices", { method: "POST", body: JSON.stringify(data) }),
+    list: () => request<Invoice[]>("/api/invoices"),
+    getByID: (id: string) => request<Invoice>(`/api/invoices/${id}`),
+    update: (id: string, data: {
+      title: string;
+      memo?: string;
+      amount: string;
+      token_address?: string;
+      chain_id?: number;
+      recipient_email?: string;
+      due_date?: string;
+      line_items?: { description: string; quantity: number; unit_price: string; amount: string }[];
+      notes?: string;
+    }) => request<Invoice>(`/api/invoices/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+    send: (id: string) =>
+      request<Invoice>(`/api/invoices/${id}/send`, { method: "POST" }),
+    cancel: (id: string) =>
+      request<Invoice>(`/api/invoices/${id}/cancel`, { method: "POST" }),
+    delete: (id: string) =>
+      request<void>(`/api/invoices/${id}`, { method: "DELETE" }),
+    getPublic: (id: string) => request<Invoice>(`/api/inv/${id}`),
+    recordPayment: (id: string, data: RecordPaymentData) =>
+      request<Invoice>(`/api/inv/${id}/payment`, { method: "POST", body: JSON.stringify(data) }),
+  },
   cf: {
     getAddress: () => request<{ address: string }>("/api/cf-address"),
     getBalance: (token: string) =>
@@ -190,6 +225,8 @@ export const api = {
       request<{ cf_address: string; balance: string; is_deployed: boolean; token: string; chain_id: number }>(
         `/api/cf-withdraw-info?token=${encodeURIComponent(token)}`
       ),
+    recordWithdrawal: (data: { token_address: string; chain_id: number; amount: string; tx_hash: string }) =>
+      request<{ id: string; tx_hash: string }>("/api/withdrawals", { method: "POST", body: JSON.stringify(data) }),
   },
 };
 
@@ -282,6 +319,28 @@ export interface Subscriber {
   next_due?: string;
   cancelled_at?: string;
   expires_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Invoice {
+  id: string;
+  shop_id: string;
+  invoice_number: number;
+  title: string;
+  memo?: string;
+  amount: string;
+  token_address: string;
+  chain_id: number;
+  status: string;
+  recipient_email?: string;
+  due_date?: string;
+  line_items?: { description: string; quantity: number; unit_price: string; amount: string }[];
+  notes?: string;
+  payer_address?: string;
+  tx_hash?: string;
+  paid_at?: string;
+  merchant_address?: string;
   created_at: string;
   updated_at: string;
 }

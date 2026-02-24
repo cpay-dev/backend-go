@@ -11,8 +11,9 @@ import { api } from "@/lib/api";
 import { ProductCard } from "@/components/product-card";
 import { PaymentLinkCard } from "@/components/payment-link-card";
 import { SubscriptionCard } from "@/components/subscription-card";
+import { InvoiceCard } from "@/components/invoice-card";
 import Link from "next/link";
-import type { Product, PaymentLink, Subscription, Payment } from "@/lib/api";
+import type { Product, PaymentLink, Subscription, Payment, Invoice } from "@/lib/api";
 import { useAccount, useWriteContract, useSendTransaction, useSwitchChain, usePublicClient } from "wagmi";
 import { keccak256, toBytes, getContractAddress, type Hex } from "viem";
 
@@ -80,6 +81,8 @@ export default function DashboardPage() {
   const [loadingLinks, setLoadingLinks] = useState(false);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [loadingSubscriptions, setLoadingSubscriptions] = useState(false);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [loadingInvoices, setLoadingInvoices] = useState(false);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loadingPayments, setLoadingPayments] = useState(false);
   const [withdrawInfo, setWithdrawInfo] = useState<WithdrawInfo | null>(null);
@@ -123,6 +126,18 @@ export default function DashboardPage() {
     }
   }, []);
 
+  const loadInvoices = useCallback(async () => {
+    setLoadingInvoices(true);
+    try {
+      const list = await api.invoices.list();
+      setInvoices(list);
+    } catch {
+      setInvoices([]);
+    } finally {
+      setLoadingInvoices(false);
+    }
+  }, []);
+
   const loadPayments = useCallback(async () => {
     setLoadingPayments(true);
     try {
@@ -150,10 +165,11 @@ export default function DashboardPage() {
       loadProducts();
       loadPaymentLinks();
       loadSubscriptions();
+      loadInvoices();
       loadPayments();
       loadWithdrawInfo();
     }
-  }, [user, loadProducts, loadPaymentLinks, loadSubscriptions, loadPayments, loadWithdrawInfo]);
+  }, [user, loadProducts, loadPaymentLinks, loadSubscriptions, loadInvoices, loadPayments, loadWithdrawInfo]);
 
   const handleToggleActive = async (id: string, active: boolean) => {
     try {
@@ -206,6 +222,33 @@ export default function DashboardPage() {
       setSubscriptions((prev) => prev.filter((s) => s.id !== id));
     } catch (err) {
       console.error("Failed to delete subscription:", err);
+    }
+  };
+
+  const handleSendInvoice = async (id: string) => {
+    try {
+      const updated = await api.invoices.send(id);
+      setInvoices((prev) => prev.map((inv) => (inv.id === id ? updated : inv)));
+    } catch (err) {
+      console.error("Failed to send invoice:", err);
+    }
+  };
+
+  const handleCancelInvoice = async (id: string) => {
+    try {
+      const updated = await api.invoices.cancel(id);
+      setInvoices((prev) => prev.map((inv) => (inv.id === id ? updated : inv)));
+    } catch (err) {
+      console.error("Failed to cancel invoice:", err);
+    }
+  };
+
+  const handleDeleteInvoice = async (id: string) => {
+    try {
+      await api.invoices.delete(id);
+      setInvoices((prev) => prev.filter((inv) => inv.id !== id));
+    } catch (err) {
+      console.error("Failed to delete invoice:", err);
     }
   };
 
@@ -273,6 +316,18 @@ export default function DashboardPage() {
       });
 
       setWithdrawTxHash(hash);
+
+      // Report withdrawal to backend for webhook dispatch
+      try {
+        await api.cf.recordWithdrawal({
+          token_address: CF_TOKEN_ADDRESS,
+          chain_id: CF_CHAIN_ID,
+          amount: withdrawInfo.balance,
+          tx_hash: hash,
+        });
+      } catch {
+        // Best-effort — don't block the UI if recording fails
+      }
 
       // Refresh withdraw info
       await loadWithdrawInfo();
@@ -506,6 +561,47 @@ export default function DashboardPage() {
                   subscription={sub}
                   onToggleActive={handleToggleSubActive}
                   onDelete={handleDeleteSub}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Invoices Section */}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-semibold">Invoices</h3>
+            <Link href="/dashboard/invoices/new">
+              <Button size="sm">
+                <Plus className="mr-2 h-4 w-4" />
+                New Invoice
+              </Button>
+            </Link>
+          </div>
+
+          {loadingInvoices ? (
+            <p className="text-sm text-muted-foreground">Loading invoices...</p>
+          ) : invoices.length === 0 ? (
+            <Card>
+              <CardContent className="py-8 text-center">
+                <p className="text-muted-foreground">No invoices yet</p>
+                <Link href="/dashboard/invoices/new">
+                  <Button variant="outline" size="sm" className="mt-3">
+                    <Plus className="mr-2 h-4 w-4" />
+                    Create your first invoice
+                  </Button>
+                </Link>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {invoices.map((inv) => (
+                <InvoiceCard
+                  key={inv.id}
+                  invoice={inv}
+                  onSend={handleSendInvoice}
+                  onCancel={handleCancelInvoice}
+                  onDelete={handleDeleteInvoice}
                 />
               ))}
             </div>

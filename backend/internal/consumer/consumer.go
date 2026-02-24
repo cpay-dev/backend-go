@@ -73,6 +73,11 @@ func (c *Consumer) Start(ctx context.Context) error {
 		log.Warn().Msg("email service not configured, skipping email consumers")
 	}
 
+	// Webhook dispatcher consumers (always active, independent of email)
+	if err := c.startWebhookConsumers(ctx); err != nil {
+		return err
+	}
+
 	log.Info().Msg("all NATS consumers started")
 	return nil
 }

@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "build:sdk": "node sdk/build.mjs",
+    "build:sdk:prod": "node sdk/build.mjs --prod"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.90.21",
@@ -30,6 +32,8 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "buffer": "^6.0.3",
+    "esbuild": "^0.27.3",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
     "shadcn": "^3.8.5",
