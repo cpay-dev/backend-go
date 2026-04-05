@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use alloy::consensus::Transaction;
 use alloy::primitives::{Address, B256, U256};
 use alloy::providers::{Provider, ProviderBuilder};
 use alloy::sol;
