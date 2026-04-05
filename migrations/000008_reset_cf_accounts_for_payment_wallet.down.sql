@@ -1,1 +1,0 @@
--- No-op: cannot restore old cached addresses (they will be re-derived on next access).
