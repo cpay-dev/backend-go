@@ -1,0 +1,128 @@
+openapi: 3.1.0
+info:
+  title: CPay API
+  version: v1
+servers:
+  - url: http://localhost:8080
+paths:
+  /v1/auth/login:
+    post:
+      summary: Login and get JWT pair
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string }
+                password: { type: string }
+      responses:
+        '200':
+          description: Success
+  /v1/payment_links:
+    post:
+      summary: Create payment link
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      responses:
+        '201':
+          description: Created
+    get:
+      summary: List payment links
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      responses:
+        '200':
+          description: Success
+  /v1/payment_links/{id}/sessions:
+    post:
+      summary: Create checkout session from payment link
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      responses:
+        '201':
+          description: Created
+  /v1/public/payment_links/{id}/sessions:
+    post:
+      summary: Create public checkout session from payment link
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '201':
+          description: Created
+  /v1/public/checkout/{session_id}:
+    get:
+      summary: Fetch hosted checkout session data by client secret
+      parameters:
+        - in: path
+          name: session_id
+          required: true
+          schema: { type: string }
+        - in: query
+          name: client_secret
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Success
+  /v1/checkout/{session_id}/confirm:
+    post:
+      summary: Confirm observed chain transaction for checkout
+      parameters:
+        - in: path
+          name: session_id
+          required: true
+          schema: { type: string }
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      responses:
+        '200':
+          description: Updated
+  /v1/webhook_endpoints:
+    post:
+      summary: Register merchant webhook endpoint
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      responses:
+        '201':
+          description: Created
+  /v1/subscriptions:
+    post:
+      summary: Create prepaid-vault subscription
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      responses:
+        '201':
+          description: Created
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key

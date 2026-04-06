@@ -1,0 +1,125 @@
+# CPay Backend (Stripe-like Crypto Payment Links)
+
+Backend-first crypto payment platform in Go 1.26 with Postgres 18, MinIO, NATS and Docker.
+External API is REST on `api-gateway`; internal service-to-service communication is gRPC.
+
+## Implemented foundations
+
+- Microservices:
+  - `api-gateway`
+  - `auth-service`
+  - `catalog-service`
+  - `payment-link-service`
+  - `checkout-service`
+  - `chain-observer-service`
+  - `webhook-service`
+  - `payout-service`
+  - `subscription-service`
+  - `outbox-relay-service`
+- Internal gRPC contracts:
+  - `AuthService`
+  - `PaymentLinkService`
+  - `CheckoutService`
+  - Generated stubs live under `internal/gen/cpay/v1`
+- Shared platform packages:
+  - config loader
+  - zerolog bootstrap
+  - request-id + idempotency middleware
+  - JWT + API key utilities
+  - EVM chain adapter interface + implementation
+  - swap adapter interface (M3 contract)
+  - encryption helpers (AES-GCM)
+  - event envelope schema
+- Postgres schema-per-service:
+  - `auth`: merchants, users, api_keys
+  - `catalog`: products, payment_links, link_options
+  - `checkout`: checkout/payment/webhook/payout/subscription tables
+  - `platform`: outbox_events, idempotency_keys
+
+## API coverage (M1 + recurring primitives)
+
+- Auth
+  - `POST /v1/auth/login`
+  - `POST /v1/auth/refresh`
+- API keys
+  - `POST /v1/api_keys`
+  - `GET /v1/api_keys`
+  - `POST /v1/api_keys/{id}/revoke`
+- Payment links
+  - `POST /v1/payment_links`
+  - `GET /v1/payment_links`
+  - `GET /v1/payment_links/{id}`
+  - `POST /v1/payment_links/{id}/archive`
+- Checkout / payments
+  - `POST /v1/payment_links/{id}/sessions`
+  - `POST /v1/public/payment_links/{id}/sessions`
+  - `GET /v1/checkout/{session_id}`
+  - `GET /v1/public/checkout/{session_id}?client_secret=...`
+  - `POST /v1/checkout/{session_id}/confirm`
+  - `GET /v1/payments/{id}`
+- Webhooks
+  - `POST /v1/webhook_endpoints`
+- Subscriptions
+  - `POST /v1/subscriptions`
+  - `POST /v1/subscriptions/{id}/pause`
+  - `POST /v1/subscriptions/{id}/resume`
+  - `GET /v1/subscriptions/{id}/cycles`
+
+## Event + worker pipeline
+
+- Transactional outbox table is written by service handlers (`platform.outbox_events`).
+- `outbox-relay-service` publishes outbox events to NATS subjects (`events.<event_type>`).
+- `webhook-service` subscribes to NATS and delivers signed merchant webhooks with retries.
+- `chain-observer-service` expires stale pending payment intents.
+- `payout-service` schedules/completes payouts and marks intents settled.
+- `subscription-service` processes due cycles against prepaid vault balances.
+
+## Local run
+
+### 1. Bring up stack
+
+```bash
+docker compose up -d --build
+```
+
+### 2. Health checks
+
+- API gateway: `http://localhost:8080/health`
+- Auth service: `http://localhost:8086/health` (gRPC `:9091`)
+- Payment-link service: `http://localhost:8088/health` (gRPC `:9092`)
+- Checkout service: `http://localhost:8089/health` (gRPC `:9093`)
+- Outbox relay: `http://localhost:8081/health`
+- Webhook service: `http://localhost:8082/health`
+
+### 3. Default bootstrap login
+
+- Email: `admin@cpay.dev`
+- Password: `admin123`
+
+You can change them using env vars:
+- `BOOTSTRAP_ADMIN_EMAIL`
+- `BOOTSTRAP_ADMIN_PASSWORD`
+- `BOOTSTRAP_MERCHANT_NAME`
+
+## Dev commands
+
+```bash
+make proto
+make proto-docker
+make tidy
+make fmt
+make test
+make run
+```
+
+## Migrations
+
+- Raw SQL migration files are stored in `migrations/`.
+- Migrations are applied with `golang-migrate` from code (`internal/platform/migrate`).
+- Run manually: `make migrate`
+
+## Notes
+
+- Recurring model is prepaid-vault based.
+- Payment tolerance is set to `0.25%` by default (`DEFAULT_TOLERANCE_PERCENT`).
+- Swap interface is defined but swap execution is intentionally deferred (M3).

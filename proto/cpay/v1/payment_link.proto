@@ -1,0 +1,124 @@
+syntax = "proto3";
+
+package cpay.v1;
+
+option go_package = "github.com/cpay-dev/cpay/internal/gen/cpay/v1;cpayv1";
+
+message AllowedToken {
+  string chain = 1;
+  string symbol = 2;
+  string address = 3;
+  int32 decimals = 4;
+}
+
+message AfterPaymentConfig {
+  string type = 1;
+  string redirect_url = 2;
+  string success_message = 3;
+}
+
+message LinkOptions {
+  bool collect_email = 1;
+  bool collect_name = 2;
+  bool collect_phone = 3;
+  bool collect_address = 4;
+  bool collect_business_name = 5;
+  bool require_terms_acceptance = 6;
+  bool allow_promo_codes = 7;
+  bool collect_tax_automatically = 8;
+  bool add_invoice_pdf = 9;
+  string metadata_json = 10;
+}
+
+message PaymentLink {
+  string id = 1;
+  string code = 2;
+  string title = 3;
+  string description = 4;
+  string image_url = 5;
+  string pricing_mode = 6;
+  optional double amount = 7;
+  string currency = 8;
+  bool reusable = 9;
+  optional int32 max_payments = 10;
+  string expires_at = 11;
+  string cta_text = 12;
+  AfterPaymentConfig after_payment = 13;
+  string status = 14;
+  optional double adjust_percent = 15;
+  optional double min_amount = 16;
+  optional double max_amount = 17;
+  repeated AllowedToken allowed_tokens = 18;
+  repeated string customer_fields = 19;
+  repeated string custom_fields_json = 20;
+  string metadata_json = 21;
+  LinkOptions options = 22;
+  string created_at = 23;
+  string updated_at = 24;
+}
+
+message CreatePaymentLinkRequest {
+  string merchant_id = 1;
+  string product_id = 2;
+  string title = 3;
+  string description = 4;
+  string image_url = 5;
+  string pricing_mode = 6;
+  optional double amount = 7;
+  string currency = 8;
+  repeated AllowedToken allowed_tokens = 9;
+  optional bool reusable = 10;
+  optional int32 max_payments = 11;
+  string expires_at = 12;
+  string cta_text = 13;
+  AfterPaymentConfig after_payment = 14;
+  optional double adjust_percent = 15;
+  optional double min_amount = 16;
+  optional double max_amount = 17;
+  repeated string customer_fields = 18;
+  repeated string custom_fields_json = 19;
+  LinkOptions options = 20;
+  string metadata_json = 21;
+}
+
+message CreatePaymentLinkResponse {
+  string id = 1;
+  string code = 2;
+  string url = 3;
+  string title = 4;
+  string created_at = 5;
+}
+
+message ListPaymentLinksRequest {
+  string merchant_id = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+}
+
+message ListPaymentLinksResponse {
+  repeated PaymentLink data = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+}
+
+message GetPaymentLinkRequest {
+  string merchant_id = 1;
+  string id = 2;
+}
+
+message ArchivePaymentLinkRequest {
+  string merchant_id = 1;
+  string id = 2;
+}
+
+message ArchivePaymentLinkResponse {
+  string id = 1;
+  bool archived = 2;
+}
+
+service PaymentLinkService {
+  rpc CreatePaymentLink(CreatePaymentLinkRequest) returns (CreatePaymentLinkResponse);
+  rpc ListPaymentLinks(ListPaymentLinksRequest) returns (ListPaymentLinksResponse);
+  rpc GetPaymentLink(GetPaymentLinkRequest) returns (PaymentLink);
+  rpc ArchivePaymentLink(ArchivePaymentLinkRequest) returns (ArchivePaymentLinkResponse);
+}

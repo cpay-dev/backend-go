@@ -1,0 +1,325 @@
+package gateway
+
+import (
+	"encoding/json"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+
+	cpayv1 "github.com/cpay-dev/cpay/internal/gen/cpay/v1"
+	"github.com/cpay-dev/cpay/internal/shared/httpx"
+	"github.com/cpay-dev/cpay/internal/shared/middleware"
+	"github.com/go-chi/chi/v5"
+)
+
+type paymentLinkAllowedToken struct {
+	Chain    string `json:"chain"`
+	Symbol   string `json:"symbol"`
+	Address  string `json:"address,omitempty"`
+	Decimals int    `json:"decimals,omitempty"`
+}
+
+type paymentLinkAfterPayment struct {
+	Type           string `json:"type"`
+	RedirectURL    string `json:"redirect_url,omitempty"`
+	SuccessMessage string `json:"success_message,omitempty"`
+}
+
+type paymentLinkOptionsRequest struct {
+	CollectEmail            bool           `json:"collect_email"`
+	CollectName             bool           `json:"collect_name"`
+	CollectPhone            bool           `json:"collect_phone"`
+	CollectAddress          bool           `json:"collect_address"`
+	CollectBusinessName     bool           `json:"collect_business_name"`
+	RequireTermsAcceptance  bool           `json:"require_terms_acceptance"`
+	AllowPromoCodes         bool           `json:"allow_promo_codes"`
+	CollectTaxAutomatically bool           `json:"collect_tax_automatically"`
+	AddInvoicePDF           bool           `json:"add_invoice_pdf"`
+	Metadata                map[string]any `json:"metadata,omitempty"`
+}
+
+type createPaymentLinkRequest struct {
+	ProductID      *string                   `json:"product_id,omitempty"`
+	Title          string                    `json:"title"`
+	Description    string                    `json:"description,omitempty"`
+	ImageURL       string                    `json:"image_url,omitempty"`
+	PricingMode    string                    `json:"pricing_mode"`
+	Amount         *float64                  `json:"amount,omitempty"`
+	Currency       string                    `json:"currency"`
+	AllowedTokens  []paymentLinkAllowedToken `json:"allowed_tokens"`
+	Reusable       *bool                     `json:"reusable,omitempty"`
+	MaxPayments    *int                      `json:"max_payments,omitempty"`
+	ExpiresAt      *time.Time                `json:"expires_at,omitempty"`
+	CTAText        string                    `json:"cta_text,omitempty"`
+	AfterPayment   paymentLinkAfterPayment   `json:"after_payment"`
+	AdjustPercent  *float64                  `json:"adjust_percent,omitempty"`
+	MinAmount      *float64                  `json:"min_amount,omitempty"`
+	MaxAmount      *float64                  `json:"max_amount,omitempty"`
+	CustomerFields []string                  `json:"customer_fields,omitempty"`
+	CustomFields   []map[string]any          `json:"custom_fields,omitempty"`
+	Options        paymentLinkOptionsRequest `json:"options"`
+	Metadata       map[string]any            `json:"metadata,omitempty"`
+}
+
+func (s *Server) handleCreatePaymentLink(w http.ResponseWriter, r *http.Request) {
+	reqAuth, ok := mustRequester(w, r)
+	if !ok {
+		return
+	}
+
+	var req createPaymentLinkRequest
+	if !s.parseJSON(w, r, &req) {
+		return
+	}
+
+	customFieldsJSON := make([]string, 0, len(req.CustomFields))
+	for _, item := range req.CustomFields {
+		b, err := json.Marshal(item)
+		if err != nil {
+			httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "custom_fields must be valid json objects", middleware.GetRequestID(r.Context()))
+			return
+		}
+		customFieldsJSON = append(customFieldsJSON, string(b))
+	}
+
+	allowedTokens := make([]*cpayv1.AllowedToken, 0, len(req.AllowedTokens))
+	for _, t := range req.AllowedTokens {
+		allowedTokens = append(allowedTokens, &cpayv1.AllowedToken{
+			Chain:    t.Chain,
+			Symbol:   t.Symbol,
+			Address:  t.Address,
+			Decimals: int32(t.Decimals),
+		})
+	}
+
+	s.withIdempotency(w, r, reqAuth.MerchantID, "/v1/payment_links", func() (int, any, error) {
+		rpcReq := &cpayv1.CreatePaymentLinkRequest{
+			MerchantId:       reqAuth.MerchantID.String(),
+			Title:            req.Title,
+			Description:      req.Description,
+			ImageUrl:         req.ImageURL,
+			PricingMode:      req.PricingMode,
+			Amount:           req.Amount,
+			Currency:         req.Currency,
+			AllowedTokens:    allowedTokens,
+			Reusable:         req.Reusable,
+			CtaText:          req.CTAText,
+			AfterPayment:     &cpayv1.AfterPaymentConfig{Type: req.AfterPayment.Type, RedirectUrl: req.AfterPayment.RedirectURL, SuccessMessage: req.AfterPayment.SuccessMessage},
+			AdjustPercent:    req.AdjustPercent,
+			MinAmount:        req.MinAmount,
+			MaxAmount:        req.MaxAmount,
+			CustomerFields:   req.CustomerFields,
+			CustomFieldsJson: customFieldsJSON,
+			Options: &cpayv1.LinkOptions{
+				CollectEmail:            req.Options.CollectEmail,
+				CollectName:             req.Options.CollectName,
+				CollectPhone:            req.Options.CollectPhone,
+				CollectAddress:          req.Options.CollectAddress,
+				CollectBusinessName:     req.Options.CollectBusinessName,
+				RequireTermsAcceptance:  req.Options.RequireTermsAcceptance,
+				AllowPromoCodes:         req.Options.AllowPromoCodes,
+				CollectTaxAutomatically: req.Options.CollectTaxAutomatically,
+				AddInvoicePdf:           req.Options.AddInvoicePDF,
+				MetadataJson:            mustJSON(req.Options.Metadata, "{}"),
+			},
+			MetadataJson: mustJSON(req.Metadata, "{}"),
+		}
+		if req.ProductID != nil {
+			rpcReq.ProductId = strings.TrimSpace(*req.ProductID)
+		}
+		if req.MaxPayments != nil {
+			v := int32(*req.MaxPayments)
+			rpcReq.MaxPayments = &v
+		}
+		if req.ExpiresAt != nil {
+			rpcReq.ExpiresAt = req.ExpiresAt.UTC().Format(time.RFC3339)
+		}
+		resp, err := s.linkClient.CreatePaymentLink(s.rpcContext(r.Context()), rpcReq)
+		if err != nil {
+			return 0, nil, err
+		}
+		return http.StatusCreated, map[string]any{
+			"id":         resp.GetId(),
+			"code":       resp.GetCode(),
+			"url":        resp.GetUrl(),
+			"title":      resp.GetTitle(),
+			"created_at": resp.GetCreatedAt(),
+		}, nil
+	})
+}
+
+func (s *Server) handleListPaymentLinks(w http.ResponseWriter, r *http.Request) {
+	reqAuth, ok := mustRequester(w, r)
+	if !ok {
+		return
+	}
+	limit := 20
+	offset := 0
+	if q := r.URL.Query().Get("limit"); q != "" {
+		if v, err := strconv.Atoi(q); err == nil && v > 0 && v <= 100 {
+			limit = v
+		}
+	}
+	if q := r.URL.Query().Get("offset"); q != "" {
+		if v, err := strconv.Atoi(q); err == nil && v >= 0 {
+			offset = v
+		}
+	}
+
+	resp, err := s.linkClient.ListPaymentLinks(s.rpcContext(r.Context()), &cpayv1.ListPaymentLinksRequest{
+		MerchantId: reqAuth.MerchantID.String(),
+		Limit:      int32(limit),
+		Offset:     int32(offset),
+	})
+	if err != nil {
+		s.writeRPCError(w, r, err)
+		return
+	}
+
+	items := make([]map[string]any, 0, len(resp.GetData()))
+	for _, item := range resp.GetData() {
+		items = append(items, map[string]any{
+			"id":           item.GetId(),
+			"code":         item.GetCode(),
+			"title":        item.GetTitle(),
+			"pricing_mode": item.GetPricingMode(),
+			"amount":       floatPtrValue(item.Amount),
+			"currency":     item.GetCurrency(),
+			"status":       item.GetStatus(),
+			"reusable":     item.GetReusable(),
+			"max_payments": int32PtrValue(item.MaxPayments),
+			"expires_at":   emptyToNil(item.GetExpiresAt()),
+			"created_at":   item.GetCreatedAt(),
+		})
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"data": items, "limit": limit, "offset": offset})
+}
+
+func (s *Server) handleGetPaymentLink(w http.ResponseWriter, r *http.Request) {
+	reqAuth, ok := mustRequester(w, r)
+	if !ok {
+		return
+	}
+	id := strings.TrimSpace(chi.URLParam(r, "id"))
+	if id == "" {
+		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "id is required", middleware.GetRequestID(r.Context()))
+		return
+	}
+
+	resp, err := s.linkClient.GetPaymentLink(s.rpcContext(r.Context()), &cpayv1.GetPaymentLinkRequest{MerchantId: reqAuth.MerchantID.String(), Id: id})
+	if err != nil {
+		s.writeRPCError(w, r, err)
+		return
+	}
+
+	allowed := make([]map[string]any, 0, len(resp.GetAllowedTokens()))
+	for _, t := range resp.GetAllowedTokens() {
+		allowed = append(allowed, map[string]any{
+			"chain":    t.GetChain(),
+			"symbol":   t.GetSymbol(),
+			"address":  emptyToNil(t.GetAddress()),
+			"decimals": t.GetDecimals(),
+		})
+	}
+	customFields := make([]any, 0, len(resp.GetCustomFieldsJson()))
+	for _, raw := range resp.GetCustomFieldsJson() {
+		customFields = append(customFields, parseJSONValue(raw, map[string]any{}))
+	}
+
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{
+		"id":           resp.GetId(),
+		"code":         resp.GetCode(),
+		"title":        resp.GetTitle(),
+		"description":  emptyToNil(resp.GetDescription()),
+		"image_url":    emptyToNil(resp.GetImageUrl()),
+		"pricing_mode": resp.GetPricingMode(),
+		"amount":       floatPtrValue(resp.Amount),
+		"currency":     resp.GetCurrency(),
+		"reusable":     resp.GetReusable(),
+		"max_payments": int32PtrValue(resp.MaxPayments),
+		"expires_at":   emptyToNil(resp.GetExpiresAt()),
+		"cta_text":     resp.GetCtaText(),
+		"after_payment": map[string]any{
+			"type":            resp.GetAfterPayment().GetType(),
+			"success_message": emptyToNil(resp.GetAfterPayment().GetSuccessMessage()),
+			"redirect_url":    emptyToNil(resp.GetAfterPayment().GetRedirectUrl()),
+		},
+		"status":          resp.GetStatus(),
+		"adjust_percent":  floatPtrValue(resp.AdjustPercent),
+		"min_amount":      floatPtrValue(resp.MinAmount),
+		"max_amount":      floatPtrValue(resp.MaxAmount),
+		"allowed_tokens":  allowed,
+		"customer_fields": resp.GetCustomerFields(),
+		"custom_fields":   customFields,
+		"metadata":        parseJSONValue(resp.GetMetadataJson(), map[string]any{}),
+		"options": map[string]any{
+			"collect_email":             resp.GetOptions().GetCollectEmail(),
+			"collect_name":              resp.GetOptions().GetCollectName(),
+			"collect_phone":             resp.GetOptions().GetCollectPhone(),
+			"collect_address":           resp.GetOptions().GetCollectAddress(),
+			"collect_business_name":     resp.GetOptions().GetCollectBusinessName(),
+			"require_terms_acceptance":  resp.GetOptions().GetRequireTermsAcceptance(),
+			"allow_promo_codes":         resp.GetOptions().GetAllowPromoCodes(),
+			"collect_tax_automatically": resp.GetOptions().GetCollectTaxAutomatically(),
+			"add_invoice_pdf":           resp.GetOptions().GetAddInvoicePdf(),
+			"metadata":                  parseJSONValue(resp.GetOptions().GetMetadataJson(), map[string]any{}),
+		},
+		"created_at": resp.GetCreatedAt(),
+		"updated_at": resp.GetUpdatedAt(),
+	})
+}
+
+func (s *Server) handleArchivePaymentLink(w http.ResponseWriter, r *http.Request) {
+	reqAuth, ok := mustRequester(w, r)
+	if !ok {
+		return
+	}
+	id := strings.TrimSpace(chi.URLParam(r, "id"))
+	if id == "" {
+		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "id is required", middleware.GetRequestID(r.Context()))
+		return
+	}
+	resp, err := s.linkClient.ArchivePaymentLink(s.rpcContext(r.Context()), &cpayv1.ArchivePaymentLinkRequest{MerchantId: reqAuth.MerchantID.String(), Id: id})
+	if err != nil {
+		s.writeRPCError(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"id": resp.GetId(), "archived": resp.GetArchived()})
+}
+
+func mustJSON(v any, def string) string {
+	if v == nil {
+		return def
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		return def
+	}
+	return string(b)
+}
+
+func parseJSONValue(raw string, def any) any {
+	if strings.TrimSpace(raw) == "" {
+		return def
+	}
+	var out any
+	if err := json.Unmarshal([]byte(raw), &out); err != nil {
+		return def
+	}
+	return out
+}
+
+func floatPtrValue(v *float64) any {
+	if v == nil {
+		return nil
+	}
+	return *v
+}
+
+func int32PtrValue(v *int32) any {
+	if v == nil {
+		return nil
+	}
+	return *v
+}

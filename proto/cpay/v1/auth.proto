@@ -1,0 +1,101 @@
+syntax = "proto3";
+
+package cpay.v1;
+
+option go_package = "github.com/cpay-dev/cpay/internal/gen/cpay/v1;cpayv1";
+
+message Principal {
+  string merchant_id = 1;
+  string user_id = 2;
+  string role = 3;
+  string api_key_id = 4;
+  bool is_user = 5;
+}
+
+message TokenPair {
+  string access_token = 1;
+  string refresh_token = 2;
+  string token_type = 3;
+  int32 expires_in = 4;
+}
+
+message UserInfo {
+  string id = 1;
+  string merchant_id = 2;
+  string role = 3;
+}
+
+message LoginRequest {
+  string email = 1;
+  string password = 2;
+}
+
+message LoginResponse {
+  TokenPair tokens = 1;
+  UserInfo user = 2;
+}
+
+message RefreshRequest {
+  string refresh_token = 1;
+}
+
+message RefreshResponse {
+  TokenPair tokens = 1;
+}
+
+message CreateApiKeyRequest {
+  string merchant_id = 1;
+  string name = 2;
+  repeated string scopes = 3;
+}
+
+message ApiKey {
+  string id = 1;
+  string name = 2;
+  string prefix = 3;
+  repeated string scopes = 4;
+  string revoked_at = 5;
+  string last_used_at = 6;
+  string created_at = 7;
+}
+
+message CreateApiKeyResponse {
+  ApiKey api_key = 1;
+  string plain_key = 2;
+}
+
+message ListApiKeysRequest {
+  string merchant_id = 1;
+}
+
+message ListApiKeysResponse {
+  repeated ApiKey data = 1;
+}
+
+message RevokeApiKeyRequest {
+  string merchant_id = 1;
+  string id = 2;
+}
+
+message RevokeApiKeyResponse {
+  string id = 1;
+  bool revoked = 2;
+}
+
+message ValidateCredentialRequest {
+  string authorization = 1;
+  string api_key = 2;
+}
+
+message ValidateCredentialResponse {
+  Principal principal = 1;
+}
+
+service AuthService {
+  rpc Login(LoginRequest) returns (LoginResponse);
+  rpc Refresh(RefreshRequest) returns (RefreshResponse);
+  rpc CreateApiKey(CreateApiKeyRequest) returns (CreateApiKeyResponse);
+  rpc ListApiKeys(ListApiKeysRequest) returns (ListApiKeysResponse);
+  rpc RevokeApiKey(RevokeApiKeyRequest) returns (RevokeApiKeyResponse);
+  rpc ValidateCredential(ValidateCredentialRequest) returns (ValidateCredentialResponse);
+}

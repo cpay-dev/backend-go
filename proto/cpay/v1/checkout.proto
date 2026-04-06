@@ -1,0 +1,260 @@
+syntax = "proto3";
+
+package cpay.v1;
+
+option go_package = "github.com/cpay-dev/cpay/internal/gen/cpay/v1;cpayv1";
+
+message CreateCheckoutSessionRequest {
+  string merchant_id = 1;
+  string link_identifier = 2;
+  optional double amount = 3;
+  string chain = 4;
+  string token_symbol = 5;
+  string token_address = 6;
+  string customer_email = 7;
+  string customer_name = 8;
+  string customer_phone = 9;
+  string customer_address_json = 10;
+  string success_url = 11;
+  int32 expires_in_sec = 12;
+  string metadata_json = 13;
+}
+
+message CreatePublicCheckoutSessionRequest {
+  string link_identifier = 1;
+  optional double amount = 2;
+  string chain = 3;
+  string token_symbol = 4;
+  string token_address = 5;
+  string customer_email = 6;
+  string customer_name = 7;
+  string customer_phone = 8;
+  string customer_address_json = 9;
+  string success_url = 10;
+  int32 expires_in_sec = 11;
+  string metadata_json = 12;
+}
+
+message CreateCheckoutSessionResponse {
+  string id = 1;
+  string payment_intent_id = 2;
+  string payment_link_code = 3;
+  string status = 4;
+  double amount = 5;
+  string currency = 6;
+  string chain = 7;
+  string token_symbol = 8;
+  string deposit_address = 9;
+  double tolerance_percent = 10;
+  double min_acceptable_amount = 11;
+  double max_acceptable_amount = 12;
+  string expires_at = 13;
+  string after_payment_type = 14;
+  string after_payment_redirect_url = 15;
+  string client_secret = 16;
+}
+
+message CheckoutSession {
+  string id = 1;
+  string payment_link_id = 2;
+  string status = 3;
+  double amount = 4;
+  string currency = 5;
+  string chain = 6;
+  string token_symbol = 7;
+  string token_address = 8;
+  string customer_email = 9;
+  string customer_name = 10;
+  string customer_phone = 11;
+  string customer_address_json = 12;
+  string expires_at = 13;
+  string success_url = 14;
+  string created_at = 15;
+  PaymentIntent payment_intent = 16;
+}
+
+message PublicCheckoutSession {
+  string id = 1;
+  string status = 2;
+  double amount = 3;
+  string currency = 4;
+  string chain = 5;
+  string token_symbol = 6;
+  string expires_at = 7;
+  string payment_intent_id = 8;
+  string deposit_address = 9;
+  string link_title = 10;
+  string link_description = 11;
+  string link_image_url = 12;
+  string cta_text = 13;
+  string after_payment_type = 14;
+  string after_payment_redirect_url = 15;
+  string after_payment_success_message = 16;
+}
+
+message GetCheckoutSessionRequest {
+  string merchant_id = 1;
+  string session_id = 2;
+}
+
+message GetPublicCheckoutSessionRequest {
+  string session_id = 1;
+  string client_secret = 2;
+}
+
+message ConfirmCheckoutSessionRequest {
+  string merchant_id = 1;
+  string session_id = 2;
+  string tx_hash = 3;
+  double received_amount = 4;
+  int32 confirmations = 5;
+  int64 block_number = 6;
+  bool has_block_number = 7;
+  string from_address = 8;
+  string to_address = 9;
+  string raw_payload_json = 10;
+}
+
+message ConfirmCheckoutSessionResponse {
+  string checkout_session_id = 1;
+  string payment_intent_id = 2;
+  string status = 3;
+  int32 confirmations = 4;
+  int32 required_confirmations = 5;
+}
+
+message GetPaymentIntentRequest {
+  string merchant_id = 1;
+  string id = 2;
+}
+
+message PaymentIntent {
+  string id = 1;
+  string checkout_session_id = 2;
+  string payment_link_id = 3;
+  string status = 4;
+  string chain = 5;
+  string token_symbol = 6;
+  string token_address = 7;
+  double expected_amount = 8;
+  double tolerance_percent = 9;
+  double min_acceptable_amount = 10;
+  double max_acceptable_amount = 11;
+  double received_amount = 12;
+  string tx_hash = 13;
+  int32 confirmations = 14;
+  int32 required_confirmations = 15;
+  string confirmed_at = 16;
+  string settled_at = 17;
+  string expires_at = 18;
+  string deposit_address = 19;
+  string created_at = 20;
+  string updated_at = 21;
+}
+
+message CreateWebhookEndpointRequest {
+  string merchant_id = 1;
+  string url = 2;
+  string description = 3;
+  repeated string events = 4;
+  int32 max_retries = 5;
+}
+
+message CreateWebhookEndpointResponse {
+  string id = 1;
+  string url = 2;
+  string description = 3;
+  repeated string events = 4;
+  int32 max_retries = 5;
+  string secret = 6;
+}
+
+message CreateSubscriptionRequest {
+  string merchant_id = 1;
+  string payment_link_id = 2;
+  string customer_ref = 3;
+  string chain = 4;
+  string token_symbol = 5;
+  string token_address = 6;
+  double amount = 7;
+  string currency = 8;
+  string interval_unit = 9;
+  int32 interval_count = 10;
+  string first_billing_at = 11;
+  string vault_contract_address = 12;
+  string vault_customer_wallet = 13;
+  double vault_max_total_amount = 14;
+  double vault_remaining_amount = 15;
+  string vault_expires_at = 16;
+  string metadata_json = 17;
+}
+
+message CreateSubscriptionResponse {
+  string id = 1;
+  string status = 2;
+  string chain = 3;
+  string token_symbol = 4;
+  double amount = 5;
+  string currency = 6;
+  string interval_unit = 7;
+  int32 interval_count = 8;
+  string next_billing_at = 9;
+  string vault_authorization_id = 10;
+  double vault_remaining_amount = 11;
+  string first_cycle_id = 12;
+}
+
+message PauseSubscriptionRequest {
+  string merchant_id = 1;
+  string id = 2;
+}
+
+message ResumeSubscriptionRequest {
+  string merchant_id = 1;
+  string id = 2;
+}
+
+message SubscriptionMutationResponse {
+  string id = 1;
+  string status = 2;
+}
+
+message GetSubscriptionCyclesRequest {
+  string merchant_id = 1;
+  string id = 2;
+  int32 limit = 3;
+}
+
+message SubscriptionCycle {
+  string id = 1;
+  int32 cycle_index = 2;
+  string period_start = 3;
+  string period_end = 4;
+  string due_at = 5;
+  string status = 6;
+  double amount = 7;
+  string payment_intent_id = 8;
+  int32 retry_count = 9;
+  string last_error = 10;
+  string created_at = 11;
+  string updated_at = 12;
+}
+
+message GetSubscriptionCyclesResponse {
+  string subscription_id = 1;
+  repeated SubscriptionCycle data = 2;
+}
+
+service CheckoutService {
+  rpc CreateCheckoutSession(CreateCheckoutSessionRequest) returns (CreateCheckoutSessionResponse);
+  rpc CreatePublicCheckoutSession(CreatePublicCheckoutSessionRequest) returns (CreateCheckoutSessionResponse);
+  rpc GetCheckoutSession(GetCheckoutSessionRequest) returns (CheckoutSession);
+  rpc GetPublicCheckoutSession(GetPublicCheckoutSessionRequest) returns (PublicCheckoutSession);
+  rpc ConfirmCheckoutSession(ConfirmCheckoutSessionRequest) returns (ConfirmCheckoutSessionResponse);
+  rpc GetPaymentIntent(GetPaymentIntentRequest) returns (PaymentIntent);
+  rpc CreateWebhookEndpoint(CreateWebhookEndpointRequest) returns (CreateWebhookEndpointResponse);
+  rpc CreateSubscription(CreateSubscriptionRequest) returns (CreateSubscriptionResponse);
+  rpc PauseSubscription(PauseSubscriptionRequest) returns (SubscriptionMutationResponse);
+  rpc ResumeSubscription(ResumeSubscriptionRequest) returns (SubscriptionMutationResponse);
+  rpc GetSubscriptionCycles(GetSubscriptionCyclesRequest) returns (GetSubscriptionCyclesResponse);
+}
