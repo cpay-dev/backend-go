@@ -30,6 +30,10 @@ type Config struct {
 
 	NATSURL string
 
+	ResendAPIKey string
+	EmailFrom    string
+	EmailReplyTo string
+
 	AuthGRPCAddr        string
 	PaymentLinkGRPCAddr string
 	CheckoutGRPCAddr    string
@@ -70,6 +74,10 @@ func Load(serviceName string) Config {
 		MinIOUseSSL:    getBool("MINIO_USE_SSL", false),
 
 		NATSURL: getEnv("NATS_URL", "nats://localhost:4222"),
+
+		ResendAPIKey: getEnv("RESEND_API_KEY", ""),
+		EmailFrom:    getEnv("EMAIL_FROM", "CPay <onboarding@resend.dev>"),
+		EmailReplyTo: getEnv("EMAIL_REPLY_TO", ""),
 
 		AuthGRPCAddr:        getEnv("AUTH_GRPC_ADDR", "localhost:9091"),
 		PaymentLinkGRPCAddr: getEnv("PAYMENT_LINK_GRPC_ADDR", "localhost:9092"),

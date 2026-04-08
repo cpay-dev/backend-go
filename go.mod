@@ -12,6 +12,7 @@ require (
 	github.com/jung-kurt/gofpdf/v2 v2.17.3
 	github.com/minio/minio-go/v7 v7.0.95
 	github.com/nats-io/nats.go v1.47.0
+	github.com/resend/resend-go/v3 v3.3.0
 	github.com/rs/zerolog v1.34.0
 	golang.org/x/crypto v0.47.0
 	google.golang.org/grpc v1.80.0

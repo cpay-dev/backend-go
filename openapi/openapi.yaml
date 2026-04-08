@@ -21,6 +21,63 @@ paths:
       responses:
         '200':
           description: Success
+  /v1/products:
+    post:
+      summary: Create product
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      responses:
+        '201':
+          description: Created
+    get:
+      summary: List products
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      responses:
+        '200':
+          description: Success
+  /v1/products/{id}:
+    get:
+      summary: Get product
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      responses:
+        '200':
+          description: Success
+    post:
+      summary: Update product
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      responses:
+        '200':
+          description: Success
+    delete:
+      summary: Delete product
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      responses:
+        '200':
+          description: Deleted
   /v1/payment_links:
     post:
       summary: Create payment link

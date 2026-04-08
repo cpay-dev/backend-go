@@ -49,6 +49,7 @@ func (s *Service) EnsureBootstrap(ctx context.Context) error {
 
 	merchantID := uuid.New()
 	userID := uuid.New()
+	adminEmail := strings.ToLower(strings.TrimSpace(s.cfg.BootstrapAdminEmail))
 	passHash, err := bcrypt.GenerateFromPassword([]byte(s.cfg.BootstrapAdminPass), bcrypt.DefaultCost)
 	if err != nil {
 		return err
@@ -69,7 +70,15 @@ func (s *Service) EnsureBootstrap(ctx context.Context) error {
 	if _, err = tx.Exec(ctx, `
 		INSERT INTO auth.users(id, merchant_id, email, password_hash, role, created_at, updated_at)
 		VALUES($1, $2, $3, $4, 'admin', NOW(), NOW())
-	`, userID, merchantID, strings.ToLower(strings.TrimSpace(s.cfg.BootstrapAdminEmail)), string(passHash)); err != nil {
+	`, userID, merchantID, adminEmail, string(passHash)); err != nil {
+		return err
+	}
+	if err = s.outbox.EnqueueTx(ctx, tx, "user", userID.String(), &merchantID, "user.signed_up", map[string]any{
+		"user_id":     userID,
+		"merchant_id": merchantID,
+		"email":       adminEmail,
+		"role":        "admin",
+	}); err != nil {
 		return err
 	}
 	if err = tx.Commit(ctx); err != nil {

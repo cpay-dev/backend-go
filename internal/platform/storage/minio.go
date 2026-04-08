@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 
 	"github.com/cpay-dev/cpay/internal/shared/config"
 	"github.com/minio/minio-go/v7"
@@ -54,4 +55,27 @@ func (m *MinIO) PutObjectBytes(ctx context.Context, objectKey, contentType strin
 
 func (m *MinIO) Bucket() string {
 	return m.bucket
+}
+
+func (m *MinIO) GetObjectBytes(ctx context.Context, objectKey string) ([]byte, string, error) {
+	obj, err := m.client.GetObject(ctx, m.bucket, objectKey, minio.GetObjectOptions{})
+	if err != nil {
+		return nil, "", fmt.Errorf("get object %s: %w", objectKey, err)
+	}
+	defer obj.Close()
+
+	stat, err := obj.Stat()
+	if err != nil {
+		return nil, "", fmt.Errorf("stat object %s: %w", objectKey, err)
+	}
+	payload, err := io.ReadAll(obj)
+	if err != nil {
+		return nil, "", fmt.Errorf("read object %s: %w", objectKey, err)
+	}
+
+	contentType := stat.ContentType
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	return payload, contentType, nil
 }

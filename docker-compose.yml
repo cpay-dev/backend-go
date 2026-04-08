@@ -65,6 +65,9 @@ services:
       JWT_SECRET: cpay-dev-jwt-secret
       KEY_ENCRYPTION_KEY: cpay-dev-master-key-change-me
       NATS_URL: nats://nats:4222
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-onboarding@resend.dev}
+      EMAIL_REPLY_TO: ${EMAIL_REPLY_TO:-}
       AUTH_GRPC_ADDR: auth-service:9091
       PAYMENT_LINK_GRPC_ADDR: payment-link-service:9092
       CHECKOUT_GRPC_ADDR: checkout-service:9093
@@ -129,6 +132,27 @@ services:
         condition: service_started
     ports:
       - "8082:8082"
+
+  email-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE: email-service
+    environment:
+      <<: *service_env
+      HTTP_ADDR: :8090
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_started
+      minio:
+        condition: service_started
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "8090:8090"
 
   chain-observer-service:
     build:

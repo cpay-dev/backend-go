@@ -86,6 +86,12 @@ func (s *Server) Router() http.Handler {
 			r.Get("/api_keys", s.handleListAPIKeys)
 			r.Post("/api_keys/{id}/revoke", s.handleRevokeAPIKey)
 
+			r.Post("/products", s.handleCreateProduct)
+			r.Get("/products", s.handleListProducts)
+			r.Get("/products/{id}", s.handleGetProduct)
+			r.Post("/products/{id}", s.handleUpdateProduct)
+			r.Delete("/products/{id}", s.handleDeleteProduct)
+
 			r.Post("/payment_links", s.handleCreatePaymentLink)
 			r.Get("/payment_links", s.handleListPaymentLinks)
 			r.Get("/payment_links/{id}", s.handleGetPaymentLink)

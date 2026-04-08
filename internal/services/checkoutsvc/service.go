@@ -626,11 +626,23 @@ func (s *Service) ConfirmCheckoutSession(ctx context.Context, req *cpayv1.Confir
 
 	if newStatus == "confirmed" && addInvoice {
 		if objectKey, invErr := s.generateAndStoreInvoice(ctx, merchantID, intentID, req.GetReceivedAmount(), currency, title); invErr == nil && objectKey != "" {
-			_, _ = s.db.Exec(ctx, `
+			invoiceID := uuid.New()
+			cmd, insErr := s.db.Exec(ctx, `
 				INSERT INTO checkout.invoices(id, payment_intent_id, merchant_id, object_key, amount, currency, created_at)
 				VALUES($1, $2, $3, $4, $5, $6, NOW())
 				ON CONFLICT (payment_intent_id) DO NOTHING
-			`, uuid.New(), intentID, merchantID, objectKey, req.GetReceivedAmount(), currency)
+			`, invoiceID, intentID, merchantID, objectKey, req.GetReceivedAmount(), currency)
+			if insErr == nil && cmd.RowsAffected() > 0 {
+				_ = s.outbox.Enqueue(ctx, "invoice", invoiceID.String(), &merchantID, "invoice.created", map[string]any{
+					"invoice_id":          invoiceID,
+					"payment_intent_id":   intentID,
+					"merchant_id":         merchantID,
+					"object_key":          objectKey,
+					"amount":              req.GetReceivedAmount(),
+					"currency":            currency,
+					"checkout_session_id": sessionID,
+				})
+			}
 		}
 	}
 

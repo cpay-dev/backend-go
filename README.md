@@ -13,6 +13,7 @@ External API is REST on `api-gateway`; internal service-to-service communication
   - `checkout-service`
   - `chain-observer-service`
   - `webhook-service`
+  - `email-service`
   - `payout-service`
   - `subscription-service`
   - `outbox-relay-service`
@@ -45,6 +46,12 @@ External API is REST on `api-gateway`; internal service-to-service communication
   - `POST /v1/api_keys`
   - `GET /v1/api_keys`
   - `POST /v1/api_keys/{id}/revoke`
+- Products
+  - `POST /v1/products`
+  - `GET /v1/products`
+  - `GET /v1/products/{id}`
+  - `POST /v1/products/{id}`
+  - `DELETE /v1/products/{id}`
 - Payment links
   - `POST /v1/payment_links`
   - `GET /v1/payment_links`
@@ -90,6 +97,7 @@ docker compose up -d --build
 - Checkout service: `http://localhost:8089/health` (gRPC `:9093`)
 - Outbox relay: `http://localhost:8081/health`
 - Webhook service: `http://localhost:8082/health`
+- Email service: `http://localhost:8090/health`
 
 ### 3. Default bootstrap login
 
@@ -117,6 +125,19 @@ make run
 - Raw SQL migration files are stored in `migrations/`.
 - Migrations are applied with `golang-migrate` from code (`internal/platform/migrate`).
 - Run manually: `make migrate`
+
+## Email
+
+- Email delivery is handled by `email-service` using the Resend Go SDK.
+- Configure:
+  - `RESEND_API_KEY`
+  - `EMAIL_FROM`
+  - `EMAIL_REPLY_TO` (optional)
+- Triggered events:
+  - `user.signed_up`
+  - `invoice.created`
+  - `payment.confirmed`
+  - `payment.expired` / `payment.failed`
 
 ## Notes
 
