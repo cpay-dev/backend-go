@@ -72,6 +72,8 @@ func (s *Server) Router() http.Handler {
 		r.Post("/auth/login", s.handleLogin)
 		r.Post("/auth/refresh", s.handleRefresh)
 
+		r.Get("/public/payment_links/{code}", s.handleGetPublicPaymentLink)
+
 		r.Group(func(r chi.Router) {
 			r.Use(s.authn)
 
@@ -84,6 +86,7 @@ func (s *Server) Router() http.Handler {
 			r.Post("/payment_links", s.handleCreatePaymentLink)
 			r.Get("/payment_links", s.handleListPaymentLinks)
 			r.Get("/payment_links/{id}", s.handleGetPaymentLink)
+			r.Patch("/payment_links/{id}", s.handleUpdatePaymentLink)
 			r.Post("/payment_links/{id}/archive", s.handleArchivePaymentLink)
 
 			r.Post("/payment_links/{id}/sessions", s.handleCreateCheckoutSession)

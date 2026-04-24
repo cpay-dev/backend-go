@@ -551,7 +551,7 @@ func (s *Server) handleGetPaymentIntent(w http.ResponseWriter, r *http.Request) 
 
 func tokenAllowed(allowed []allowedToken, chainName, symbol, address string) bool {
 	if len(allowed) == 0 {
-		return false
+		return true
 	}
 	chainName = strings.ToLower(strings.TrimSpace(chainName))
 	symbol = strings.ToUpper(strings.TrimSpace(symbol))

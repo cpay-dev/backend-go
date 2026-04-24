@@ -402,8 +402,70 @@ func (s *Service) ArchivePaymentLink(ctx context.Context, req *cpayv1.ArchivePay
 	return &cpayv1.ArchivePaymentLinkResponse{Id: id, Archived: true}, nil
 }
 
+func (s *Service) UpdatePaymentLink(ctx context.Context, req *cpayv1.UpdatePaymentLinkRequest) (*cpayv1.UpdatePaymentLinkResponse, error) {
+	merchantID, err := uuid.Parse(strings.TrimSpace(req.GetMerchantId()))
+	if err != nil {
+		return nil, rpcx.E(codes.InvalidArgument, "invalid_request", "merchant_id is invalid")
+	}
+	id := strings.TrimSpace(req.GetId())
+	if id == "" {
+		return nil, rpcx.E(codes.InvalidArgument, "invalid_request", "id is required")
+	}
+	title := strings.TrimSpace(req.GetTitle())
+	if title == "" {
+		return nil, rpcx.E(codes.InvalidArgument, "invalid_request", "title is required")
+	}
+	currency := strings.TrimSpace(req.GetCurrency())
+	if currency == "" {
+		currency = "USD"
+	}
+	pricingMode := strings.TrimSpace(req.GetPricingMode())
+	if pricingMode == "" {
+		pricingMode = "fixed"
+	}
+	metadataJSON, err := normalizeJSON(req.GetMetadataJson(), "{}")
+	if err != nil {
+		return nil, rpcx.E(codes.InvalidArgument, "invalid_request", "metadata is invalid")
+	}
+	allowedTokensJSON := "[]"
+	if req.GetUpdateAllowedTokens() {
+		tokens := make([]map[string]any, 0, len(req.GetAllowedTokens()))
+		for _, t := range req.GetAllowedTokens() {
+			tokens = append(tokens, map[string]any{
+				"chain":    t.GetChain(),
+				"symbol":   t.GetSymbol(),
+				"address":  t.GetAddress(),
+				"decimals": t.GetDecimals(),
+			})
+		}
+		b, _ := json.Marshal(tokens)
+		allowedTokensJSON = string(b)
+	}
+	var cmd interface{ RowsAffected() int64 }
+	if req.GetUpdateAllowedTokens() {
+		cmd, err = s.db.Exec(ctx, `
+			UPDATE catalog.payment_links
+			SET title=$3, pricing_mode=$4, amount=$5, currency=$6, metadata=$7::jsonb, allowed_tokens=$8::jsonb, updated_at=NOW()
+			WHERE merchant_id=$1 AND (id::text=$2 OR code=$2) AND status!='archived'
+		`, merchantID, id, title, strings.ToLower(pricingMode), req.Amount, strings.ToUpper(currency), metadataJSON, allowedTokensJSON)
+	} else {
+		cmd, err = s.db.Exec(ctx, `
+			UPDATE catalog.payment_links
+			SET title=$3, pricing_mode=$4, amount=$5, currency=$6, metadata=$7::jsonb, updated_at=NOW()
+			WHERE merchant_id=$1 AND (id::text=$2 OR code=$2) AND status!='archived'
+		`, merchantID, id, title, strings.ToLower(pricingMode), req.Amount, strings.ToUpper(currency), metadataJSON)
+	}
+	if err != nil {
+		return nil, rpcx.E(codes.Internal, "internal_error", "failed to update payment link")
+	}
+	if cmd.RowsAffected() == 0 {
+		return nil, rpcx.E(codes.NotFound, "not_found", "payment link not found")
+	}
+	return &cpayv1.UpdatePaymentLinkResponse{Id: id, Updated: true}, nil
+}
+
 func newLinkCode() (string, error) {
-	const alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	const alphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 	const length = 16
 	buf := make([]byte, length)
 	if _, err := rand.Read(buf); err != nil {

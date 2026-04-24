@@ -148,10 +148,7 @@ func checkoutSessionCreateToResponse(resp *cpayv1.CreateCheckoutSessionResponse)
 		"currency":          resp.GetCurrency(),
 		"chain":             resp.GetChain(),
 		"token_symbol":      resp.GetTokenSymbol(),
-		"deposit_address": map[string]any{
-			"address": resp.GetDepositAddress(),
-			"chain":   resp.GetChain(),
-		},
+		"deposit_address": resp.GetDepositAddress(),
 		"tolerance_percent":     resp.GetTolerancePercent(),
 		"min_acceptable_amount": resp.GetMinAcceptableAmount(),
 		"max_acceptable_amount": resp.GetMaxAcceptableAmount(),

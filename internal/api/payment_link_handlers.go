@@ -3,6 +3,7 @@ package api
 import (
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -14,6 +15,7 @@ import (
 	"github.com/cpay-dev/cpay/internal/shared/middleware"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 type allowedToken struct {
@@ -364,6 +366,72 @@ func (s *Server) handleGetPaymentLink(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, resp)
 }
 
+type updatePaymentLinkRequest struct {
+	Title         string         `json:"title"`
+	PricingMode   string         `json:"pricing_mode"`
+	Amount        *float64       `json:"amount"`
+	Currency      string         `json:"currency"`
+	AllowedTokens []allowedToken `json:"allowed_tokens"`
+	Metadata      map[string]any `json:"metadata"`
+}
+
+func (s *Server) handleUpdatePaymentLink(w http.ResponseWriter, r *http.Request) {
+	reqAuth, ok := mustRequester(w, r)
+	if !ok {
+		return
+	}
+	id := strings.TrimSpace(chi.URLParam(r, "id"))
+	if id == "" {
+		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "id is required", middleware.GetRequestID(r.Context()))
+		return
+	}
+
+	var req updatePaymentLinkRequest
+	if !s.parseJSON(w, r, &req) {
+		return
+	}
+
+	if strings.TrimSpace(req.Title) == "" {
+		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "title is required", middleware.GetRequestID(r.Context()))
+		return
+	}
+	if strings.TrimSpace(req.Currency) == "" {
+		req.Currency = "USD"
+	}
+	if strings.TrimSpace(req.PricingMode) == "" {
+		req.PricingMode = "fixed"
+	}
+
+	metadataRaw, _ := json.Marshal(req.Metadata)
+
+	var err error
+	var cmd interface{ RowsAffected() int64 }
+	if req.AllowedTokens != nil {
+		allowedRaw, _ := json.Marshal(req.AllowedTokens)
+		cmd, err = s.db.Exec(r.Context(), `
+			UPDATE payment_links
+			SET title=$3, pricing_mode=$4, amount=$5, currency=$6, metadata=$7::jsonb, allowed_tokens=$8::jsonb, updated_at=NOW()
+			WHERE merchant_id=$1 AND (id::text=$2 OR code=$2) AND status!='archived'
+		`, reqAuth.MerchantID, id, strings.TrimSpace(req.Title), strings.ToLower(req.PricingMode), req.Amount, strings.ToUpper(req.Currency), string(metadataRaw), string(allowedRaw))
+	} else {
+		cmd, err = s.db.Exec(r.Context(), `
+			UPDATE payment_links
+			SET title=$3, pricing_mode=$4, amount=$5, currency=$6, metadata=$7::jsonb, updated_at=NOW()
+			WHERE merchant_id=$1 AND (id::text=$2 OR code=$2) AND status!='archived'
+		`, reqAuth.MerchantID, id, strings.TrimSpace(req.Title), strings.ToLower(req.PricingMode), req.Amount, strings.ToUpper(req.Currency), string(metadataRaw))
+	}
+	if err != nil {
+		httpx.WriteError(w, http.StatusInternalServerError, "internal_error", "failed to update payment link", middleware.GetRequestID(r.Context()))
+		return
+	}
+	if cmd.RowsAffected() == 0 {
+		httpx.WriteError(w, http.StatusNotFound, "not_found", "payment link not found", middleware.GetRequestID(r.Context()))
+		return
+	}
+
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"id": id, "updated": true})
+}
+
 func (s *Server) handleArchivePaymentLink(w http.ResponseWriter, r *http.Request) {
 	reqAuth, ok := mustRequester(w, r)
 	if !ok {
@@ -392,7 +460,7 @@ func (s *Server) handleArchivePaymentLink(w http.ResponseWriter, r *http.Request
 }
 
 func newLinkCode() (string, error) {
-	const alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	const alphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 	const length = 16
 	buf := make([]byte, length)
 	if _, err := rand.Read(buf); err != nil {
@@ -403,6 +471,47 @@ func newLinkCode() (string, error) {
 		out[i] = alphabet[int(buf[i])%len(alphabet)]
 	}
 	return string(out), nil
+}
+
+func (s *Server) handleGetPublicPaymentLink(w http.ResponseWriter, r *http.Request) {
+	code := strings.TrimSpace(chi.URLParam(r, "code"))
+	if code == "" {
+		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "code is required", middleware.GetRequestID(r.Context()))
+		return
+	}
+
+	var title, mode, currency, cta, amountRaw string
+	var allowedRaw []byte
+	var collectEmail bool
+
+	err := s.db.QueryRow(r.Context(), `
+		SELECT p.title, p.pricing_mode, COALESCE(p.amount::text, ''), p.currency,
+			p.cta_text, p.allowed_tokens,
+			COALESCE(l.collect_email, false)
+		FROM payment_links p
+		LEFT JOIN link_options l ON l.payment_link_id = p.id
+		WHERE p.code = $1 AND p.status = 'active'
+	`, code).Scan(&title, &mode, &amountRaw, &currency, &cta, &allowedRaw, &collectEmail)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			httpx.WriteError(w, http.StatusNotFound, "not_found", "payment link not found", middleware.GetRequestID(r.Context()))
+			return
+		}
+		httpx.WriteError(w, http.StatusInternalServerError, "internal_error", "failed to lookup payment link", middleware.GetRequestID(r.Context()))
+		return
+	}
+
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{
+		"title":          title,
+		"pricing_mode":   mode,
+		"amount":         parseFloatMaybe(amountRaw),
+		"currency":       currency,
+		"cta_text":       cta,
+		"allowed_tokens": parseRawJSON(allowedRaw),
+		"options": map[string]any{
+			"collect_email": collectEmail,
+		},
+	})
 }
 
 func parseFloatMaybe(v string) any {

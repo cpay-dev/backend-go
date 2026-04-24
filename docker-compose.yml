@@ -166,6 +166,10 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      nats:
+        condition: service_started
+      checkout-service:
+        condition: service_started
     ports:
       - "8083:8083"
 

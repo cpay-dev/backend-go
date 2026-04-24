@@ -116,9 +116,27 @@ message ArchivePaymentLinkResponse {
   bool archived = 2;
 }
 
+message UpdatePaymentLinkRequest {
+  string merchant_id = 1;
+  string id = 2;
+  string title = 3;
+  string pricing_mode = 4;
+  optional double amount = 5;
+  string currency = 6;
+  string metadata_json = 7;
+  repeated AllowedToken allowed_tokens = 8;
+  bool update_allowed_tokens = 9;
+}
+
+message UpdatePaymentLinkResponse {
+  string id = 1;
+  bool updated = 2;
+}
+
 service PaymentLinkService {
   rpc CreatePaymentLink(CreatePaymentLinkRequest) returns (CreatePaymentLinkResponse);
   rpc ListPaymentLinks(ListPaymentLinksRequest) returns (ListPaymentLinksResponse);
   rpc GetPaymentLink(GetPaymentLinkRequest) returns (PaymentLink);
   rpc ArchivePaymentLink(ArchivePaymentLinkRequest) returns (ArchivePaymentLinkResponse);
+  rpc UpdatePaymentLink(UpdatePaymentLinkRequest) returns (UpdatePaymentLinkResponse);
 }

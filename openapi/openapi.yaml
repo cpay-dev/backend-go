@@ -95,6 +95,72 @@ paths:
       responses:
         '200':
           description: Success
+  /v1/payment_links/{id}:
+    get:
+      summary: Get payment link
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      responses:
+        '200':
+          description: Success
+        '404':
+          description: Not found
+    patch:
+      summary: Update payment link
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                pricing_mode:
+                  type: string
+                  enum: [fixed, open]
+                amount:
+                  type: number
+                  nullable: true
+                currency:
+                  type: string
+                metadata:
+                  type: object
+      responses:
+        '200':
+          description: Updated
+        '404':
+          description: Not found
+  /v1/payment_links/{id}/archive:
+    post:
+      summary: Archive payment link
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      responses:
+        '200':
+          description: Archived
+        '404':
+          description: Not found
   /v1/payment_links/{id}/sessions:
     post:
       summary: Create checkout session from payment link
@@ -155,6 +221,30 @@ paths:
       responses:
         '200':
           description: Updated
+  /v1/mock_transfers:
+    post:
+      summary: Queue mock stablecoin transfer for a checkout session
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [session_id]
+              properties:
+                session_id: { type: string }
+                received_amount: { type: number }
+                confirmations: { type: integer }
+                tx_hash: { type: string }
+                block_number: { type: integer }
+                from_address: { type: string }
+                to_address: { type: string }
+                raw_payload: { type: object }
+      responses:
+        '202':
+          description: Queued
   /v1/webhook_endpoints:
     post:
       summary: Register merchant webhook endpoint

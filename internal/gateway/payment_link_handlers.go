@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"github.com/cpay-dev/cpay/internal/shared/httpx"
 	"github.com/cpay-dev/cpay/internal/shared/middleware"
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
 )
 
 type paymentLinkAllowedToken struct {
@@ -286,6 +288,102 @@ func (s *Server) handleArchivePaymentLink(w http.ResponseWriter, r *http.Request
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{"id": resp.GetId(), "archived": resp.GetArchived()})
+}
+
+type updatePaymentLinkRequest struct {
+	Title         string                    `json:"title"`
+	PricingMode   string                    `json:"pricing_mode"`
+	Amount        *float64                  `json:"amount"`
+	Currency      string                    `json:"currency"`
+	AllowedTokens []paymentLinkAllowedToken `json:"allowed_tokens"`
+	Metadata      map[string]any            `json:"metadata"`
+}
+
+func (s *Server) handleUpdatePaymentLink(w http.ResponseWriter, r *http.Request) {
+	reqAuth, ok := mustRequester(w, r)
+	if !ok {
+		return
+	}
+	id := strings.TrimSpace(chi.URLParam(r, "id"))
+	if id == "" {
+		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "id is required", middleware.GetRequestID(r.Context()))
+		return
+	}
+	var req updatePaymentLinkRequest
+	if !s.parseJSON(w, r, &req) {
+		return
+	}
+	allowedTokens := make([]*cpayv1.AllowedToken, 0, len(req.AllowedTokens))
+	for _, t := range req.AllowedTokens {
+		allowedTokens = append(allowedTokens, &cpayv1.AllowedToken{
+			Chain:    t.Chain,
+			Symbol:   t.Symbol,
+			Address:  t.Address,
+			Decimals: int32(t.Decimals),
+		})
+	}
+	resp, err := s.linkClient.UpdatePaymentLink(s.rpcContext(r.Context()), &cpayv1.UpdatePaymentLinkRequest{
+		MerchantId:          reqAuth.MerchantID.String(),
+		Id:                  id,
+		Title:               req.Title,
+		PricingMode:         req.PricingMode,
+		Amount:              req.Amount,
+		Currency:            req.Currency,
+		MetadataJson:        mustJSON(req.Metadata, "{}"),
+		AllowedTokens:       allowedTokens,
+		UpdateAllowedTokens: req.AllowedTokens != nil,
+	})
+	if err != nil {
+		s.writeRPCError(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"id": resp.GetId(), "updated": resp.GetUpdated()})
+}
+
+func (s *Server) handleGetPublicPaymentLink(w http.ResponseWriter, r *http.Request) {
+	code := strings.TrimSpace(chi.URLParam(r, "code"))
+	if code == "" {
+		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "code is required", middleware.GetRequestID(r.Context()))
+		return
+	}
+
+	var title, mode, currency, cta, amountRaw string
+	var allowedRaw []byte
+	var collectEmail bool
+
+	err := s.db.QueryRow(r.Context(), `
+		SELECT p.title, p.pricing_mode, COALESCE(p.amount::text, ''), p.currency,
+			p.cta_text, p.allowed_tokens,
+			COALESCE(l.collect_email, false)
+		FROM catalog.payment_links p
+		LEFT JOIN catalog.link_options l ON l.payment_link_id = p.id
+		WHERE p.code = $1 AND p.status = 'active'
+	`, code).Scan(&title, &mode, &amountRaw, &currency, &cta, &allowedRaw, &collectEmail)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			httpx.WriteError(w, http.StatusNotFound, "not_found", "payment link not found", middleware.GetRequestID(r.Context()))
+			return
+		}
+		httpx.WriteError(w, http.StatusInternalServerError, "internal_error", "failed to lookup payment link", middleware.GetRequestID(r.Context()))
+		return
+	}
+
+	var amount any
+	if amountRaw != "" {
+		amount = parseJSONValue(amountRaw, nil)
+	}
+
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{
+		"title":          title,
+		"pricing_mode":   mode,
+		"amount":         amount,
+		"currency":       currency,
+		"cta_text":       cta,
+		"allowed_tokens": parseJSONValue(string(allowedRaw), []any{}),
+		"options": map[string]any{
+			"collect_email": collectEmail,
+		},
+	})
 }
 
 func mustJSON(v any, def string) string {

@@ -1,0 +1,45 @@
+package api
+
+import (
+	"net/http"
+	"net/http/httptest"
+	"testing"
+)
+
+// TestRouterMethodRegistration verifies that every expected HTTP method/path
+// combination is registered in the router. An unregistered route returns 405;
+// a registered-but-unauthenticated route returns 401. This test catches the
+// class of bug where a handler exists but its r.Patch / r.Get / etc. call is
+// missing in Router().
+func TestRouterMethodRegistration(t *testing.T) {
+	s := &Server{}
+	handler := s.Router()
+
+	routes := []struct {
+		method string
+		path   string
+	}{
+		// payment links
+		{http.MethodPost, "/v1/payment_links"},
+		{http.MethodGet, "/v1/payment_links"},
+		{http.MethodGet, "/v1/payment_links/some-id"},
+		{http.MethodPatch, "/v1/payment_links/some-id"},
+		{http.MethodPost, "/v1/payment_links/some-id/archive"},
+		{http.MethodPost, "/v1/payment_links/some-id/sessions"},
+		// checkout
+		{http.MethodGet, "/v1/checkout/cs_test"},
+		{http.MethodPost, "/v1/checkout/cs_test/confirm"},
+	}
+
+	for _, tc := range routes {
+		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
+			req := httptest.NewRequest(tc.method, tc.path, nil)
+			rr := httptest.NewRecorder()
+			handler.ServeHTTP(rr, req)
+
+			if rr.Code == http.StatusMethodNotAllowed {
+				t.Errorf("route %s %s is not registered (got 405 — add it to Router())", tc.method, tc.path)
+			}
+		})
+	}
+}

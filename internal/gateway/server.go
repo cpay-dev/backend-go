@@ -11,6 +11,7 @@ import (
 	"time"
 
 	cpayv1 "github.com/cpay-dev/cpay/internal/gen/cpay/v1"
+	"github.com/cpay-dev/cpay/internal/platform/outbox"
 	"github.com/cpay-dev/cpay/internal/shared/config"
 	"github.com/cpay-dev/cpay/internal/shared/httpx"
 	"github.com/cpay-dev/cpay/internal/shared/middleware"
@@ -34,10 +35,15 @@ type requester struct {
 	IsUser     bool
 }
 
+type gatewayOutboxPublisher interface {
+	Enqueue(ctx context.Context, aggregateType, aggregateID string, merchantID *uuid.UUID, eventType string, payload any) error
+}
+
 type Server struct {
 	cfg            config.Config
 	log            zerolog.Logger
 	db             *pgxpool.Pool
+	outbox         gatewayOutboxPublisher
 	authClient     cpayv1.AuthServiceClient
 	linkClient     cpayv1.PaymentLinkServiceClient
 	checkoutClient cpayv1.CheckoutServiceClient
@@ -55,6 +61,7 @@ func NewServer(
 		cfg:            cfg,
 		log:            log,
 		db:             db,
+		outbox:         outbox.New(db, cfg.ServiceName),
 		authClient:     authClient,
 		linkClient:     linkClient,
 		checkoutClient: checkoutClient,
@@ -74,6 +81,7 @@ func (s *Server) Router() http.Handler {
 		r.Post("/auth/login", s.handleLogin)
 		r.Post("/auth/refresh", s.handleRefresh)
 
+		r.Get("/public/payment_links/{code}", s.handleGetPublicPaymentLink)
 		r.Post("/public/payment_links/{id}/sessions", s.handleCreatePublicCheckoutSession)
 		r.Get("/public/checkout/{session_id}", s.handleGetPublicCheckoutSession)
 
@@ -95,11 +103,13 @@ func (s *Server) Router() http.Handler {
 			r.Post("/payment_links", s.handleCreatePaymentLink)
 			r.Get("/payment_links", s.handleListPaymentLinks)
 			r.Get("/payment_links/{id}", s.handleGetPaymentLink)
+			r.Patch("/payment_links/{id}", s.handleUpdatePaymentLink)
 			r.Post("/payment_links/{id}/archive", s.handleArchivePaymentLink)
 
 			r.Post("/payment_links/{id}/sessions", s.handleCreateCheckoutSession)
 			r.Get("/checkout/{session_id}", s.handleGetCheckoutSession)
 			r.Post("/checkout/{session_id}/confirm", s.handleConfirmCheckoutSession)
+			r.Post("/mock_transfers", s.handleCreateMockTransfer)
 			r.Get("/payments/{id}", s.handleGetPaymentIntent)
 
 			r.Post("/webhook_endpoints", s.handleCreateWebhookEndpoint)
