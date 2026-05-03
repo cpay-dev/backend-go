@@ -23,3 +23,32 @@ func TestValidateChainRPCURLsRejectsInvalidURL(t *testing.T) {
 		t.Fatalf("expected invalid url error")
 	}
 }
+
+func TestConfirmationForChainUsesExplicitChainDefaultsAndOverrides(t *testing.T) {
+	cfg := Config{ChainConfirmations: parseConfirmations("hyperevm:15")}
+
+	if got := cfg.ConfirmationForChain("HyperEVM"); got != 15 {
+		t.Fatalf("expected HyperEVM override 15, got %d", got)
+	}
+	if got := cfg.ConfirmationForChain("Arbitrum One"); got != 4800 {
+		t.Fatalf("expected Arbitrum One default 4800, got %d", got)
+	}
+	if got := cfg.ConfirmationForChain("Base"); got != 600 {
+		t.Fatalf("expected Base default 600, got %d", got)
+	}
+	if got := cfg.ConfirmationForChain("Ethereum Mainnet"); got != 64 {
+		t.Fatalf("expected Ethereum Mainnet default 64, got %d", got)
+	}
+	if got := cfg.ConfirmationForChain("Polygon"); got != 6 {
+		t.Fatalf("expected Polygon default 6, got %d", got)
+	}
+	if got := cfg.ConfirmationForChain("BSC"); got != 6 {
+		t.Fatalf("expected BSC default 6, got %d", got)
+	}
+	if got := cfg.ConfirmationForChain("Tron"); got != 21 {
+		t.Fatalf("expected Tron default 21, got %d", got)
+	}
+	if got := cfg.ConfirmationForChain("unknown-chain"); got != 12 {
+		t.Fatalf("expected deterministic unknown-chain fallback 12, got %d", got)
+	}
+}

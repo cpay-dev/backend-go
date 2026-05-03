@@ -1,0 +1,1 @@
+-- Data-only migration. Do not lower confirmation policy on rollback.

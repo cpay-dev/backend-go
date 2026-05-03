@@ -55,6 +55,26 @@ type Config struct {
 	BootstrapAdminPass    string
 }
 
+var defaultChainConfirmations = map[string]int{
+	"ethereum":         64,
+	"ethereum mainnet": 64,
+	"mainnet":          64,
+	"polygon":          6,
+	"arbitrum":         4800,
+	"arbitrum one":     4800,
+	"base":             600,
+	"hyperevm":         3,
+	"hyper evm":        3,
+	"hyperliquid":      3,
+	"hyperliquid evm":  3,
+	"bnb":              6,
+	"bsc":              6,
+	"bnb smart chain":  6,
+	"optimism":         600,
+	"solana":           32,
+	"tron":             21,
+}
+
 func Load(serviceName string) Config {
 	cfg := Config{
 		ServiceName: serviceName,
@@ -87,7 +107,7 @@ func Load(serviceName string) Config {
 		CheckoutGRPCAddr:    getEnv("CHECKOUT_GRPC_ADDR", "localhost:9093"),
 
 		DefaultTolerancePercent: getFloat("DEFAULT_TOLERANCE_PERCENT", 0.25),
-		ChainConfirmations:      parseConfirmations(getEnv("CHAIN_CONFIRMATIONS", "ethereum:12,polygon:12,arbitrum:20,base:12,hyperevm:12")),
+		ChainConfirmations:      parseConfirmations(getEnv("CHAIN_CONFIRMATIONS", "")),
 		ChainRPCURLs:            parseChainRPCURLs(getEnv("CHAIN_RPC_URLS", "")),
 		PayoutMode:              strings.ToLower(strings.TrimSpace(getEnv("PAYOUT_MODE", "production"))),
 
@@ -105,7 +125,10 @@ func Load(serviceName string) Config {
 }
 
 func parseConfirmations(raw string) map[string]int {
-	out := map[string]int{}
+	out := make(map[string]int, len(defaultChainConfirmations))
+	for chainName, confirmations := range defaultChainConfirmations {
+		out[chainName] = confirmations
+	}
 	for _, item := range strings.Split(raw, ",") {
 		item = strings.TrimSpace(item)
 		if item == "" {
@@ -120,9 +143,6 @@ func parseConfirmations(raw string) map[string]int {
 			continue
 		}
 		out[strings.ToLower(strings.TrimSpace(parts[0]))] = val
-	}
-	if len(out) == 0 {
-		out["polygon"] = 12
 	}
 	return out
 }
@@ -225,7 +245,7 @@ func (c Config) ConfirmationForChain(chain string) int {
 	if v, ok := c.ChainConfirmations[k]; ok {
 		return v
 	}
-	for _, v := range c.ChainConfirmations {
+	if v, ok := defaultChainConfirmations[k]; ok {
 		return v
 	}
 	return 12

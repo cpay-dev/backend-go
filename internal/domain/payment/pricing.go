@@ -1,6 +1,9 @@
 package payment
 
-import "math"
+import (
+	"math"
+	"strings"
+)
 
 func ComputeBounds(expectedAmount, tolerancePercent float64) (minAmount, maxAmount float64) {
 	if expectedAmount < 0 {
@@ -39,6 +42,15 @@ func ResolveIntentStatus(expectedAmount, receivedAmount, tolerancePercent float6
 		return "overpaid"
 	}
 	return "confirmed"
+}
+
+func IntentStatusIsPaid(status string) bool {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "confirmed", "overpaid", "settled":
+		return true
+	default:
+		return false
+	}
 }
 
 func round8(v float64) float64 {

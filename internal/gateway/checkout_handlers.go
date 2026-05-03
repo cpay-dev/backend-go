@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"github.com/cpay-dev/cpay/internal/shared/httpx"
 	"github.com/cpay-dev/cpay/internal/shared/middleware"
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
 )
 
 type createCheckoutSessionRequest struct {
@@ -290,6 +292,69 @@ func (s *Server) handleConfirmCheckoutSession(w http.ResponseWriter, r *http.Req
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{
+		"id":                     resp.GetCheckoutSessionId(),
+		"checkout_session_id":    resp.GetCheckoutSessionId(),
+		"payment_intent_id":      resp.GetPaymentIntentId(),
+		"status":                 resp.GetStatus(),
+		"payment_intent_status":  resp.GetStatus(),
+		"received_amount":        req.ReceivedAmount,
+		"tx_hash":                req.TxHash,
+		"confirmations":          resp.GetConfirmations(),
+		"required_confirmations": resp.GetRequiredConfirmations(),
+	})
+}
+
+func (s *Server) handleConfirmPublicCheckoutSession(w http.ResponseWriter, r *http.Request) {
+	sessionID := strings.TrimSpace(chi.URLParam(r, "session_id"))
+	if sessionID == "" {
+		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "session_id is required", middleware.GetRequestID(r.Context()))
+		return
+	}
+	var req confirmCheckoutRequest
+	if !s.parseJSON(w, r, &req) {
+		return
+	}
+	if strings.TrimSpace(req.TxHash) == "" {
+		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "tx_hash is required", middleware.GetRequestID(r.Context()))
+		return
+	}
+
+	var merchantID string
+	if err := s.db.QueryRow(r.Context(), `
+		SELECT merchant_id::text
+		FROM checkout.checkout_sessions
+		WHERE id::text=$1
+	`, sessionID).Scan(&merchantID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			httpx.WriteError(w, http.StatusNotFound, "not_found", "checkout session not found", middleware.GetRequestID(r.Context()))
+			return
+		}
+		httpx.WriteError(w, http.StatusInternalServerError, "internal_error", "failed to load checkout session", middleware.GetRequestID(r.Context()))
+		return
+	}
+
+	rawPayload, _ := json.Marshal(req.RawPayload)
+	rpcReq := &cpayv1.ConfirmCheckoutSessionRequest{
+		MerchantId:     merchantID,
+		SessionId:      sessionID,
+		TxHash:         req.TxHash,
+		ReceivedAmount: req.ReceivedAmount,
+		Confirmations:  int32(req.Confirmations),
+		FromAddress:    req.FromAddress,
+		ToAddress:      req.ToAddress,
+		RawPayloadJson: string(rawPayload),
+	}
+	if req.BlockNumber != nil {
+		rpcReq.HasBlockNumber = true
+		rpcReq.BlockNumber = *req.BlockNumber
+	}
+	resp, err := s.checkoutClient.ConfirmCheckoutSession(s.rpcContext(r.Context()), rpcReq)
+	if err != nil {
+		s.writeRPCError(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{
+		"id":                     resp.GetCheckoutSessionId(),
 		"checkout_session_id":    resp.GetCheckoutSessionId(),
 		"payment_intent_id":      resp.GetPaymentIntentId(),
 		"status":                 resp.GetStatus(),
@@ -336,6 +401,124 @@ func (s *Server) handleGetPaymentIntent(w http.ResponseWriter, r *http.Request) 
 		"created_at":             resp.GetCreatedAt(),
 		"updated_at":             resp.GetUpdatedAt(),
 	})
+}
+
+func (s *Server) handleListPayments(w http.ResponseWriter, r *http.Request) {
+	reqAuth, ok := mustRequester(w, r)
+	if !ok {
+		return
+	}
+	limit := 50
+	if q := r.URL.Query().Get("limit"); q != "" {
+		if v, err := strconv.Atoi(q); err == nil && v > 0 && v <= 200 {
+			limit = v
+		}
+	}
+	offset := 0
+	if q := r.URL.Query().Get("offset"); q != "" {
+		if v, err := strconv.Atoi(q); err == nil && v >= 0 {
+			offset = v
+		}
+	}
+	productID := strings.TrimSpace(r.URL.Query().Get("product_id"))
+	paymentLinkID := strings.TrimSpace(r.URL.Query().Get("payment_link_id"))
+
+	rows, err := s.db.Query(r.Context(), `
+		SELECT
+			i.id::text, i.checkout_session_id::text, i.payment_link_id::text,
+			COALESCE(pl.product_id::text, ''), COALESCE(p.name, ''), pl.title, pl.code,
+			c.amount::text, c.currency, COALESCE(c.customer_email, ''),
+			i.status, i.chain, i.token_symbol,
+			i.expected_amount::text, i.received_amount::text, i.tx_hash,
+			i.confirmations, i.required_confirmations,
+			i.expires_at, i.created_at, i.updated_at,
+			COUNT(*) OVER() AS total
+		FROM checkout.payment_intents i
+		JOIN checkout.checkout_sessions c ON c.id=i.checkout_session_id
+		JOIN catalog.payment_links pl ON pl.id=i.payment_link_id
+		LEFT JOIN catalog.products p ON p.id=pl.product_id
+		WHERE i.merchant_id::text=$1
+			AND ($2='' OR pl.product_id::text=$2)
+			AND ($3='' OR i.payment_link_id::text=$3)
+		ORDER BY i.created_at DESC
+		LIMIT $4 OFFSET $5
+	`, reqAuth.MerchantID, productID, paymentLinkID, limit, offset)
+	if err != nil {
+		httpx.WriteError(w, http.StatusInternalServerError, "internal_error", "failed to list payments", middleware.GetRequestID(r.Context()))
+		return
+	}
+	defer rows.Close()
+
+	items := make([]map[string]any, 0)
+	total := 0
+	for rows.Next() {
+		var id, checkoutSessionID, linkID, productID, productName, linkTitle, linkCode, currency, customerEmail, status, chainName, tokenSymbol string
+		var fiatAmountRaw, expectedRaw, receivedRaw string
+		var txHash *string
+		var confirmations, requiredConfirmations int
+		var expiresAt, createdAt, updatedAt time.Time
+		var rowTotal int
+		if err := rows.Scan(
+			&id, &checkoutSessionID, &linkID,
+			&productID, &productName, &linkTitle, &linkCode,
+			&fiatAmountRaw, &currency, &customerEmail,
+			&status, &chainName, &tokenSymbol,
+			&expectedRaw, &receivedRaw, &txHash,
+			&confirmations, &requiredConfirmations,
+			&expiresAt, &createdAt, &updatedAt,
+			&rowTotal,
+		); err != nil {
+			httpx.WriteError(w, http.StatusInternalServerError, "internal_error", "failed to scan payments", middleware.GetRequestID(r.Context()))
+			return
+		}
+		total = rowTotal
+		var txHashValue any
+		if txHash != nil && strings.TrimSpace(*txHash) != "" {
+			txHashValue = *txHash
+		}
+		items = append(items, map[string]any{
+			"id":                     id,
+			"checkout_session_id":    checkoutSessionID,
+			"payment_link_id":        linkID,
+			"product_id":             emptyToNil(productID),
+			"product_name":           emptyToNil(productName),
+			"payment_link_title":     linkTitle,
+			"payment_link_code":      linkCode,
+			"amount":                 decimalToFloat(fiatAmountRaw),
+			"currency":               currency,
+			"customer_email":         emptyToNil(customerEmail),
+			"status":                 status,
+			"chain":                  chainName,
+			"token_symbol":           tokenSymbol,
+			"expected_amount":        decimalToFloat(expectedRaw),
+			"received_amount":        decimalToFloat(receivedRaw),
+			"tx_hash":                txHashValue,
+			"confirmations":          confirmations,
+			"required_confirmations": requiredConfirmations,
+			"expires_at":             expiresAt.UTC().Format(time.RFC3339Nano),
+			"created_at":             createdAt.UTC().Format(time.RFC3339Nano),
+			"updated_at":             updatedAt.UTC().Format(time.RFC3339Nano),
+		})
+	}
+	if err := rows.Err(); err != nil {
+		httpx.WriteError(w, http.StatusInternalServerError, "internal_error", "failed to list payments", middleware.GetRequestID(r.Context()))
+		return
+	}
+
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{
+		"data":   items,
+		"limit":  limit,
+		"offset": offset,
+		"total":  total,
+	})
+}
+
+func decimalToFloat(raw string) float64 {
+	v, err := strconv.ParseFloat(strings.TrimSpace(raw), 64)
+	if err != nil {
+		return 0
+	}
+	return v
 }
 
 func (s *Server) handleCreateWebhookEndpoint(w http.ResponseWriter, r *http.Request) {

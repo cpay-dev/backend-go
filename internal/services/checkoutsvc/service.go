@@ -176,7 +176,7 @@ func (s *Service) createSession(ctx context.Context, in createSessionInput) (*cp
 		if err := s.db.QueryRow(ctx, `
 			SELECT COUNT(*)
 			FROM checkout.payment_intents
-			WHERE payment_link_id=$1 AND status IN ('confirmed', 'settled')
+			WHERE payment_link_id=$1 AND status IN ('confirmed', 'overpaid', 'settled')
 		`, linkIDStr).Scan(&usedCount); err != nil {
 			return nil, rpcx.E(codes.Internal, "internal_error", "failed to validate reusable option")
 		}
@@ -190,7 +190,7 @@ func (s *Service) createSession(ctx context.Context, in createSessionInput) (*cp
 		if err := s.db.QueryRow(ctx, `
 			SELECT COUNT(*)
 			FROM checkout.payment_intents
-			WHERE payment_link_id=$1 AND status IN ('confirmed', 'settled')
+			WHERE payment_link_id=$1 AND status IN ('confirmed', 'overpaid', 'settled')
 		`, linkIDStr).Scan(&paidCount); err != nil {
 			return nil, rpcx.E(codes.Internal, "internal_error", "failed to validate max payments")
 		}
@@ -221,12 +221,18 @@ func (s *Service) createSession(ctx context.Context, in createSessionInput) (*cp
 	if adjustVal := parseFloatValue(adjustRaw); adjustVal != 0 {
 		amount = amount + (amount * adjustVal / 100)
 	}
+	tokenAddress := strings.TrimSpace(in.TokenAddress)
+	if tokenAddress == "" {
+		if contract, ok := chain.KnownEVMTokenContract(in.Chain, in.TokenSymbol); ok {
+			tokenAddress = contract.Address
+		}
+	}
 
 	allowedTokens := []allowedToken{}
 	if err := json.Unmarshal(allowedRaw, &allowedTokens); err != nil {
 		return nil, rpcx.E(codes.Internal, "internal_error", "failed to decode allowed tokens")
 	}
-	if !tokenAllowed(allowedTokens, in.Chain, in.TokenSymbol, in.TokenAddress) {
+	if !tokenAllowed(allowedTokens, in.Chain, in.TokenSymbol, tokenAddress) {
 		return nil, rpcx.E(codes.InvalidArgument, "invalid_request", "token is not allowed for this link")
 	}
 
@@ -287,7 +293,7 @@ func (s *Service) createSession(ctx context.Context, in createSessionInput) (*cp
 		)
 		VALUES($1, $2, $3, 'awaiting_funds', $4, $5, $6, $7::jsonb, $8, $9, $10, $11, $12, $13, $14, $15, NOW(), NOW())
 	`, sessionID, linkIDStr, merchantID, nullIfEmpty(in.CustomerEmail), nullIfEmpty(in.CustomerName), nullIfEmpty(in.CustomerPhone), customerAddressJSON,
-		amount, currency, strings.ToLower(in.Chain), strings.ToUpper(in.TokenSymbol), nullIfEmpty(in.TokenAddress), sessionExpiresAt, nullIfEmpty(in.SuccessURL), clientSecretHash)
+		amount, currency, strings.ToLower(in.Chain), strings.ToUpper(in.TokenSymbol), nullIfEmpty(tokenAddress), sessionExpiresAt, nullIfEmpty(in.SuccessURL), clientSecretHash)
 	if err != nil {
 		return nil, rpcx.E(codes.Internal, "internal_error", "failed to create checkout session")
 	}
@@ -302,8 +308,8 @@ func (s *Service) createSession(ctx context.Context, in createSessionInput) (*cp
 			$1, $2, $3, $4, 'awaiting_funds', $5, $6, $7,
 			$8, $9, $10, $11, 0,
 			0, $12, $13, NOW(), NOW()
-		)
-	`, intentID, sessionID, linkIDStr, merchantID, strings.ToLower(in.Chain), strings.ToUpper(in.TokenSymbol), nullIfEmpty(in.TokenAddress),
+	)
+	`, intentID, sessionID, linkIDStr, merchantID, strings.ToLower(in.Chain), strings.ToUpper(in.TokenSymbol), nullIfEmpty(tokenAddress),
 		amount, s.cfg.DefaultTolerancePercent, minAccept, maxAccept, requiredConf, sessionExpiresAt)
 	if err != nil {
 		return nil, rpcx.E(codes.Internal, "internal_error", "failed to create payment intent")
@@ -542,6 +548,7 @@ func (s *Service) ConfirmCheckoutSession(ctx context.Context, req *cpayv1.Confir
 	expected := parseFloatValue(expectedRaw)
 	tolerance := parseFloatValue(toleranceRaw)
 	newStatus := payment.ResolveIntentStatus(expected, req.GetReceivedAmount(), tolerance, int(req.GetConfirmations()), requiredConfs)
+	statusIsPaid := payment.IntentStatusIsPaid(newStatus)
 	txStatus := "detected"
 	if int(req.GetConfirmations()) >= requiredConfs {
 		txStatus = "confirmed"
@@ -582,7 +589,7 @@ func (s *Service) ConfirmCheckoutSession(ctx context.Context, req *cpayv1.Confir
 	}
 
 	var confirmedAt any
-	if newStatus == "confirmed" {
+	if statusIsPaid {
 		confirmedAt = time.Now().UTC()
 	}
 	_, err = tx.Exec(ctx, `
@@ -595,7 +602,7 @@ func (s *Service) ConfirmCheckoutSession(ctx context.Context, req *cpayv1.Confir
 	}
 
 	sessionStatus := "awaiting_funds"
-	if newStatus == "confirmed" {
+	if statusIsPaid {
 		sessionStatus = "paid"
 	} else if newStatus == "expired" || newStatus == "failed" {
 		sessionStatus = "failed"
@@ -612,7 +619,7 @@ func (s *Service) ConfirmCheckoutSession(ctx context.Context, req *cpayv1.Confir
 		"confirmations":     req.GetConfirmations(),
 		"status":            newStatus,
 	})
-	if newStatus == "confirmed" {
+	if statusIsPaid {
 		_ = s.outbox.EnqueueTx(ctx, tx, "payment_intent", intentIDStr, &merchantID, "payment.confirmed", map[string]any{
 			"payment_intent_id": intentID,
 			"tx_hash":           req.GetTxHash(),
@@ -624,7 +631,7 @@ func (s *Service) ConfirmCheckoutSession(ctx context.Context, req *cpayv1.Confir
 		return nil, rpcx.E(codes.Internal, "internal_error", "failed to commit transaction")
 	}
 
-	if newStatus == "confirmed" && addInvoice {
+	if statusIsPaid && addInvoice {
 		if objectKey, invErr := s.generateAndStoreInvoice(ctx, merchantID, intentID, req.GetReceivedAmount(), currency, title); invErr == nil && objectKey != "" {
 			invoiceID := ids.New()
 			cmd, insErr := s.db.Exec(ctx, `

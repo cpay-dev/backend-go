@@ -94,6 +94,7 @@ func (s *Server) Router() http.Handler {
 		r.Get("/products/{id}", s.handleGetPublicProduct)
 		r.Post("/public/payment_links/{id}/sessions", s.handleCreatePublicCheckoutSession)
 		r.Get("/public/checkout/{session_id}", s.handleGetPublicCheckoutSession)
+		r.Post("/public/checkout/{session_id}/confirm", s.handleConfirmPublicCheckoutSession)
 		r.Get("/public/product_images/{merchant_id}/{product_id}/{image_id}", s.handleGetProductImage)
 
 		r.Group(func(r chi.Router) {
@@ -123,6 +124,7 @@ func (s *Server) Router() http.Handler {
 			r.Get("/checkout/{session_id}", s.handleGetCheckoutSession)
 			r.Post("/checkout/{session_id}/confirm", s.handleConfirmCheckoutSession)
 			r.Post("/mock_transfers", s.handleCreateMockTransfer)
+			r.Get("/payments", s.handleListPayments)
 			r.Get("/payments/{id}", s.handleGetPaymentIntent)
 
 			r.Post("/webhook_endpoints", s.handleCreateWebhookEndpoint)

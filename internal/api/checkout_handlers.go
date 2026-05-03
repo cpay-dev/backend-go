@@ -99,7 +99,7 @@ func (s *Server) handleCreateCheckoutSession(w http.ResponseWriter, r *http.Requ
 			if err := s.db.QueryRow(r.Context(), `
 				SELECT COUNT(*)
 				FROM payment_intents
-				WHERE payment_link_id=$1 AND status IN ('confirmed', 'settled')
+				WHERE payment_link_id=$1 AND status IN ('confirmed', 'overpaid', 'settled')
 			`, linkIDStr).Scan(&paidCount); err != nil {
 				return 0, nil, err
 			}
@@ -389,6 +389,7 @@ func (s *Server) handleConfirmCheckoutSession(w http.ResponseWriter, r *http.Req
 	expected := parseFloatMaybe(expectedRaw).(float64)
 	tolerance := parseFloatMaybe(toleranceRaw).(float64)
 	newStatus := payment.ResolveIntentStatus(expected, req.ReceivedAmount, tolerance, req.Confirmations, requiredConfs)
+	statusIsPaid := payment.IntentStatusIsPaid(newStatus)
 	txStatus := "detected"
 	if req.Confirmations >= requiredConfs {
 		txStatus = "confirmed"
@@ -420,7 +421,7 @@ func (s *Server) handleConfirmCheckoutSession(w http.ResponseWriter, r *http.Req
 	}
 
 	var confirmedAt any
-	if newStatus == "confirmed" {
+	if statusIsPaid {
 		confirmedAt = time.Now().UTC()
 	}
 	_, err = tx.Exec(r.Context(), `
@@ -434,7 +435,7 @@ func (s *Server) handleConfirmCheckoutSession(w http.ResponseWriter, r *http.Req
 	}
 
 	sessionStatus := "awaiting_funds"
-	if newStatus == "confirmed" {
+	if statusIsPaid {
 		sessionStatus = "paid"
 	} else if newStatus == "expired" || newStatus == "failed" {
 		sessionStatus = "failed"
@@ -452,7 +453,7 @@ func (s *Server) handleConfirmCheckoutSession(w http.ResponseWriter, r *http.Req
 		"confirmations":     req.Confirmations,
 		"status":            newStatus,
 	})
-	if newStatus == "confirmed" {
+	if statusIsPaid {
 		_ = s.enqueueEventTx(r.Context(), tx, "payment_intent", intentIDStr, reqAuth.MerchantID, "payment.confirmed", map[string]any{
 			"payment_intent_id": intentID,
 			"tx_hash":           req.TxHash,
@@ -465,7 +466,7 @@ func (s *Server) handleConfirmCheckoutSession(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	if newStatus == "confirmed" && addInvoice {
+	if statusIsPaid && addInvoice {
 		if objectKey, invErr := s.generateAndStoreInvoice(r.Context(), reqAuth.MerchantID, intentID, req.ReceivedAmount, currency, title); invErr == nil && objectKey != "" {
 			_, _ = s.db.Exec(r.Context(), `
 				INSERT INTO invoices(id, payment_intent_id, merchant_id, object_key, amount, currency, created_at)

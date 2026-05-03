@@ -74,7 +74,7 @@ func (w *PayoutScheduler) schedulePayouts(ctx context.Context) {
 	rows, err := w.DB.Query(ctx, `
 		SELECT merchant_id::text, chain, token_symbol
 		FROM checkout.payment_intents
-		WHERE status='confirmed' AND id NOT IN (SELECT payment_intent_id FROM checkout.payout_items)
+		WHERE status IN ('confirmed', 'overpaid') AND id NOT IN (SELECT payment_intent_id FROM checkout.payout_items)
 		GROUP BY merchant_id, chain, token_symbol
 	`)
 	if err != nil {
@@ -106,7 +106,7 @@ func (w *PayoutScheduler) schedulePayouts(ctx context.Context) {
 			SELECT id::text, received_amount::text
 			FROM checkout.payment_intents
 			WHERE merchant_id=$1 AND chain=$2 AND token_symbol=$3
-				AND status='confirmed' AND id NOT IN (SELECT payment_intent_id FROM checkout.payout_items)
+				AND status IN ('confirmed', 'overpaid') AND id NOT IN (SELECT payment_intent_id FROM checkout.payout_items)
 			FOR UPDATE SKIP LOCKED
 		`, merchantID, chainName, tokenSymbol)
 		if err != nil {
@@ -189,7 +189,7 @@ func (w *PayoutScheduler) processPayout(ctx context.Context, payout payoutWork) 
 		JOIN auth.merchants m ON m.id=i.merchant_id
 		WHERE pi.payout_id=$1
 			AND pi.status IN ('pending', 'processing', 'failed')
-			AND i.status='confirmed'
+			AND i.status IN ('confirmed', 'overpaid')
 		ORDER BY pi.created_at ASC
 	`, payout.ID)
 	if err != nil {
@@ -297,7 +297,7 @@ func (w *PayoutScheduler) completePayoutItem(ctx context.Context, item payoutIte
 	if _, err := tx.Exec(ctx, `
 		UPDATE checkout.payment_intents
 		SET status='settled', settled_at=NOW(), updated_at=NOW()
-		WHERE id=$1 AND status='confirmed'
+		WHERE id=$1 AND status IN ('confirmed', 'overpaid')
 	`, item.PaymentIntentID); err != nil {
 		return err
 	}

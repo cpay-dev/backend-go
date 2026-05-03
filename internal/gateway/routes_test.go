@@ -28,6 +28,7 @@ func TestRouterMethodRegistration(t *testing.T) {
 		{http.MethodPost, "/v1/payment_links/some-id/sessions"},
 		{http.MethodGet, "/v1/public/payment_links/some-code"},
 		{http.MethodPost, "/v1/public/payment_links/some-code/sessions"},
+		{http.MethodPost, "/v1/public/checkout/cs_test/confirm"},
 		// products
 		{http.MethodPost, "/v1/products"},
 		{http.MethodGet, "/v1/products"},
@@ -40,6 +41,8 @@ func TestRouterMethodRegistration(t *testing.T) {
 		{http.MethodGet, "/v1/checkout/cs_test"},
 		{http.MethodPost, "/v1/checkout/cs_test/confirm"},
 		{http.MethodPost, "/v1/mock_transfers"},
+		{http.MethodGet, "/v1/payments"},
+		{http.MethodGet, "/v1/payments/pi_test"},
 		// public media
 		{http.MethodGet, "/v1/public/product_images/merchant/product/image.png"},
 	}

@@ -1,0 +1,2 @@
+-- Data-only migration. Do not rewrite merchant payment-intent confirmation
+-- policy on rollback.

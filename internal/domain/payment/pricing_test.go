@@ -18,4 +18,11 @@ func TestResolveIntentStatus(t *testing.T) {
 	if status != "partial" {
 		t.Fatalf("expected partial, got %s", status)
 	}
+	status = ResolveIntentStatus(100, 101, 0.25, 35, 12)
+	if status != "overpaid" {
+		t.Fatalf("expected overpaid, got %s", status)
+	}
+	if !IntentStatusIsPaid(status) {
+		t.Fatalf("overpaid should be treated as a paid status")
+	}
 }
