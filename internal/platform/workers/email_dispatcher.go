@@ -79,12 +79,13 @@ func (s *ResendSender) Send(ctx context.Context, msg EmailMessage) (string, erro
 }
 
 type EmailDispatcher struct {
-	DB      *pgxpool.Pool
-	Log     zerolog.Logger
-	Sender  EmailSender
-	Minio   *storage.MinIO
-	From    string
-	ReplyTo string
+	DB           *pgxpool.Pool
+	Log          zerolog.Logger
+	Sender       EmailSender
+	Minio        *storage.MinIO
+	From         string
+	ReplyTo      string
+	PollInterval time.Duration
 }
 
 type paymentEventData struct {
@@ -129,25 +130,72 @@ func (w *EmailDispatcher) Run(ctx context.Context, nc *nats.Conn) {
 		return
 	}
 	if nc == nil {
-		w.Log.Warn().Msg("email dispatcher started without nats subscription")
-		<-ctx.Done()
-		return
-	}
-
-	_, err := nc.Subscribe("events.>", func(msg *nats.Msg) {
-		msgCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		if err := w.handleIncoming(msgCtx, msg.Data); err != nil {
-			w.Log.Error().Err(err).Msg("email dispatcher: handle event failed")
+		w.Log.Warn().Msg("email dispatcher started without nats subscription; durable outbox polling remains active")
+	} else {
+		_, err := nc.Subscribe("events.>", func(msg *nats.Msg) {
+			msgCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			if err := w.handleIncoming(msgCtx, msg.Data); err != nil {
+				w.Log.Error().Err(err).Msg("email dispatcher: handle event failed")
+			}
+		})
+		if err != nil {
+			w.Log.Error().Err(err).Msg("email dispatcher: failed to subscribe to nats")
+			<-ctx.Done()
+			return
 		}
-	})
-	if err != nil {
-		w.Log.Error().Err(err).Msg("email dispatcher: failed to subscribe to nats")
-		<-ctx.Done()
+	}
+
+	if w.PollInterval <= 0 {
+		w.PollInterval = 10 * time.Second
+	}
+	ticker := time.NewTicker(w.PollInterval)
+	defer ticker.Stop()
+
+	w.dispatchOutboxEvents(ctx)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			w.dispatchOutboxEvents(ctx)
+		}
+	}
+}
+
+func (w *EmailDispatcher) dispatchOutboxEvents(ctx context.Context) {
+	if w.DB == nil {
 		return
 	}
 
-	<-ctx.Done()
+	rows, err := w.DB.Query(ctx, `
+		SELECT payload::text
+		FROM platform.outbox_events
+		WHERE event_type = ANY($1::text[])
+		ORDER BY created_at DESC
+		LIMIT 200
+	`, supportedEmailEventTypes())
+	if err != nil {
+		w.Log.Error().Err(err).Msg("email dispatcher: outbox query failed")
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var payload string
+		if err := rows.Scan(&payload); err != nil {
+			w.Log.Error().Err(err).Msg("email dispatcher: outbox scan failed")
+			continue
+		}
+		eventCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		if err := w.handleIncoming(eventCtx, []byte(payload)); err != nil {
+			w.Log.Error().Err(err).Msg("email dispatcher: outbox event failed")
+		}
+		cancel()
+	}
+	if err := rows.Err(); err != nil {
+		w.Log.Error().Err(err).Msg("email dispatcher: outbox rows failed")
+	}
 }
 
 func (w *EmailDispatcher) handleIncoming(ctx context.Context, payload []byte) error {
@@ -179,6 +227,10 @@ func emailEventSupported(eventType string) bool {
 	default:
 		return false
 	}
+}
+
+func supportedEmailEventTypes() []string {
+	return []string{"user.signed_up", "invoice.created", "payment.confirmed", "payment.expired", "payment.failed"}
 }
 
 func (w *EmailDispatcher) handleUserSignedUp(ctx context.Context, env events.Envelope) error {

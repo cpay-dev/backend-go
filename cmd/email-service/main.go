@@ -48,19 +48,20 @@ func main() {
 
 	var sender workers.EmailSender
 	if s, err := workers.NewResendSender(cfg.ResendAPIKey); err != nil {
-		log.Warn().Err(err).Msg("resend sender disabled")
+		log.Fatal().Err(err).Msg("resend sender init failed")
 	} else {
 		sender = s
 	}
 
 	httpserver.StartHealthServer(ctx, cfg.HTTPAddr, cfg.ServiceName, log)
 	worker := workers.EmailDispatcher{
-		DB:      pool,
-		Log:     log,
-		Sender:  sender,
-		Minio:   minioClient,
-		From:    cfg.EmailFrom,
-		ReplyTo: cfg.EmailReplyTo,
+		DB:           pool,
+		Log:          log,
+		Sender:       sender,
+		Minio:        minioClient,
+		From:         cfg.EmailFrom,
+		ReplyTo:      cfg.EmailReplyTo,
+		PollInterval: cfg.WorkerInterval,
 	}
 	worker.Run(ctx, nc)
 }

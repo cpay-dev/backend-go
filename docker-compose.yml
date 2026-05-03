@@ -78,7 +78,6 @@ services:
       MINIO_ROOT_PASSWORD: cpay-secret-key
       MINIO_BUCKET: cpay-invoices
       MINIO_USE_SSL: "false"
-      CHAIN_CONFIRMATIONS: ethereum:12,polygon:12,arbitrum:20,base:12,hyperevm:12
       CHAIN_RPC_URLS: ${CHAIN_RPC_URLS:-}
       PAYOUT_MODE: ${PAYOUT_MODE:-production}
       DEFAULT_TOLERANCE_PERCENT: "0.25"

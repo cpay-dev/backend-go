@@ -71,6 +71,10 @@ type createSessionInput struct {
 	IncludeSecret   bool
 }
 
+type queryer interface {
+	Query(context.Context, string, ...any) (pgx.Rows, error)
+}
+
 type allowedToken struct {
 	Chain    string `json:"chain"`
 	Symbol   string `json:"symbol"`
@@ -460,7 +464,7 @@ func (s *Service) GetPublicCheckoutSession(ctx context.Context, req *cpayv1.GetP
 	}
 	query := `
 		SELECT c.id::text, c.status, c.amount::text, c.currency, c.chain, c.token_symbol, c.expires_at,
-			i.id::text, i.status, i.received_amount::text, i.tx_hash, i.confirmations, i.required_confirmations, d.address,
+			i.id::text, i.status, i.received_amount::text, i.confirmations, i.required_confirmations, d.address,
 			p.title, p.description, p.image_url, p.cta_text, p.after_payment_type, p.redirect_url, p.success_message
 		FROM checkout.checkout_sessions c
 		JOIN checkout.payment_intents i ON i.checkout_session_id=c.id
@@ -471,17 +475,22 @@ func (s *Service) GetPublicCheckoutSession(ctx context.Context, req *cpayv1.GetP
 	var id, status, amountRaw, currency, chainName, tokenSymbol string
 	var expiresAt time.Time
 	var intentID, intentStatus, receivedRaw, depositAddress, linkTitle, ctaText, afterType string
-	var txHash, linkDescription, linkImage, redirectURL, successMessage *string
+	var linkDescription, linkImage, redirectURL, successMessage *string
 	var confirmations, requiredConfs int
 	if err := s.db.QueryRow(ctx, query, sessionID).Scan(
 		&id, &status, &amountRaw, &currency, &chainName, &tokenSymbol, &expiresAt,
-		&intentID, &intentStatus, &receivedRaw, &txHash, &confirmations, &requiredConfs, &depositAddress,
+		&intentID, &intentStatus, &receivedRaw, &confirmations, &requiredConfs, &depositAddress,
 		&linkTitle, &linkDescription, &linkImage, &ctaText, &afterType, &redirectURL, &successMessage,
 	); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, rpcx.E(codes.NotFound, "not_found", "checkout session not found")
 		}
 		return nil, rpcx.E(codes.Internal, "internal_error", "failed to fetch checkout session")
+	}
+
+	transactions, err := s.checkoutTransactions(ctx, s.db, intentID)
+	if err != nil {
+		return nil, rpcx.E(codes.Internal, "internal_error", "failed to fetch checkout transactions")
 	}
 
 	return &cpayv1.PublicCheckoutSession{
@@ -496,9 +505,9 @@ func (s *Service) GetPublicCheckoutSession(ctx context.Context, req *cpayv1.GetP
 		DepositAddress:             depositAddress,
 		PaymentIntentStatus:        intentStatus,
 		ReceivedAmount:             parseFloatValue(receivedRaw),
-		TxHash:                     strValue(txHash),
 		Confirmations:              int32(confirmations),
 		RequiredConfirmations:      int32(requiredConfs),
+		Transactions:               transactions,
 		LinkTitle:                  linkTitle,
 		LinkDescription:            strValue(linkDescription),
 		LinkImageUrl:               strValue(linkImage),
@@ -507,6 +516,43 @@ func (s *Service) GetPublicCheckoutSession(ctx context.Context, req *cpayv1.GetP
 		AfterPaymentRedirectUrl:    strValue(redirectURL),
 		AfterPaymentSuccessMessage: strValue(successMessage),
 	}, nil
+}
+
+func (s *Service) checkoutTransactions(ctx context.Context, q queryer, intentID string) ([]*cpayv1.CheckoutTransaction, error) {
+	rows, err := q.Query(ctx, `
+		SELECT tx_hash, amount::text, chain, token_symbol, confirmations, status, block_number
+		FROM checkout.chain_transactions
+		WHERE payment_intent_id=$1
+		ORDER BY observed_at DESC, created_at DESC
+	`, intentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var transactions []*cpayv1.CheckoutTransaction
+	for rows.Next() {
+		var txHash, amountRaw, chainName, tokenSymbol, status string
+		var confirmations int
+		var blockNumber *int64
+		if err := rows.Scan(&txHash, &amountRaw, &chainName, &tokenSymbol, &confirmations, &status, &blockNumber); err != nil {
+			return nil, err
+		}
+		item := &cpayv1.CheckoutTransaction{
+			TxHash:        txHash,
+			Amount:        parseFloatValue(amountRaw),
+			Chain:         chainName,
+			TokenSymbol:   tokenSymbol,
+			Confirmations: int32(confirmations),
+			Status:        status,
+		}
+		if blockNumber != nil {
+			item.BlockNumber = *blockNumber
+			item.HasBlockNumber = true
+		}
+		transactions = append(transactions, item)
+	}
+	return transactions, rows.Err()
 }
 
 func (s *Service) ConfirmCheckoutSession(ctx context.Context, req *cpayv1.ConfirmCheckoutSessionRequest) (*cpayv1.ConfirmCheckoutSessionResponse, error) {
@@ -547,8 +593,6 @@ func (s *Service) ConfirmCheckoutSession(ctx context.Context, req *cpayv1.Confir
 
 	expected := parseFloatValue(expectedRaw)
 	tolerance := parseFloatValue(toleranceRaw)
-	newStatus := payment.ResolveIntentStatus(expected, req.GetReceivedAmount(), tolerance, int(req.GetConfirmations()), requiredConfs)
-	statusIsPaid := payment.IntentStatusIsPaid(newStatus)
 	txStatus := "detected"
 	if int(req.GetConfirmations()) >= requiredConfs {
 		txStatus = "confirmed"
@@ -581,11 +625,42 @@ func (s *Service) ConfirmCheckoutSession(ctx context.Context, req *cpayv1.Confir
 		)
 		VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, NULL, $10, $11, $12::jsonb, NOW(), NOW())
 		ON CONFLICT (chain, tx_hash, payment_intent_id)
-		DO UPDATE SET confirmations=EXCLUDED.confirmations, status=EXCLUDED.status, raw_payload=EXCLUDED.raw_payload
+		DO UPDATE SET
+			block_number=COALESCE(EXCLUDED.block_number, checkout.chain_transactions.block_number),
+			from_address=COALESCE(EXCLUDED.from_address, checkout.chain_transactions.from_address),
+			to_address=COALESCE(EXCLUDED.to_address, checkout.chain_transactions.to_address),
+			amount=EXCLUDED.amount,
+			token_symbol=EXCLUDED.token_symbol,
+			confirmations=EXCLUDED.confirmations,
+			status=EXCLUDED.status,
+			raw_payload=EXCLUDED.raw_payload,
+			observed_at=NOW()
 	`, ids.New(), intentID, chainName, req.GetTxHash(), blockNumber, nullIfEmpty(req.GetFromAddress()), nullIfEmpty(req.GetToAddress()), req.GetReceivedAmount(),
 		tokenSymbol, req.GetConfirmations(), txStatus, rawPayload)
 	if err != nil {
 		return nil, rpcx.E(codes.Internal, "internal_error", "failed to write chain transaction")
+	}
+
+	var totalReceivedRaw, confirmedReceivedRaw, latestTxHash string
+	var aggregateConfirmations int
+	if err := tx.QueryRow(ctx, `
+		SELECT
+			COALESCE(SUM(amount), 0)::text,
+			COALESCE(SUM(amount) FILTER (WHERE confirmations >= $2), 0)::text,
+			COALESCE(MIN(confirmations), 0),
+			COALESCE((ARRAY_AGG(tx_hash ORDER BY observed_at DESC, created_at DESC))[1], '')
+		FROM checkout.chain_transactions
+		WHERE payment_intent_id=$1
+	`, intentID, requiredConfs).Scan(&totalReceivedRaw, &confirmedReceivedRaw, &aggregateConfirmations, &latestTxHash); err != nil {
+		return nil, rpcx.E(codes.Internal, "internal_error", "failed to aggregate chain transactions")
+	}
+	totalReceived := parseFloatValue(totalReceivedRaw)
+	confirmedReceived := parseFloatValue(confirmedReceivedRaw)
+	confirmedStatus := payment.ResolveIntentStatus(expected, confirmedReceived, tolerance, requiredConfs, requiredConfs)
+	statusIsPaid := payment.IntentStatusIsPaid(confirmedStatus)
+	newStatus := confirmedStatus
+	if !statusIsPaid {
+		newStatus = payment.ResolveIntentStatus(expected, totalReceived, tolerance, aggregateConfirmations, requiredConfs)
 	}
 
 	var confirmedAt any
@@ -594,9 +669,9 @@ func (s *Service) ConfirmCheckoutSession(ctx context.Context, req *cpayv1.Confir
 	}
 	_, err = tx.Exec(ctx, `
 		UPDATE checkout.payment_intents
-		SET status=$1, received_amount=$2, tx_hash=$3, confirmations=$4, confirmed_at=$5, updated_at=NOW()
+		SET status=$1, received_amount=$2, tx_hash=$3, confirmations=$4, confirmed_at=COALESCE(confirmed_at, $5), updated_at=NOW()
 		WHERE id=$6
-	`, newStatus, req.GetReceivedAmount(), req.GetTxHash(), req.GetConfirmations(), confirmedAt, intentID)
+	`, newStatus, totalReceived, latestTxHash, aggregateConfirmations, confirmedAt, intentID)
 	if err != nil {
 		return nil, rpcx.E(codes.Internal, "internal_error", "failed to update payment intent")
 	}
@@ -657,7 +732,7 @@ func (s *Service) ConfirmCheckoutSession(ctx context.Context, req *cpayv1.Confir
 		CheckoutSessionId:     sessionID,
 		PaymentIntentId:       intentID,
 		Status:                newStatus,
-		Confirmations:         req.GetConfirmations(),
+		Confirmations:         int32(aggregateConfirmations),
 		RequiredConfirmations: int32(requiredConfs),
 	}, nil
 }

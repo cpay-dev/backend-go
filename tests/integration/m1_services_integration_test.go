@@ -219,8 +219,7 @@ func TestM1ServiceFlow_AuthPaymentLinkCheckout(t *testing.T) {
 	}
 
 	publicSession, err := checkoutService.GetPublicCheckoutSession(ctx, &cpayv1.GetPublicCheckoutSessionRequest{
-		SessionId:    sessionResp.GetId(),
-		ClientSecret: sessionResp.GetClientSecret(),
+		SessionId: sessionResp.GetId(),
 	})
 	if err != nil {
 		t.Fatalf("get public checkout session failed: %v", err)
@@ -232,16 +231,31 @@ func TestM1ServiceFlow_AuthPaymentLinkCheckout(t *testing.T) {
 		t.Fatalf("expected deposit address")
 	}
 
-	confirmResp, err := checkoutService.ConfirmCheckoutSession(ctx, &cpayv1.ConfirmCheckoutSessionRequest{
+	firstConfirmResp, err := checkoutService.ConfirmCheckoutSession(ctx, &cpayv1.ConfirmCheckoutSessionRequest{
 		MerchantId:     merchantID,
 		SessionId:      sessionResp.GetId(),
 		TxHash:         "0xabc123",
-		ReceivedAmount: amount,
+		ReceivedAmount: 4,
 		Confirmations:  int32(cfg.ConfirmationForChain("polygon")),
 		RawPayloadJson: `{"source":"integration"}`,
 	})
 	if err != nil {
-		t.Fatalf("confirm checkout session failed: %v", err)
+		t.Fatalf("confirm first checkout transaction failed: %v", err)
+	}
+	if firstConfirmResp.GetStatus() != "partial" {
+		t.Fatalf("expected partial status after first transaction, got %s", firstConfirmResp.GetStatus())
+	}
+
+	confirmResp, err := checkoutService.ConfirmCheckoutSession(ctx, &cpayv1.ConfirmCheckoutSessionRequest{
+		MerchantId:     merchantID,
+		SessionId:      sessionResp.GetId(),
+		TxHash:         "0xdef456",
+		ReceivedAmount: 6,
+		Confirmations:  int32(cfg.ConfirmationForChain("polygon")),
+		RawPayloadJson: `{"source":"integration"}`,
+	})
+	if err != nil {
+		t.Fatalf("confirm second checkout transaction failed: %v", err)
 	}
 	if confirmResp.GetStatus() != "confirmed" {
 		t.Fatalf("expected confirmed status, got %s", confirmResp.GetStatus())
@@ -257,8 +271,27 @@ func TestM1ServiceFlow_AuthPaymentLinkCheckout(t *testing.T) {
 	if intent.GetStatus() != "confirmed" {
 		t.Fatalf("expected intent confirmed, got %s", intent.GetStatus())
 	}
-	if intent.GetTxHash() != "0xabc123" {
-		t.Fatalf("expected tx hash 0xabc123, got %s", intent.GetTxHash())
+	if intent.GetTxHash() != "0xdef456" {
+		t.Fatalf("expected latest tx hash 0xdef456, got %s", intent.GetTxHash())
+	}
+	if intent.GetReceivedAmount() != amount {
+		t.Fatalf("expected aggregated received amount %.2f, got %.2f", amount, intent.GetReceivedAmount())
+	}
+
+	publicSession, err = checkoutService.GetPublicCheckoutSession(ctx, &cpayv1.GetPublicCheckoutSessionRequest{
+		SessionId: sessionResp.GetId(),
+	})
+	if err != nil {
+		t.Fatalf("get confirmed public checkout session failed: %v", err)
+	}
+	if publicSession.GetReceivedAmount() != amount {
+		t.Fatalf("expected public session received amount %.2f, got %.2f", amount, publicSession.GetReceivedAmount())
+	}
+	if len(publicSession.GetTransactions()) != 2 {
+		t.Fatalf("expected two public checkout transactions, got %d", len(publicSession.GetTransactions()))
+	}
+	if publicSession.GetTransactions()[0].GetTxHash() != "0xdef456" || publicSession.GetTransactions()[0].GetAmount() != 6 {
+		t.Fatalf("expected latest transaction first, got %#v", publicSession.GetTransactions()[0])
 	}
 
 	var outboxCount int

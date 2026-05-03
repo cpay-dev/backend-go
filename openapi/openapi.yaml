@@ -392,9 +392,20 @@ paths:
                   payment_intent_id: { type: string }
                   payment_intent_status: { type: string }
                   received_amount: { type: number }
-                  tx_hash: { type: string, nullable: true }
                   confirmations: { type: integer }
                   required_confirmations: { type: integer }
+                  transactions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        tx_hash: { type: string }
+                        amount: { type: number }
+                        chain: { type: string }
+                        token_symbol: { type: string }
+                        confirmations: { type: integer }
+                        status: { type: string }
+                        block_number: { type: integer }
                   deposit_address: { type: string }
                   link:
                     type: object

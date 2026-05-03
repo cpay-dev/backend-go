@@ -12,6 +12,11 @@ func TestEmailEventSupported(t *testing.T) {
 	if emailEventSupported("payment.detected") {
 		t.Fatalf("payment.detected should not be supported")
 	}
+	for _, eventType := range supportedEmailEventTypes() {
+		if !emailEventSupported(eventType) {
+			t.Fatalf("%s should be supported", eventType)
+		}
+	}
 }
 
 func TestUniqueEmails(t *testing.T) {

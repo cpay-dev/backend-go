@@ -92,9 +92,22 @@ message PublicCheckoutSession {
   string after_payment_success_message = 16;
   string payment_intent_status = 17;
   double received_amount = 18;
-  string tx_hash = 19;
+  reserved 19;
+  reserved "tx_hash";
   int32 confirmations = 20;
   int32 required_confirmations = 21;
+  repeated CheckoutTransaction transactions = 22;
+}
+
+message CheckoutTransaction {
+  string tx_hash = 1;
+  double amount = 2;
+  string chain = 3;
+  string token_symbol = 4;
+  int32 confirmations = 5;
+  string status = 6;
+  int64 block_number = 7;
+  bool has_block_number = 8;
 }
 
 message GetCheckoutSessionRequest {

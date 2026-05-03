@@ -1,1 +1,0 @@
--- Data-only migration. Do not rewrite payment confirmation policy on rollback.

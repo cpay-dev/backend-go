@@ -234,9 +234,9 @@ func (s *Server) handleGetPublicCheckoutSession(w http.ResponseWriter, r *http.R
 		"payment_intent_id":      resp.GetPaymentIntentId(),
 		"payment_intent_status":  resp.GetPaymentIntentStatus(),
 		"received_amount":        resp.GetReceivedAmount(),
-		"tx_hash":                emptyToNil(resp.GetTxHash()),
 		"confirmations":          resp.GetConfirmations(),
 		"required_confirmations": resp.GetRequiredConfirmations(),
+		"transactions":           checkoutTransactionsJSON(resp.GetTransactions()),
 		"deposit_address":        resp.GetDepositAddress(),
 		"link": map[string]any{
 			"title":       resp.GetLinkTitle(),
@@ -250,6 +250,28 @@ func (s *Server) handleGetPublicCheckoutSession(w http.ResponseWriter, r *http.R
 			"success_message": emptyToNil(resp.GetAfterPaymentSuccessMessage()),
 		},
 	})
+}
+
+func checkoutTransactionsJSON(transactions []*cpayv1.CheckoutTransaction) []map[string]any {
+	items := make([]map[string]any, 0, len(transactions))
+	for _, tx := range transactions {
+		if tx == nil {
+			continue
+		}
+		item := map[string]any{
+			"tx_hash":       tx.GetTxHash(),
+			"amount":        tx.GetAmount(),
+			"chain":         tx.GetChain(),
+			"token_symbol":  tx.GetTokenSymbol(),
+			"confirmations": tx.GetConfirmations(),
+			"status":        tx.GetStatus(),
+		}
+		if tx.GetHasBlockNumber() {
+			item["block_number"] = tx.GetBlockNumber()
+		}
+		items = append(items, item)
+	}
+	return items
 }
 
 func (s *Server) handleConfirmCheckoutSession(w http.ResponseWriter, r *http.Request) {

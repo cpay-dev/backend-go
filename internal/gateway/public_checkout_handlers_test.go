@@ -148,19 +148,38 @@ func TestGetPublicCheckoutSessionUsesSessionIDOnly(t *testing.T) {
 		getPublicFn: func(_ context.Context, req *cpayv1.GetPublicCheckoutSessionRequest) (*cpayv1.PublicCheckoutSession, error) {
 			got = req
 			return &cpayv1.PublicCheckoutSession{
-				Id:                      "cs_test_456",
-				Status:                  "awaiting_funds",
-				Amount:                  20,
-				Currency:                "USD",
-				Chain:                   "polygon",
-				TokenSymbol:             "USDC",
-				ExpiresAt:               "2026-04-05T12:00:00Z",
-				PaymentIntentId:         "pi_test_456",
-				PaymentIntentStatus:     "awaiting_funds",
-				ReceivedAmount:          19.95,
-				TxHash:                  "0xabc123",
-				Confirmations:           121,
-				RequiredConfirmations:   20,
+				Id:                    "cs_test_456",
+				Status:                "awaiting_funds",
+				Amount:                20,
+				Currency:              "USD",
+				Chain:                 "polygon",
+				TokenSymbol:           "USDC",
+				ExpiresAt:             "2026-04-05T12:00:00Z",
+				PaymentIntentId:       "pi_test_456",
+				PaymentIntentStatus:   "awaiting_funds",
+				ReceivedAmount:        19.95,
+				Confirmations:         121,
+				RequiredConfirmations: 20,
+				Transactions: []*cpayv1.CheckoutTransaction{
+					{
+						TxHash:         "0xdef456",
+						Amount:         7.5,
+						Chain:          "polygon",
+						TokenSymbol:    "USDC",
+						Confirmations:  40,
+						Status:         "confirmed",
+						BlockNumber:    123456,
+						HasBlockNumber: true,
+					},
+					{
+						TxHash:        "0xabc123",
+						Amount:        12.45,
+						Chain:         "polygon",
+						TokenSymbol:   "USDC",
+						Confirmations: 121,
+						Status:        "confirmed",
+					},
+				},
 				DepositAddress:          "0xdef",
 				LinkTitle:               "Support Us",
 				CtaText:                 "Pay",
@@ -199,13 +218,24 @@ func TestGetPublicCheckoutSessionUsesSessionIDOnly(t *testing.T) {
 	if payload["payment_intent_status"] != "awaiting_funds" {
 		t.Fatalf("expected payment intent status awaiting_funds, got %#v", payload["payment_intent_status"])
 	}
-	if payload["tx_hash"] != "0xabc123" {
-		t.Fatalf("expected tx_hash 0xabc123, got %#v", payload["tx_hash"])
+	if _, ok := payload["tx_hash"]; ok {
+		t.Fatalf("public checkout session should not expose legacy tx_hash: %#v", payload["tx_hash"])
 	}
 	if payload["confirmations"] != float64(121) {
 		t.Fatalf("expected confirmations 121, got %#v", payload["confirmations"])
 	}
 	if payload["required_confirmations"] != float64(20) {
 		t.Fatalf("expected required confirmations 20, got %#v", payload["required_confirmations"])
+	}
+	transactions, ok := payload["transactions"].([]any)
+	if !ok || len(transactions) != 2 {
+		t.Fatalf("expected two transactions, got %#v", payload["transactions"])
+	}
+	first, ok := transactions[0].(map[string]any)
+	if !ok {
+		t.Fatalf("expected transaction object, got %#v", transactions[0])
+	}
+	if first["tx_hash"] != "0xdef456" || first["amount"] != float64(7.5) || first["block_number"] != float64(123456) {
+		t.Fatalf("unexpected first transaction: %#v", first)
 	}
 }

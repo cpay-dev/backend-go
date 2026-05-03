@@ -138,11 +138,21 @@ func (s *Service) Refresh(ctx context.Context, req *cpayv1.RefreshRequest) (*cpa
 	if err != nil || claims.TokenType != "refresh" {
 		return nil, rpcx.E(codes.Unauthenticated, "invalid_token", "invalid refresh token")
 	}
-	access, err := auth.GenerateJWT(s.cfg.JWTSecret, "access", claims.UserID, claims.MerchantID, claims.Role, s.cfg.JWTAccessTTL)
+	if _, err := ids.Parse(claims.MerchantID); err != nil {
+		return nil, rpcx.E(codes.Unauthenticated, "invalid_token", "invalid refresh token")
+	}
+	if _, err := ids.Parse(claims.UserID); err != nil {
+		return nil, rpcx.E(codes.Unauthenticated, "invalid_token", "invalid refresh token")
+	}
+	role, err := s.lookupTokenUserRole(ctx, claims.UserID, claims.MerchantID, "invalid refresh token")
+	if err != nil {
+		return nil, err
+	}
+	access, err := auth.GenerateJWT(s.cfg.JWTSecret, "access", claims.UserID, claims.MerchantID, role, s.cfg.JWTAccessTTL)
 	if err != nil {
 		return nil, rpcx.E(codes.Internal, "internal_error", "failed to create access token")
 	}
-	refresh, err := auth.GenerateJWT(s.cfg.JWTSecret, "refresh", claims.UserID, claims.MerchantID, claims.Role, s.cfg.JWTRefreshTTL)
+	refresh, err := auth.GenerateJWT(s.cfg.JWTSecret, "refresh", claims.UserID, claims.MerchantID, role, s.cfg.JWTRefreshTTL)
 	if err != nil {
 		return nil, rpcx.E(codes.Internal, "internal_error", "failed to create refresh token")
 	}
@@ -345,10 +355,14 @@ func (s *Service) ValidateCredential(ctx context.Context, req *cpayv1.ValidateCr
 		if _, err := ids.Parse(claims.UserID); err != nil {
 			return nil, rpcx.E(codes.Unauthenticated, "invalid_token", "invalid user in token")
 		}
+		role, err := s.lookupTokenUserRole(ctx, claims.UserID, claims.MerchantID, "invalid access token")
+		if err != nil {
+			return nil, err
+		}
 		return &cpayv1.ValidateCredentialResponse{Principal: &cpayv1.Principal{
 			MerchantId: claims.MerchantID,
 			UserId:     claims.UserID,
-			Role:       claims.Role,
+			Role:       role,
 			IsUser:     true,
 		}}, nil
 	}
@@ -384,6 +398,24 @@ func (s *Service) ValidateCredential(ctx context.Context, req *cpayv1.ValidateCr
 		ApiKeyId:   keyID,
 		IsUser:     false,
 	}}, nil
+}
+
+func (s *Service) lookupTokenUserRole(ctx context.Context, userID string, merchantID string, invalidMessage string) (string, error) {
+	var role string
+	err := s.db.QueryRow(ctx, `
+		SELECT u.role
+		FROM auth.users u
+		JOIN auth.merchants m ON m.id=u.merchant_id
+		WHERE u.id=$1 AND u.merchant_id=$2
+		LIMIT 1
+	`, userID, merchantID).Scan(&role)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", rpcx.E(codes.Unauthenticated, "invalid_token", invalidMessage)
+		}
+		return "", rpcx.E(codes.Internal, "internal_error", "token lookup failed")
+	}
+	return role, nil
 }
 
 func parseID(raw, field string) (string, error) {

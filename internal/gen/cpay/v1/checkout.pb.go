@@ -641,9 +641,9 @@ type PublicCheckoutSession struct {
 	AfterPaymentSuccessMessage string                 `protobuf:"bytes,16,opt,name=after_payment_success_message,json=afterPaymentSuccessMessage,proto3" json:"after_payment_success_message,omitempty"`
 	PaymentIntentStatus        string                 `protobuf:"bytes,17,opt,name=payment_intent_status,json=paymentIntentStatus,proto3" json:"payment_intent_status,omitempty"`
 	ReceivedAmount             float64                `protobuf:"fixed64,18,opt,name=received_amount,json=receivedAmount,proto3" json:"received_amount,omitempty"`
-	TxHash                     string                 `protobuf:"bytes,19,opt,name=tx_hash,json=txHash,proto3" json:"tx_hash,omitempty"`
 	Confirmations              int32                  `protobuf:"varint,20,opt,name=confirmations,proto3" json:"confirmations,omitempty"`
 	RequiredConfirmations      int32                  `protobuf:"varint,21,opt,name=required_confirmations,json=requiredConfirmations,proto3" json:"required_confirmations,omitempty"`
+	Transactions               []*CheckoutTransaction `protobuf:"bytes,22,rep,name=transactions,proto3" json:"transactions,omitempty"`
 	unknownFields              protoimpl.UnknownFields
 	sizeCache                  protoimpl.SizeCache
 }
@@ -804,13 +804,6 @@ func (x *PublicCheckoutSession) GetReceivedAmount() float64 {
 	return 0
 }
 
-func (x *PublicCheckoutSession) GetTxHash() string {
-	if x != nil {
-		return x.TxHash
-	}
-	return ""
-}
-
 func (x *PublicCheckoutSession) GetConfirmations() int32 {
 	if x != nil {
 		return x.Confirmations
@@ -825,6 +818,113 @@ func (x *PublicCheckoutSession) GetRequiredConfirmations() int32 {
 	return 0
 }
 
+func (x *PublicCheckoutSession) GetTransactions() []*CheckoutTransaction {
+	if x != nil {
+		return x.Transactions
+	}
+	return nil
+}
+
+type CheckoutTransaction struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	TxHash         string                 `protobuf:"bytes,1,opt,name=tx_hash,json=txHash,proto3" json:"tx_hash,omitempty"`
+	Amount         float64                `protobuf:"fixed64,2,opt,name=amount,proto3" json:"amount,omitempty"`
+	Chain          string                 `protobuf:"bytes,3,opt,name=chain,proto3" json:"chain,omitempty"`
+	TokenSymbol    string                 `protobuf:"bytes,4,opt,name=token_symbol,json=tokenSymbol,proto3" json:"token_symbol,omitempty"`
+	Confirmations  int32                  `protobuf:"varint,5,opt,name=confirmations,proto3" json:"confirmations,omitempty"`
+	Status         string                 `protobuf:"bytes,6,opt,name=status,proto3" json:"status,omitempty"`
+	BlockNumber    int64                  `protobuf:"varint,7,opt,name=block_number,json=blockNumber,proto3" json:"block_number,omitempty"`
+	HasBlockNumber bool                   `protobuf:"varint,8,opt,name=has_block_number,json=hasBlockNumber,proto3" json:"has_block_number,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *CheckoutTransaction) Reset() {
+	*x = CheckoutTransaction{}
+	mi := &file_cpay_v1_checkout_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CheckoutTransaction) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CheckoutTransaction) ProtoMessage() {}
+
+func (x *CheckoutTransaction) ProtoReflect() protoreflect.Message {
+	mi := &file_cpay_v1_checkout_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CheckoutTransaction.ProtoReflect.Descriptor instead.
+func (*CheckoutTransaction) Descriptor() ([]byte, []int) {
+	return file_cpay_v1_checkout_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *CheckoutTransaction) GetTxHash() string {
+	if x != nil {
+		return x.TxHash
+	}
+	return ""
+}
+
+func (x *CheckoutTransaction) GetAmount() float64 {
+	if x != nil {
+		return x.Amount
+	}
+	return 0
+}
+
+func (x *CheckoutTransaction) GetChain() string {
+	if x != nil {
+		return x.Chain
+	}
+	return ""
+}
+
+func (x *CheckoutTransaction) GetTokenSymbol() string {
+	if x != nil {
+		return x.TokenSymbol
+	}
+	return ""
+}
+
+func (x *CheckoutTransaction) GetConfirmations() int32 {
+	if x != nil {
+		return x.Confirmations
+	}
+	return 0
+}
+
+func (x *CheckoutTransaction) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *CheckoutTransaction) GetBlockNumber() int64 {
+	if x != nil {
+		return x.BlockNumber
+	}
+	return 0
+}
+
+func (x *CheckoutTransaction) GetHasBlockNumber() bool {
+	if x != nil {
+		return x.HasBlockNumber
+	}
+	return false
+}
+
 type GetCheckoutSessionRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	MerchantId    string                 `protobuf:"bytes,1,opt,name=merchant_id,json=merchantId,proto3" json:"merchant_id,omitempty"`
@@ -835,7 +935,7 @@ type GetCheckoutSessionRequest struct {
 
 func (x *GetCheckoutSessionRequest) Reset() {
 	*x = GetCheckoutSessionRequest{}
-	mi := &file_cpay_v1_checkout_proto_msgTypes[5]
+	mi := &file_cpay_v1_checkout_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -847,7 +947,7 @@ func (x *GetCheckoutSessionRequest) String() string {
 func (*GetCheckoutSessionRequest) ProtoMessage() {}
 
 func (x *GetCheckoutSessionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cpay_v1_checkout_proto_msgTypes[5]
+	mi := &file_cpay_v1_checkout_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -860,7 +960,7 @@ func (x *GetCheckoutSessionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetCheckoutSessionRequest.ProtoReflect.Descriptor instead.
 func (*GetCheckoutSessionRequest) Descriptor() ([]byte, []int) {
-	return file_cpay_v1_checkout_proto_rawDescGZIP(), []int{5}
+	return file_cpay_v1_checkout_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *GetCheckoutSessionRequest) GetMerchantId() string {
@@ -886,7 +986,7 @@ type GetPublicCheckoutSessionRequest struct {
 
 func (x *GetPublicCheckoutSessionRequest) Reset() {
 	*x = GetPublicCheckoutSessionRequest{}
-	mi := &file_cpay_v1_checkout_proto_msgTypes[6]
+	mi := &file_cpay_v1_checkout_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -898,7 +998,7 @@ func (x *GetPublicCheckoutSessionRequest) String() string {
 func (*GetPublicCheckoutSessionRequest) ProtoMessage() {}
 
 func (x *GetPublicCheckoutSessionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cpay_v1_checkout_proto_msgTypes[6]
+	mi := &file_cpay_v1_checkout_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -911,7 +1011,7 @@ func (x *GetPublicCheckoutSessionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetPublicCheckoutSessionRequest.ProtoReflect.Descriptor instead.
 func (*GetPublicCheckoutSessionRequest) Descriptor() ([]byte, []int) {
-	return file_cpay_v1_checkout_proto_rawDescGZIP(), []int{6}
+	return file_cpay_v1_checkout_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *GetPublicCheckoutSessionRequest) GetSessionId() string {
@@ -939,7 +1039,7 @@ type ConfirmCheckoutSessionRequest struct {
 
 func (x *ConfirmCheckoutSessionRequest) Reset() {
 	*x = ConfirmCheckoutSessionRequest{}
-	mi := &file_cpay_v1_checkout_proto_msgTypes[7]
+	mi := &file_cpay_v1_checkout_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -951,7 +1051,7 @@ func (x *ConfirmCheckoutSessionRequest) String() string {
 func (*ConfirmCheckoutSessionRequest) ProtoMessage() {}
 
 func (x *ConfirmCheckoutSessionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cpay_v1_checkout_proto_msgTypes[7]
+	mi := &file_cpay_v1_checkout_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -964,7 +1064,7 @@ func (x *ConfirmCheckoutSessionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConfirmCheckoutSessionRequest.ProtoReflect.Descriptor instead.
 func (*ConfirmCheckoutSessionRequest) Descriptor() ([]byte, []int) {
-	return file_cpay_v1_checkout_proto_rawDescGZIP(), []int{7}
+	return file_cpay_v1_checkout_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *ConfirmCheckoutSessionRequest) GetMerchantId() string {
@@ -1050,7 +1150,7 @@ type ConfirmCheckoutSessionResponse struct {
 
 func (x *ConfirmCheckoutSessionResponse) Reset() {
 	*x = ConfirmCheckoutSessionResponse{}
-	mi := &file_cpay_v1_checkout_proto_msgTypes[8]
+	mi := &file_cpay_v1_checkout_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1062,7 +1162,7 @@ func (x *ConfirmCheckoutSessionResponse) String() string {
 func (*ConfirmCheckoutSessionResponse) ProtoMessage() {}
 
 func (x *ConfirmCheckoutSessionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cpay_v1_checkout_proto_msgTypes[8]
+	mi := &file_cpay_v1_checkout_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1075,7 +1175,7 @@ func (x *ConfirmCheckoutSessionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConfirmCheckoutSessionResponse.ProtoReflect.Descriptor instead.
 func (*ConfirmCheckoutSessionResponse) Descriptor() ([]byte, []int) {
-	return file_cpay_v1_checkout_proto_rawDescGZIP(), []int{8}
+	return file_cpay_v1_checkout_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *ConfirmCheckoutSessionResponse) GetCheckoutSessionId() string {
@@ -1123,7 +1223,7 @@ type GetPaymentIntentRequest struct {
 
 func (x *GetPaymentIntentRequest) Reset() {
 	*x = GetPaymentIntentRequest{}
-	mi := &file_cpay_v1_checkout_proto_msgTypes[9]
+	mi := &file_cpay_v1_checkout_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1135,7 +1235,7 @@ func (x *GetPaymentIntentRequest) String() string {
 func (*GetPaymentIntentRequest) ProtoMessage() {}
 
 func (x *GetPaymentIntentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cpay_v1_checkout_proto_msgTypes[9]
+	mi := &file_cpay_v1_checkout_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1148,7 +1248,7 @@ func (x *GetPaymentIntentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetPaymentIntentRequest.ProtoReflect.Descriptor instead.
 func (*GetPaymentIntentRequest) Descriptor() ([]byte, []int) {
-	return file_cpay_v1_checkout_proto_rawDescGZIP(), []int{9}
+	return file_cpay_v1_checkout_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *GetPaymentIntentRequest) GetMerchantId() string {
@@ -1194,7 +1294,7 @@ type PaymentIntent struct {
 
 func (x *PaymentIntent) Reset() {
 	*x = PaymentIntent{}
-	mi := &file_cpay_v1_checkout_proto_msgTypes[10]
+	mi := &file_cpay_v1_checkout_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1206,7 +1306,7 @@ func (x *PaymentIntent) String() string {
 func (*PaymentIntent) ProtoMessage() {}
 
 func (x *PaymentIntent) ProtoReflect() protoreflect.Message {
-	mi := &file_cpay_v1_checkout_proto_msgTypes[10]
+	mi := &file_cpay_v1_checkout_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1219,7 +1319,7 @@ func (x *PaymentIntent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PaymentIntent.ProtoReflect.Descriptor instead.
 func (*PaymentIntent) Descriptor() ([]byte, []int) {
-	return file_cpay_v1_checkout_proto_rawDescGZIP(), []int{10}
+	return file_cpay_v1_checkout_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *PaymentIntent) GetId() string {
@@ -1382,7 +1482,7 @@ type CreateWebhookEndpointRequest struct {
 
 func (x *CreateWebhookEndpointRequest) Reset() {
 	*x = CreateWebhookEndpointRequest{}
-	mi := &file_cpay_v1_checkout_proto_msgTypes[11]
+	mi := &file_cpay_v1_checkout_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1394,7 +1494,7 @@ func (x *CreateWebhookEndpointRequest) String() string {
 func (*CreateWebhookEndpointRequest) ProtoMessage() {}
 
 func (x *CreateWebhookEndpointRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cpay_v1_checkout_proto_msgTypes[11]
+	mi := &file_cpay_v1_checkout_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1407,7 +1507,7 @@ func (x *CreateWebhookEndpointRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateWebhookEndpointRequest.ProtoReflect.Descriptor instead.
 func (*CreateWebhookEndpointRequest) Descriptor() ([]byte, []int) {
-	return file_cpay_v1_checkout_proto_rawDescGZIP(), []int{11}
+	return file_cpay_v1_checkout_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *CreateWebhookEndpointRequest) GetMerchantId() string {
@@ -1459,7 +1559,7 @@ type CreateWebhookEndpointResponse struct {
 
 func (x *CreateWebhookEndpointResponse) Reset() {
 	*x = CreateWebhookEndpointResponse{}
-	mi := &file_cpay_v1_checkout_proto_msgTypes[12]
+	mi := &file_cpay_v1_checkout_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1471,7 +1571,7 @@ func (x *CreateWebhookEndpointResponse) String() string {
 func (*CreateWebhookEndpointResponse) ProtoMessage() {}
 
 func (x *CreateWebhookEndpointResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cpay_v1_checkout_proto_msgTypes[12]
+	mi := &file_cpay_v1_checkout_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1484,7 +1584,7 @@ func (x *CreateWebhookEndpointResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateWebhookEndpointResponse.ProtoReflect.Descriptor instead.
 func (*CreateWebhookEndpointResponse) Descriptor() ([]byte, []int) {
-	return file_cpay_v1_checkout_proto_rawDescGZIP(), []int{12}
+	return file_cpay_v1_checkout_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *CreateWebhookEndpointResponse) GetId() string {
@@ -1554,7 +1654,7 @@ type CreateSubscriptionRequest struct {
 
 func (x *CreateSubscriptionRequest) Reset() {
 	*x = CreateSubscriptionRequest{}
-	mi := &file_cpay_v1_checkout_proto_msgTypes[13]
+	mi := &file_cpay_v1_checkout_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1566,7 +1666,7 @@ func (x *CreateSubscriptionRequest) String() string {
 func (*CreateSubscriptionRequest) ProtoMessage() {}
 
 func (x *CreateSubscriptionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cpay_v1_checkout_proto_msgTypes[13]
+	mi := &file_cpay_v1_checkout_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1579,7 +1679,7 @@ func (x *CreateSubscriptionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateSubscriptionRequest.ProtoReflect.Descriptor instead.
 func (*CreateSubscriptionRequest) Descriptor() ([]byte, []int) {
-	return file_cpay_v1_checkout_proto_rawDescGZIP(), []int{13}
+	return file_cpay_v1_checkout_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *CreateSubscriptionRequest) GetMerchantId() string {
@@ -1721,7 +1821,7 @@ type CreateSubscriptionResponse struct {
 
 func (x *CreateSubscriptionResponse) Reset() {
 	*x = CreateSubscriptionResponse{}
-	mi := &file_cpay_v1_checkout_proto_msgTypes[14]
+	mi := &file_cpay_v1_checkout_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1733,7 +1833,7 @@ func (x *CreateSubscriptionResponse) String() string {
 func (*CreateSubscriptionResponse) ProtoMessage() {}
 
 func (x *CreateSubscriptionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cpay_v1_checkout_proto_msgTypes[14]
+	mi := &file_cpay_v1_checkout_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1746,7 +1846,7 @@ func (x *CreateSubscriptionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateSubscriptionResponse.ProtoReflect.Descriptor instead.
 func (*CreateSubscriptionResponse) Descriptor() ([]byte, []int) {
-	return file_cpay_v1_checkout_proto_rawDescGZIP(), []int{14}
+	return file_cpay_v1_checkout_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *CreateSubscriptionResponse) GetId() string {
@@ -1843,7 +1943,7 @@ type PauseSubscriptionRequest struct {
 
 func (x *PauseSubscriptionRequest) Reset() {
 	*x = PauseSubscriptionRequest{}
-	mi := &file_cpay_v1_checkout_proto_msgTypes[15]
+	mi := &file_cpay_v1_checkout_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1855,7 +1955,7 @@ func (x *PauseSubscriptionRequest) String() string {
 func (*PauseSubscriptionRequest) ProtoMessage() {}
 
 func (x *PauseSubscriptionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cpay_v1_checkout_proto_msgTypes[15]
+	mi := &file_cpay_v1_checkout_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1868,7 +1968,7 @@ func (x *PauseSubscriptionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PauseSubscriptionRequest.ProtoReflect.Descriptor instead.
 func (*PauseSubscriptionRequest) Descriptor() ([]byte, []int) {
-	return file_cpay_v1_checkout_proto_rawDescGZIP(), []int{15}
+	return file_cpay_v1_checkout_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *PauseSubscriptionRequest) GetMerchantId() string {
@@ -1895,7 +1995,7 @@ type ResumeSubscriptionRequest struct {
 
 func (x *ResumeSubscriptionRequest) Reset() {
 	*x = ResumeSubscriptionRequest{}
-	mi := &file_cpay_v1_checkout_proto_msgTypes[16]
+	mi := &file_cpay_v1_checkout_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1907,7 +2007,7 @@ func (x *ResumeSubscriptionRequest) String() string {
 func (*ResumeSubscriptionRequest) ProtoMessage() {}
 
 func (x *ResumeSubscriptionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cpay_v1_checkout_proto_msgTypes[16]
+	mi := &file_cpay_v1_checkout_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1920,7 +2020,7 @@ func (x *ResumeSubscriptionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResumeSubscriptionRequest.ProtoReflect.Descriptor instead.
 func (*ResumeSubscriptionRequest) Descriptor() ([]byte, []int) {
-	return file_cpay_v1_checkout_proto_rawDescGZIP(), []int{16}
+	return file_cpay_v1_checkout_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *ResumeSubscriptionRequest) GetMerchantId() string {
@@ -1947,7 +2047,7 @@ type SubscriptionMutationResponse struct {
 
 func (x *SubscriptionMutationResponse) Reset() {
 	*x = SubscriptionMutationResponse{}
-	mi := &file_cpay_v1_checkout_proto_msgTypes[17]
+	mi := &file_cpay_v1_checkout_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1959,7 +2059,7 @@ func (x *SubscriptionMutationResponse) String() string {
 func (*SubscriptionMutationResponse) ProtoMessage() {}
 
 func (x *SubscriptionMutationResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cpay_v1_checkout_proto_msgTypes[17]
+	mi := &file_cpay_v1_checkout_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1972,7 +2072,7 @@ func (x *SubscriptionMutationResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubscriptionMutationResponse.ProtoReflect.Descriptor instead.
 func (*SubscriptionMutationResponse) Descriptor() ([]byte, []int) {
-	return file_cpay_v1_checkout_proto_rawDescGZIP(), []int{17}
+	return file_cpay_v1_checkout_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *SubscriptionMutationResponse) GetId() string {
@@ -2000,7 +2100,7 @@ type GetSubscriptionCyclesRequest struct {
 
 func (x *GetSubscriptionCyclesRequest) Reset() {
 	*x = GetSubscriptionCyclesRequest{}
-	mi := &file_cpay_v1_checkout_proto_msgTypes[18]
+	mi := &file_cpay_v1_checkout_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2012,7 +2112,7 @@ func (x *GetSubscriptionCyclesRequest) String() string {
 func (*GetSubscriptionCyclesRequest) ProtoMessage() {}
 
 func (x *GetSubscriptionCyclesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cpay_v1_checkout_proto_msgTypes[18]
+	mi := &file_cpay_v1_checkout_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2025,7 +2125,7 @@ func (x *GetSubscriptionCyclesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSubscriptionCyclesRequest.ProtoReflect.Descriptor instead.
 func (*GetSubscriptionCyclesRequest) Descriptor() ([]byte, []int) {
-	return file_cpay_v1_checkout_proto_rawDescGZIP(), []int{18}
+	return file_cpay_v1_checkout_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *GetSubscriptionCyclesRequest) GetMerchantId() string {
@@ -2069,7 +2169,7 @@ type SubscriptionCycle struct {
 
 func (x *SubscriptionCycle) Reset() {
 	*x = SubscriptionCycle{}
-	mi := &file_cpay_v1_checkout_proto_msgTypes[19]
+	mi := &file_cpay_v1_checkout_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2081,7 +2181,7 @@ func (x *SubscriptionCycle) String() string {
 func (*SubscriptionCycle) ProtoMessage() {}
 
 func (x *SubscriptionCycle) ProtoReflect() protoreflect.Message {
-	mi := &file_cpay_v1_checkout_proto_msgTypes[19]
+	mi := &file_cpay_v1_checkout_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2094,7 +2194,7 @@ func (x *SubscriptionCycle) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubscriptionCycle.ProtoReflect.Descriptor instead.
 func (*SubscriptionCycle) Descriptor() ([]byte, []int) {
-	return file_cpay_v1_checkout_proto_rawDescGZIP(), []int{19}
+	return file_cpay_v1_checkout_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *SubscriptionCycle) GetId() string {
@@ -2191,7 +2291,7 @@ type GetSubscriptionCyclesResponse struct {
 
 func (x *GetSubscriptionCyclesResponse) Reset() {
 	*x = GetSubscriptionCyclesResponse{}
-	mi := &file_cpay_v1_checkout_proto_msgTypes[20]
+	mi := &file_cpay_v1_checkout_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2203,7 +2303,7 @@ func (x *GetSubscriptionCyclesResponse) String() string {
 func (*GetSubscriptionCyclesResponse) ProtoMessage() {}
 
 func (x *GetSubscriptionCyclesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cpay_v1_checkout_proto_msgTypes[20]
+	mi := &file_cpay_v1_checkout_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2216,7 +2316,7 @@ func (x *GetSubscriptionCyclesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSubscriptionCyclesResponse.ProtoReflect.Descriptor instead.
 func (*GetSubscriptionCyclesResponse) Descriptor() ([]byte, []int) {
-	return file_cpay_v1_checkout_proto_rawDescGZIP(), []int{20}
+	return file_cpay_v1_checkout_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *GetSubscriptionCyclesResponse) GetSubscriptionId() string {
@@ -2311,7 +2411,7 @@ const file_cpay_v1_checkout_proto_rawDesc = "" +
 	"successUrl\x12\x1d\n" +
 	"\n" +
 	"created_at\x18\x0f \x01(\tR\tcreatedAt\x12=\n" +
-	"\x0epayment_intent\x18\x10 \x01(\v2\x16.cpay.v1.PaymentIntentR\rpaymentIntent\"\xac\x06\n" +
+	"\x0epayment_intent\x18\x10 \x01(\v2\x16.cpay.v1.PaymentIntentR\rpaymentIntent\"\xe4\x06\n" +
 	"\x15PublicCheckoutSession\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x16\n" +
 	"\x06status\x18\x02 \x01(\tR\x06status\x12\x16\n" +
@@ -2333,10 +2433,19 @@ const file_cpay_v1_checkout_proto_rawDesc = "" +
 	"\x1aafter_payment_redirect_url\x18\x0f \x01(\tR\x17afterPaymentRedirectUrl\x12A\n" +
 	"\x1dafter_payment_success_message\x18\x10 \x01(\tR\x1aafterPaymentSuccessMessage\x122\n" +
 	"\x15payment_intent_status\x18\x11 \x01(\tR\x13paymentIntentStatus\x12'\n" +
-	"\x0freceived_amount\x18\x12 \x01(\x01R\x0ereceivedAmount\x12\x17\n" +
-	"\atx_hash\x18\x13 \x01(\tR\x06txHash\x12$\n" +
+	"\x0freceived_amount\x18\x12 \x01(\x01R\x0ereceivedAmount\x12$\n" +
 	"\rconfirmations\x18\x14 \x01(\x05R\rconfirmations\x125\n" +
-	"\x16required_confirmations\x18\x15 \x01(\x05R\x15requiredConfirmations\"[\n" +
+	"\x16required_confirmations\x18\x15 \x01(\x05R\x15requiredConfirmations\x12@\n" +
+	"\ftransactions\x18\x16 \x03(\v2\x1c.cpay.v1.CheckoutTransactionR\ftransactionsJ\x04\b\x13\x10\x14R\atx_hash\"\x8a\x02\n" +
+	"\x13CheckoutTransaction\x12\x17\n" +
+	"\atx_hash\x18\x01 \x01(\tR\x06txHash\x12\x16\n" +
+	"\x06amount\x18\x02 \x01(\x01R\x06amount\x12\x14\n" +
+	"\x05chain\x18\x03 \x01(\tR\x05chain\x12!\n" +
+	"\ftoken_symbol\x18\x04 \x01(\tR\vtokenSymbol\x12$\n" +
+	"\rconfirmations\x18\x05 \x01(\x05R\rconfirmations\x12\x16\n" +
+	"\x06status\x18\x06 \x01(\tR\x06status\x12!\n" +
+	"\fblock_number\x18\a \x01(\x03R\vblockNumber\x12(\n" +
+	"\x10has_block_number\x18\b \x01(\bR\x0ehasBlockNumber\"[\n" +
 	"\x19GetCheckoutSessionRequest\x12\x1f\n" +
 	"\vmerchant_id\x18\x01 \x01(\tR\n" +
 	"merchantId\x12\x1d\n" +
@@ -2511,60 +2620,62 @@ func file_cpay_v1_checkout_proto_rawDescGZIP() []byte {
 	return file_cpay_v1_checkout_proto_rawDescData
 }
 
-var file_cpay_v1_checkout_proto_msgTypes = make([]protoimpl.MessageInfo, 21)
+var file_cpay_v1_checkout_proto_msgTypes = make([]protoimpl.MessageInfo, 22)
 var file_cpay_v1_checkout_proto_goTypes = []any{
 	(*CreateCheckoutSessionRequest)(nil),       // 0: cpay.v1.CreateCheckoutSessionRequest
 	(*CreatePublicCheckoutSessionRequest)(nil), // 1: cpay.v1.CreatePublicCheckoutSessionRequest
 	(*CreateCheckoutSessionResponse)(nil),      // 2: cpay.v1.CreateCheckoutSessionResponse
 	(*CheckoutSession)(nil),                    // 3: cpay.v1.CheckoutSession
 	(*PublicCheckoutSession)(nil),              // 4: cpay.v1.PublicCheckoutSession
-	(*GetCheckoutSessionRequest)(nil),          // 5: cpay.v1.GetCheckoutSessionRequest
-	(*GetPublicCheckoutSessionRequest)(nil),    // 6: cpay.v1.GetPublicCheckoutSessionRequest
-	(*ConfirmCheckoutSessionRequest)(nil),      // 7: cpay.v1.ConfirmCheckoutSessionRequest
-	(*ConfirmCheckoutSessionResponse)(nil),     // 8: cpay.v1.ConfirmCheckoutSessionResponse
-	(*GetPaymentIntentRequest)(nil),            // 9: cpay.v1.GetPaymentIntentRequest
-	(*PaymentIntent)(nil),                      // 10: cpay.v1.PaymentIntent
-	(*CreateWebhookEndpointRequest)(nil),       // 11: cpay.v1.CreateWebhookEndpointRequest
-	(*CreateWebhookEndpointResponse)(nil),      // 12: cpay.v1.CreateWebhookEndpointResponse
-	(*CreateSubscriptionRequest)(nil),          // 13: cpay.v1.CreateSubscriptionRequest
-	(*CreateSubscriptionResponse)(nil),         // 14: cpay.v1.CreateSubscriptionResponse
-	(*PauseSubscriptionRequest)(nil),           // 15: cpay.v1.PauseSubscriptionRequest
-	(*ResumeSubscriptionRequest)(nil),          // 16: cpay.v1.ResumeSubscriptionRequest
-	(*SubscriptionMutationResponse)(nil),       // 17: cpay.v1.SubscriptionMutationResponse
-	(*GetSubscriptionCyclesRequest)(nil),       // 18: cpay.v1.GetSubscriptionCyclesRequest
-	(*SubscriptionCycle)(nil),                  // 19: cpay.v1.SubscriptionCycle
-	(*GetSubscriptionCyclesResponse)(nil),      // 20: cpay.v1.GetSubscriptionCyclesResponse
+	(*CheckoutTransaction)(nil),                // 5: cpay.v1.CheckoutTransaction
+	(*GetCheckoutSessionRequest)(nil),          // 6: cpay.v1.GetCheckoutSessionRequest
+	(*GetPublicCheckoutSessionRequest)(nil),    // 7: cpay.v1.GetPublicCheckoutSessionRequest
+	(*ConfirmCheckoutSessionRequest)(nil),      // 8: cpay.v1.ConfirmCheckoutSessionRequest
+	(*ConfirmCheckoutSessionResponse)(nil),     // 9: cpay.v1.ConfirmCheckoutSessionResponse
+	(*GetPaymentIntentRequest)(nil),            // 10: cpay.v1.GetPaymentIntentRequest
+	(*PaymentIntent)(nil),                      // 11: cpay.v1.PaymentIntent
+	(*CreateWebhookEndpointRequest)(nil),       // 12: cpay.v1.CreateWebhookEndpointRequest
+	(*CreateWebhookEndpointResponse)(nil),      // 13: cpay.v1.CreateWebhookEndpointResponse
+	(*CreateSubscriptionRequest)(nil),          // 14: cpay.v1.CreateSubscriptionRequest
+	(*CreateSubscriptionResponse)(nil),         // 15: cpay.v1.CreateSubscriptionResponse
+	(*PauseSubscriptionRequest)(nil),           // 16: cpay.v1.PauseSubscriptionRequest
+	(*ResumeSubscriptionRequest)(nil),          // 17: cpay.v1.ResumeSubscriptionRequest
+	(*SubscriptionMutationResponse)(nil),       // 18: cpay.v1.SubscriptionMutationResponse
+	(*GetSubscriptionCyclesRequest)(nil),       // 19: cpay.v1.GetSubscriptionCyclesRequest
+	(*SubscriptionCycle)(nil),                  // 20: cpay.v1.SubscriptionCycle
+	(*GetSubscriptionCyclesResponse)(nil),      // 21: cpay.v1.GetSubscriptionCyclesResponse
 }
 var file_cpay_v1_checkout_proto_depIdxs = []int32{
-	10, // 0: cpay.v1.CheckoutSession.payment_intent:type_name -> cpay.v1.PaymentIntent
-	19, // 1: cpay.v1.GetSubscriptionCyclesResponse.data:type_name -> cpay.v1.SubscriptionCycle
-	0,  // 2: cpay.v1.CheckoutService.CreateCheckoutSession:input_type -> cpay.v1.CreateCheckoutSessionRequest
-	1,  // 3: cpay.v1.CheckoutService.CreatePublicCheckoutSession:input_type -> cpay.v1.CreatePublicCheckoutSessionRequest
-	5,  // 4: cpay.v1.CheckoutService.GetCheckoutSession:input_type -> cpay.v1.GetCheckoutSessionRequest
-	6,  // 5: cpay.v1.CheckoutService.GetPublicCheckoutSession:input_type -> cpay.v1.GetPublicCheckoutSessionRequest
-	7,  // 6: cpay.v1.CheckoutService.ConfirmCheckoutSession:input_type -> cpay.v1.ConfirmCheckoutSessionRequest
-	9,  // 7: cpay.v1.CheckoutService.GetPaymentIntent:input_type -> cpay.v1.GetPaymentIntentRequest
-	11, // 8: cpay.v1.CheckoutService.CreateWebhookEndpoint:input_type -> cpay.v1.CreateWebhookEndpointRequest
-	13, // 9: cpay.v1.CheckoutService.CreateSubscription:input_type -> cpay.v1.CreateSubscriptionRequest
-	15, // 10: cpay.v1.CheckoutService.PauseSubscription:input_type -> cpay.v1.PauseSubscriptionRequest
-	16, // 11: cpay.v1.CheckoutService.ResumeSubscription:input_type -> cpay.v1.ResumeSubscriptionRequest
-	18, // 12: cpay.v1.CheckoutService.GetSubscriptionCycles:input_type -> cpay.v1.GetSubscriptionCyclesRequest
-	2,  // 13: cpay.v1.CheckoutService.CreateCheckoutSession:output_type -> cpay.v1.CreateCheckoutSessionResponse
-	2,  // 14: cpay.v1.CheckoutService.CreatePublicCheckoutSession:output_type -> cpay.v1.CreateCheckoutSessionResponse
-	3,  // 15: cpay.v1.CheckoutService.GetCheckoutSession:output_type -> cpay.v1.CheckoutSession
-	4,  // 16: cpay.v1.CheckoutService.GetPublicCheckoutSession:output_type -> cpay.v1.PublicCheckoutSession
-	8,  // 17: cpay.v1.CheckoutService.ConfirmCheckoutSession:output_type -> cpay.v1.ConfirmCheckoutSessionResponse
-	10, // 18: cpay.v1.CheckoutService.GetPaymentIntent:output_type -> cpay.v1.PaymentIntent
-	12, // 19: cpay.v1.CheckoutService.CreateWebhookEndpoint:output_type -> cpay.v1.CreateWebhookEndpointResponse
-	14, // 20: cpay.v1.CheckoutService.CreateSubscription:output_type -> cpay.v1.CreateSubscriptionResponse
-	17, // 21: cpay.v1.CheckoutService.PauseSubscription:output_type -> cpay.v1.SubscriptionMutationResponse
-	17, // 22: cpay.v1.CheckoutService.ResumeSubscription:output_type -> cpay.v1.SubscriptionMutationResponse
-	20, // 23: cpay.v1.CheckoutService.GetSubscriptionCycles:output_type -> cpay.v1.GetSubscriptionCyclesResponse
-	13, // [13:24] is the sub-list for method output_type
-	2,  // [2:13] is the sub-list for method input_type
-	2,  // [2:2] is the sub-list for extension type_name
-	2,  // [2:2] is the sub-list for extension extendee
-	0,  // [0:2] is the sub-list for field type_name
+	11, // 0: cpay.v1.CheckoutSession.payment_intent:type_name -> cpay.v1.PaymentIntent
+	5,  // 1: cpay.v1.PublicCheckoutSession.transactions:type_name -> cpay.v1.CheckoutTransaction
+	20, // 2: cpay.v1.GetSubscriptionCyclesResponse.data:type_name -> cpay.v1.SubscriptionCycle
+	0,  // 3: cpay.v1.CheckoutService.CreateCheckoutSession:input_type -> cpay.v1.CreateCheckoutSessionRequest
+	1,  // 4: cpay.v1.CheckoutService.CreatePublicCheckoutSession:input_type -> cpay.v1.CreatePublicCheckoutSessionRequest
+	6,  // 5: cpay.v1.CheckoutService.GetCheckoutSession:input_type -> cpay.v1.GetCheckoutSessionRequest
+	7,  // 6: cpay.v1.CheckoutService.GetPublicCheckoutSession:input_type -> cpay.v1.GetPublicCheckoutSessionRequest
+	8,  // 7: cpay.v1.CheckoutService.ConfirmCheckoutSession:input_type -> cpay.v1.ConfirmCheckoutSessionRequest
+	10, // 8: cpay.v1.CheckoutService.GetPaymentIntent:input_type -> cpay.v1.GetPaymentIntentRequest
+	12, // 9: cpay.v1.CheckoutService.CreateWebhookEndpoint:input_type -> cpay.v1.CreateWebhookEndpointRequest
+	14, // 10: cpay.v1.CheckoutService.CreateSubscription:input_type -> cpay.v1.CreateSubscriptionRequest
+	16, // 11: cpay.v1.CheckoutService.PauseSubscription:input_type -> cpay.v1.PauseSubscriptionRequest
+	17, // 12: cpay.v1.CheckoutService.ResumeSubscription:input_type -> cpay.v1.ResumeSubscriptionRequest
+	19, // 13: cpay.v1.CheckoutService.GetSubscriptionCycles:input_type -> cpay.v1.GetSubscriptionCyclesRequest
+	2,  // 14: cpay.v1.CheckoutService.CreateCheckoutSession:output_type -> cpay.v1.CreateCheckoutSessionResponse
+	2,  // 15: cpay.v1.CheckoutService.CreatePublicCheckoutSession:output_type -> cpay.v1.CreateCheckoutSessionResponse
+	3,  // 16: cpay.v1.CheckoutService.GetCheckoutSession:output_type -> cpay.v1.CheckoutSession
+	4,  // 17: cpay.v1.CheckoutService.GetPublicCheckoutSession:output_type -> cpay.v1.PublicCheckoutSession
+	9,  // 18: cpay.v1.CheckoutService.ConfirmCheckoutSession:output_type -> cpay.v1.ConfirmCheckoutSessionResponse
+	11, // 19: cpay.v1.CheckoutService.GetPaymentIntent:output_type -> cpay.v1.PaymentIntent
+	13, // 20: cpay.v1.CheckoutService.CreateWebhookEndpoint:output_type -> cpay.v1.CreateWebhookEndpointResponse
+	15, // 21: cpay.v1.CheckoutService.CreateSubscription:output_type -> cpay.v1.CreateSubscriptionResponse
+	18, // 22: cpay.v1.CheckoutService.PauseSubscription:output_type -> cpay.v1.SubscriptionMutationResponse
+	18, // 23: cpay.v1.CheckoutService.ResumeSubscription:output_type -> cpay.v1.SubscriptionMutationResponse
+	21, // 24: cpay.v1.CheckoutService.GetSubscriptionCycles:output_type -> cpay.v1.GetSubscriptionCyclesResponse
+	14, // [14:25] is the sub-list for method output_type
+	3,  // [3:14] is the sub-list for method input_type
+	3,  // [3:3] is the sub-list for extension type_name
+	3,  // [3:3] is the sub-list for extension extendee
+	0,  // [0:3] is the sub-list for field type_name
 }
 
 func init() { file_cpay_v1_checkout_proto_init() }
@@ -2580,7 +2691,7 @@ func file_cpay_v1_checkout_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_cpay_v1_checkout_proto_rawDesc), len(file_cpay_v1_checkout_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   21,
+			NumMessages:   22,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

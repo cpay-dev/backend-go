@@ -341,6 +341,73 @@ CREATE TABLE IF NOT EXISTS platform.idempotency_keys (
     UNIQUE (merchant_id, endpoint, idempotency_key)
 );
 
+CREATE TABLE IF NOT EXISTS platform.email_notifications (
+    id ulid PRIMARY KEY,
+    event_id ulid NOT NULL,
+    event_type TEXT NOT NULL,
+    merchant_id ulid,
+    template TEXT NOT NULL,
+    recipient TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    provider_message_id TEXT,
+    last_error TEXT,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    sent_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (event_id, template, recipient),
+    CHECK (status IN ('pending', 'sent', 'failed'))
+);
+
+ALTER TABLE checkout.payouts
+    ADD COLUMN IF NOT EXISTS attempt_count INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS last_error TEXT;
+
+ALTER TABLE checkout.payout_items
+    ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'pending',
+    ADD COLUMN IF NOT EXISTS tx_hash TEXT,
+    ADD COLUMN IF NOT EXISTS last_error TEXT,
+    ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'payout_items_status_check'
+          AND conrelid = 'checkout.payout_items'::regclass
+    ) THEN
+        ALTER TABLE checkout.payout_items
+            ADD CONSTRAINT payout_items_status_check
+            CHECK (status IN ('pending', 'processing', 'completed', 'failed'));
+    END IF;
+END $$;
+
+UPDATE checkout.payment_intents
+SET required_confirmations = CASE
+    WHEN lower(chain) IN ('ethereum', 'ethereum mainnet', 'mainnet') THEN 64
+    WHEN lower(chain) = 'polygon' THEN 6
+    WHEN lower(chain) IN ('arbitrum', 'arbitrum one') THEN 4800
+    WHEN lower(chain) = 'base' THEN 600
+    WHEN lower(chain) IN ('hyperevm', 'hyper evm', 'hyperliquid', 'hyperliquid evm') THEN 3
+    WHEN lower(chain) IN ('bnb', 'bsc', 'bnb smart chain') THEN 6
+    WHEN lower(chain) = 'optimism' THEN 600
+    WHEN lower(chain) = 'solana' THEN 32
+    WHEN lower(chain) = 'tron' THEN 21
+    ELSE required_confirmations
+END,
+updated_at = NOW()
+WHERE status IN ('created', 'awaiting_funds', 'partial', 'expired')
+  AND (
+    required_confirmations IN (1, 2, 3, 12, 15, 19, 20, 32, 64, 600, 4800)
+    OR lower(chain) IN (
+        'polygon',
+        'bnb', 'bsc', 'bnb smart chain',
+        'hyperevm', 'hyper evm', 'hyperliquid', 'hyperliquid evm',
+        'tron'
+    )
+  );
+
 CREATE INDEX IF NOT EXISTS idx_auth_api_keys_merchant_active ON auth.api_keys (merchant_id) WHERE revoked_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_catalog_payment_links_merchant ON catalog.payment_links (merchant_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_checkout_sessions_link ON checkout.checkout_sessions (payment_link_id, created_at DESC);
