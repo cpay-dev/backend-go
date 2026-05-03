@@ -21,8 +21,8 @@ import (
 	"github.com/cpay-dev/cpay/internal/shared/chain"
 	"github.com/cpay-dev/cpay/internal/shared/config"
 	cryptox "github.com/cpay-dev/cpay/internal/shared/crypto"
+	"github.com/cpay-dev/cpay/internal/shared/ids"
 	"github.com/cpay-dev/cpay/internal/shared/rpcx"
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jung-kurt/gofpdf/v2"
@@ -55,7 +55,7 @@ func New(cfg config.Config, log zerolog.Logger, db *pgxpool.Pool, chainAdapter c
 }
 
 type createSessionInput struct {
-	MerchantID      *uuid.UUID
+	MerchantID      *string
 	LinkIdentifier  string
 	Amount          *float64
 	Chain           string
@@ -79,7 +79,7 @@ type allowedToken struct {
 }
 
 func (s *Service) CreateCheckoutSession(ctx context.Context, req *cpayv1.CreateCheckoutSessionRequest) (*cpayv1.CreateCheckoutSessionResponse, error) {
-	merchantID, err := uuid.Parse(strings.TrimSpace(req.GetMerchantId()))
+	merchantID, err := ids.Parse(strings.TrimSpace(req.GetMerchantId()))
 	if err != nil {
 		return nil, rpcx.E(codes.InvalidArgument, "invalid_request", "merchant_id is invalid")
 	}
@@ -256,10 +256,10 @@ func (s *Service) createSession(ctx context.Context, in createSessionInput) (*cp
 		return nil, rpcx.E(codes.Internal, "internal_error", "failed to encrypt private key")
 	}
 
-	merchantID, _ := uuid.Parse(merchantIDStr)
-	sessionID := uuid.New()
-	intentID := uuid.New()
-	addressID := uuid.New()
+	merchantID, _ := ids.Parse(merchantIDStr)
+	sessionID := ids.New()
+	intentID := ids.New()
+	addressID := ids.New()
 	clientSecret, err := newClientSecret()
 	if err != nil {
 		return nil, rpcx.E(codes.Internal, "internal_error", "failed to generate client secret")
@@ -319,7 +319,7 @@ func (s *Service) createSession(ctx context.Context, in createSessionInput) (*cp
 		return nil, rpcx.E(codes.Internal, "internal_error", "failed to create deposit address")
 	}
 
-	if err = s.outbox.EnqueueTx(ctx, tx, "payment_intent", intentID.String(), &merchantID, "payment_intent.created", map[string]any{
+	if err = s.outbox.EnqueueTx(ctx, tx, "payment_intent", intentID, &merchantID, "payment_intent.created", map[string]any{
 		"payment_intent_id": intentID,
 		"checkout_session":  sessionID,
 		"payment_link_id":   linkIDStr,
@@ -336,8 +336,8 @@ func (s *Service) createSession(ctx context.Context, in createSessionInput) (*cp
 	}
 
 	resp := &cpayv1.CreateCheckoutSessionResponse{
-		Id:                      sessionID.String(),
-		PaymentIntentId:         intentID.String(),
+		Id:                      sessionID,
+		PaymentIntentId:         intentID,
 		PaymentLinkCode:         code,
 		Status:                  "awaiting_funds",
 		Amount:                  amount,
@@ -359,11 +359,11 @@ func (s *Service) createSession(ctx context.Context, in createSessionInput) (*cp
 }
 
 func (s *Service) GetCheckoutSession(ctx context.Context, req *cpayv1.GetCheckoutSessionRequest) (*cpayv1.CheckoutSession, error) {
-	merchantID, err := uuid.Parse(strings.TrimSpace(req.GetMerchantId()))
+	merchantID, err := ids.Parse(strings.TrimSpace(req.GetMerchantId()))
 	if err != nil {
 		return nil, rpcx.E(codes.InvalidArgument, "invalid_request", "merchant_id is invalid")
 	}
-	sessionID, err := uuid.Parse(strings.TrimSpace(req.GetSessionId()))
+	sessionID, err := ids.Parse(strings.TrimSpace(req.GetSessionId()))
 	if err != nil {
 		return nil, rpcx.E(codes.InvalidArgument, "invalid_request", "session_id is invalid")
 	}
@@ -448,37 +448,32 @@ func (s *Service) GetCheckoutSession(ctx context.Context, req *cpayv1.GetCheckou
 }
 
 func (s *Service) GetPublicCheckoutSession(ctx context.Context, req *cpayv1.GetPublicCheckoutSessionRequest) (*cpayv1.PublicCheckoutSession, error) {
-	sessionID, err := uuid.Parse(strings.TrimSpace(req.GetSessionId()))
+	sessionID, err := ids.Parse(strings.TrimSpace(req.GetSessionId()))
 	if err != nil {
 		return nil, rpcx.E(codes.InvalidArgument, "invalid_request", "session_id is invalid")
 	}
-	secret := strings.TrimSpace(req.GetClientSecret())
-	if secret == "" {
-		return nil, rpcx.E(codes.Unauthenticated, "unauthorized", "client_secret is required")
-	}
-	secretHash := auth.HashToken(secret)
-
 	query := `
 		SELECT c.id::text, c.status, c.amount::text, c.currency, c.chain, c.token_symbol, c.expires_at,
-			i.id::text, d.address,
+			i.id::text, i.status, i.received_amount::text, i.tx_hash, i.confirmations, i.required_confirmations, d.address,
 			p.title, p.description, p.image_url, p.cta_text, p.after_payment_type, p.redirect_url, p.success_message
 		FROM checkout.checkout_sessions c
 		JOIN checkout.payment_intents i ON i.checkout_session_id=c.id
 		JOIN checkout.deposit_addresses d ON d.payment_intent_id=i.id
 		JOIN catalog.payment_links p ON p.id=c.payment_link_id
-		WHERE c.id=$1 AND c.client_secret_hash=$2
+		WHERE c.id=$1
 	`
 	var id, status, amountRaw, currency, chainName, tokenSymbol string
 	var expiresAt time.Time
-	var intentID, depositAddress, linkTitle, ctaText, afterType string
-	var linkDescription, linkImage, redirectURL, successMessage *string
-	if err := s.db.QueryRow(ctx, query, sessionID, secretHash).Scan(
+	var intentID, intentStatus, receivedRaw, depositAddress, linkTitle, ctaText, afterType string
+	var txHash, linkDescription, linkImage, redirectURL, successMessage *string
+	var confirmations, requiredConfs int
+	if err := s.db.QueryRow(ctx, query, sessionID).Scan(
 		&id, &status, &amountRaw, &currency, &chainName, &tokenSymbol, &expiresAt,
-		&intentID, &depositAddress,
+		&intentID, &intentStatus, &receivedRaw, &txHash, &confirmations, &requiredConfs, &depositAddress,
 		&linkTitle, &linkDescription, &linkImage, &ctaText, &afterType, &redirectURL, &successMessage,
 	); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, rpcx.E(codes.Unauthenticated, "unauthorized", "invalid checkout credentials")
+			return nil, rpcx.E(codes.NotFound, "not_found", "checkout session not found")
 		}
 		return nil, rpcx.E(codes.Internal, "internal_error", "failed to fetch checkout session")
 	}
@@ -493,6 +488,11 @@ func (s *Service) GetPublicCheckoutSession(ctx context.Context, req *cpayv1.GetP
 		ExpiresAt:                  expiresAt.UTC().Format(time.RFC3339Nano),
 		PaymentIntentId:            intentID,
 		DepositAddress:             depositAddress,
+		PaymentIntentStatus:        intentStatus,
+		ReceivedAmount:             parseFloatValue(receivedRaw),
+		TxHash:                     strValue(txHash),
+		Confirmations:              int32(confirmations),
+		RequiredConfirmations:      int32(requiredConfs),
 		LinkTitle:                  linkTitle,
 		LinkDescription:            strValue(linkDescription),
 		LinkImageUrl:               strValue(linkImage),
@@ -504,11 +504,11 @@ func (s *Service) GetPublicCheckoutSession(ctx context.Context, req *cpayv1.GetP
 }
 
 func (s *Service) ConfirmCheckoutSession(ctx context.Context, req *cpayv1.ConfirmCheckoutSessionRequest) (*cpayv1.ConfirmCheckoutSessionResponse, error) {
-	merchantID, err := uuid.Parse(strings.TrimSpace(req.GetMerchantId()))
+	merchantID, err := ids.Parse(strings.TrimSpace(req.GetMerchantId()))
 	if err != nil {
 		return nil, rpcx.E(codes.InvalidArgument, "invalid_request", "merchant_id is invalid")
 	}
-	sessionID, err := uuid.Parse(strings.TrimSpace(req.GetSessionId()))
+	sessionID, err := ids.Parse(strings.TrimSpace(req.GetSessionId()))
 	if err != nil {
 		return nil, rpcx.E(codes.InvalidArgument, "invalid_request", "session_id is invalid")
 	}
@@ -547,7 +547,7 @@ func (s *Service) ConfirmCheckoutSession(ctx context.Context, req *cpayv1.Confir
 		txStatus = "confirmed"
 	}
 
-	intentID, _ := uuid.Parse(intentIDStr)
+	intentID, _ := ids.Parse(intentIDStr)
 	rawPayload := req.GetRawPayloadJson()
 	if strings.TrimSpace(rawPayload) == "" {
 		rawPayload = "{}"
@@ -575,7 +575,7 @@ func (s *Service) ConfirmCheckoutSession(ctx context.Context, req *cpayv1.Confir
 		VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, NULL, $10, $11, $12::jsonb, NOW(), NOW())
 		ON CONFLICT (chain, tx_hash, payment_intent_id)
 		DO UPDATE SET confirmations=EXCLUDED.confirmations, status=EXCLUDED.status, raw_payload=EXCLUDED.raw_payload
-	`, uuid.New(), intentID, chainName, req.GetTxHash(), blockNumber, nullIfEmpty(req.GetFromAddress()), nullIfEmpty(req.GetToAddress()), req.GetReceivedAmount(),
+	`, ids.New(), intentID, chainName, req.GetTxHash(), blockNumber, nullIfEmpty(req.GetFromAddress()), nullIfEmpty(req.GetToAddress()), req.GetReceivedAmount(),
 		tokenSymbol, req.GetConfirmations(), txStatus, rawPayload)
 	if err != nil {
 		return nil, rpcx.E(codes.Internal, "internal_error", "failed to write chain transaction")
@@ -626,14 +626,14 @@ func (s *Service) ConfirmCheckoutSession(ctx context.Context, req *cpayv1.Confir
 
 	if newStatus == "confirmed" && addInvoice {
 		if objectKey, invErr := s.generateAndStoreInvoice(ctx, merchantID, intentID, req.GetReceivedAmount(), currency, title); invErr == nil && objectKey != "" {
-			invoiceID := uuid.New()
+			invoiceID := ids.New()
 			cmd, insErr := s.db.Exec(ctx, `
 				INSERT INTO checkout.invoices(id, payment_intent_id, merchant_id, object_key, amount, currency, created_at)
 				VALUES($1, $2, $3, $4, $5, $6, NOW())
 				ON CONFLICT (payment_intent_id) DO NOTHING
 			`, invoiceID, intentID, merchantID, objectKey, req.GetReceivedAmount(), currency)
 			if insErr == nil && cmd.RowsAffected() > 0 {
-				_ = s.outbox.Enqueue(ctx, "invoice", invoiceID.String(), &merchantID, "invoice.created", map[string]any{
+				_ = s.outbox.Enqueue(ctx, "invoice", invoiceID, &merchantID, "invoice.created", map[string]any{
 					"invoice_id":          invoiceID,
 					"payment_intent_id":   intentID,
 					"merchant_id":         merchantID,
@@ -647,8 +647,8 @@ func (s *Service) ConfirmCheckoutSession(ctx context.Context, req *cpayv1.Confir
 	}
 
 	return &cpayv1.ConfirmCheckoutSessionResponse{
-		CheckoutSessionId:     sessionID.String(),
-		PaymentIntentId:       intentID.String(),
+		CheckoutSessionId:     sessionID,
+		PaymentIntentId:       intentID,
 		Status:                newStatus,
 		Confirmations:         req.GetConfirmations(),
 		RequiredConfirmations: int32(requiredConfs),
@@ -656,7 +656,7 @@ func (s *Service) ConfirmCheckoutSession(ctx context.Context, req *cpayv1.Confir
 }
 
 func (s *Service) GetPaymentIntent(ctx context.Context, req *cpayv1.GetPaymentIntentRequest) (*cpayv1.PaymentIntent, error) {
-	merchantID, err := uuid.Parse(strings.TrimSpace(req.GetMerchantId()))
+	merchantID, err := ids.Parse(strings.TrimSpace(req.GetMerchantId()))
 	if err != nil {
 		return nil, rpcx.E(codes.InvalidArgument, "invalid_request", "merchant_id is invalid")
 	}
@@ -719,7 +719,7 @@ func (s *Service) GetPaymentIntent(ctx context.Context, req *cpayv1.GetPaymentIn
 }
 
 func (s *Service) CreateWebhookEndpoint(ctx context.Context, req *cpayv1.CreateWebhookEndpointRequest) (*cpayv1.CreateWebhookEndpointResponse, error) {
-	merchantID, err := uuid.Parse(strings.TrimSpace(req.GetMerchantId()))
+	merchantID, err := ids.Parse(strings.TrimSpace(req.GetMerchantId()))
 	if err != nil {
 		return nil, rpcx.E(codes.InvalidArgument, "invalid_request", "merchant_id is invalid")
 	}
@@ -753,7 +753,7 @@ func (s *Service) CreateWebhookEndpoint(ctx context.Context, req *cpayv1.CreateW
 		return nil, rpcx.E(codes.Internal, "internal_error", "failed to encrypt webhook secret")
 	}
 	eventsRaw, _ := json.Marshal(events)
-	id := uuid.New()
+	id := ids.New()
 	_, err = s.db.Exec(ctx, `
 		INSERT INTO checkout.webhook_endpoints(
 			id, merchant_id, url, description, enabled, events, secret_encrypted, max_retries, created_at, updated_at
@@ -764,14 +764,14 @@ func (s *Service) CreateWebhookEndpoint(ctx context.Context, req *cpayv1.CreateW
 		return nil, rpcx.E(codes.Internal, "internal_error", "failed to create webhook endpoint")
 	}
 
-	_ = s.outbox.Enqueue(ctx, "webhook_endpoint", id.String(), &merchantID, "webhook_endpoint.created", map[string]any{
+	_ = s.outbox.Enqueue(ctx, "webhook_endpoint", id, &merchantID, "webhook_endpoint.created", map[string]any{
 		"webhook_endpoint_id": id,
 		"url":                 endpointURL,
 		"events":              events,
 	})
 
 	return &cpayv1.CreateWebhookEndpointResponse{
-		Id:          id.String(),
+		Id:          id,
 		Url:         endpointURL,
 		Description: req.GetDescription(),
 		Events:      events,
@@ -781,7 +781,7 @@ func (s *Service) CreateWebhookEndpoint(ctx context.Context, req *cpayv1.CreateW
 }
 
 func (s *Service) CreateSubscription(ctx context.Context, req *cpayv1.CreateSubscriptionRequest) (*cpayv1.CreateSubscriptionResponse, error) {
-	merchantID, err := uuid.Parse(strings.TrimSpace(req.GetMerchantId()))
+	merchantID, err := ids.Parse(strings.TrimSpace(req.GetMerchantId()))
 	if err != nil {
 		return nil, rpcx.E(codes.InvalidArgument, "invalid_request", "merchant_id is invalid")
 	}
@@ -827,7 +827,7 @@ func (s *Service) CreateSubscription(ctx context.Context, req *cpayv1.CreateSubs
 
 	var paymentLinkID any
 	if strings.TrimSpace(req.GetPaymentLinkId()) != "" {
-		pid, err := uuid.Parse(strings.TrimSpace(req.GetPaymentLinkId()))
+		pid, err := ids.Parse(strings.TrimSpace(req.GetPaymentLinkId()))
 		if err != nil {
 			return nil, rpcx.E(codes.InvalidArgument, "invalid_request", "payment_link_id is invalid")
 		}
@@ -847,9 +847,9 @@ func (s *Service) CreateSubscription(ctx context.Context, req *cpayv1.CreateSubs
 		vaultExpiresAt = t.UTC()
 	}
 
-	subID := uuid.New()
-	vaultID := uuid.New()
-	cycleID := uuid.New()
+	subID := ids.New()
+	vaultID := ids.New()
+	cycleID := ids.New()
 
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
@@ -894,7 +894,7 @@ func (s *Service) CreateSubscription(ctx context.Context, req *cpayv1.CreateSubs
 		return nil, rpcx.E(codes.Internal, "internal_error", "failed to create subscription cycle")
 	}
 
-	if err = s.outbox.EnqueueTx(ctx, tx, "subscription", subID.String(), &merchantID, "subscription.created", map[string]any{
+	if err = s.outbox.EnqueueTx(ctx, tx, "subscription", subID, &merchantID, "subscription.created", map[string]any{
 		"subscription_id": subID,
 		"next_billing_at": nextBilling,
 		"amount":          req.GetAmount(),
@@ -907,7 +907,7 @@ func (s *Service) CreateSubscription(ctx context.Context, req *cpayv1.CreateSubs
 	}
 
 	return &cpayv1.CreateSubscriptionResponse{
-		Id:                   subID.String(),
+		Id:                   subID,
 		Status:               "active",
 		Chain:                strings.ToLower(req.GetChain()),
 		TokenSymbol:          strings.ToUpper(req.GetTokenSymbol()),
@@ -916,18 +916,18 @@ func (s *Service) CreateSubscription(ctx context.Context, req *cpayv1.CreateSubs
 		IntervalUnit:         intervalUnit,
 		IntervalCount:        int32(intervalCount),
 		NextBillingAt:        nextBilling.UTC().Format(time.RFC3339Nano),
-		VaultAuthorizationId: vaultID.String(),
+		VaultAuthorizationId: vaultID,
 		VaultRemainingAmount: remaining,
-		FirstCycleId:         cycleID.String(),
+		FirstCycleId:         cycleID,
 	}, nil
 }
 
 func (s *Service) PauseSubscription(ctx context.Context, req *cpayv1.PauseSubscriptionRequest) (*cpayv1.SubscriptionMutationResponse, error) {
-	merchantID, err := uuid.Parse(strings.TrimSpace(req.GetMerchantId()))
+	merchantID, err := ids.Parse(strings.TrimSpace(req.GetMerchantId()))
 	if err != nil {
 		return nil, rpcx.E(codes.InvalidArgument, "invalid_request", "merchant_id is invalid")
 	}
-	subID, err := uuid.Parse(strings.TrimSpace(req.GetId()))
+	subID, err := ids.Parse(strings.TrimSpace(req.GetId()))
 	if err != nil {
 		return nil, rpcx.E(codes.InvalidArgument, "invalid_request", "subscription id is invalid")
 	}
@@ -941,16 +941,16 @@ func (s *Service) PauseSubscription(ctx context.Context, req *cpayv1.PauseSubscr
 	if cmd.RowsAffected() == 0 {
 		return nil, rpcx.E(codes.NotFound, "not_found", "subscription not found or not active")
 	}
-	_ = s.outbox.Enqueue(ctx, "subscription", subID.String(), &merchantID, "subscription.paused", map[string]any{"subscription_id": subID})
-	return &cpayv1.SubscriptionMutationResponse{Id: subID.String(), Status: "paused"}, nil
+	_ = s.outbox.Enqueue(ctx, "subscription", subID, &merchantID, "subscription.paused", map[string]any{"subscription_id": subID})
+	return &cpayv1.SubscriptionMutationResponse{Id: subID, Status: "paused"}, nil
 }
 
 func (s *Service) ResumeSubscription(ctx context.Context, req *cpayv1.ResumeSubscriptionRequest) (*cpayv1.SubscriptionMutationResponse, error) {
-	merchantID, err := uuid.Parse(strings.TrimSpace(req.GetMerchantId()))
+	merchantID, err := ids.Parse(strings.TrimSpace(req.GetMerchantId()))
 	if err != nil {
 		return nil, rpcx.E(codes.InvalidArgument, "invalid_request", "merchant_id is invalid")
 	}
-	subID, err := uuid.Parse(strings.TrimSpace(req.GetId()))
+	subID, err := ids.Parse(strings.TrimSpace(req.GetId()))
 	if err != nil {
 		return nil, rpcx.E(codes.InvalidArgument, "invalid_request", "subscription id is invalid")
 	}
@@ -964,16 +964,16 @@ func (s *Service) ResumeSubscription(ctx context.Context, req *cpayv1.ResumeSubs
 	if cmd.RowsAffected() == 0 {
 		return nil, rpcx.E(codes.NotFound, "not_found", "subscription not found")
 	}
-	_ = s.outbox.Enqueue(ctx, "subscription", subID.String(), &merchantID, "subscription.resumed", map[string]any{"subscription_id": subID})
-	return &cpayv1.SubscriptionMutationResponse{Id: subID.String(), Status: "active"}, nil
+	_ = s.outbox.Enqueue(ctx, "subscription", subID, &merchantID, "subscription.resumed", map[string]any{"subscription_id": subID})
+	return &cpayv1.SubscriptionMutationResponse{Id: subID, Status: "active"}, nil
 }
 
 func (s *Service) GetSubscriptionCycles(ctx context.Context, req *cpayv1.GetSubscriptionCyclesRequest) (*cpayv1.GetSubscriptionCyclesResponse, error) {
-	merchantID, err := uuid.Parse(strings.TrimSpace(req.GetMerchantId()))
+	merchantID, err := ids.Parse(strings.TrimSpace(req.GetMerchantId()))
 	if err != nil {
 		return nil, rpcx.E(codes.InvalidArgument, "invalid_request", "merchant_id is invalid")
 	}
-	subID, err := uuid.Parse(strings.TrimSpace(req.GetId()))
+	subID, err := ids.Parse(strings.TrimSpace(req.GetId()))
 	if err != nil {
 		return nil, rpcx.E(codes.InvalidArgument, "invalid_request", "subscription id is invalid")
 	}
@@ -1024,7 +1024,7 @@ func (s *Service) GetSubscriptionCycles(ctx context.Context, req *cpayv1.GetSubs
 		})
 	}
 
-	return &cpayv1.GetSubscriptionCyclesResponse{SubscriptionId: subID.String(), Data: items}, nil
+	return &cpayv1.GetSubscriptionCyclesResponse{SubscriptionId: subID, Data: items}, nil
 }
 
 func tokenAllowed(allowed []allowedToken, chainName, symbol, address string) bool {
@@ -1133,7 +1133,7 @@ func bytesOrDefault(raw []byte, def string) string {
 	return string(raw)
 }
 
-func (s *Service) generateAndStoreInvoice(ctx context.Context, merchantID, paymentIntentID uuid.UUID, amount float64, currency, title string) (string, error) {
+func (s *Service) generateAndStoreInvoice(ctx context.Context, merchantID, paymentIntentID string, amount float64, currency, title string) (string, error) {
 	if s.minio == nil {
 		return "", nil
 	}
@@ -1143,9 +1143,9 @@ func (s *Service) generateAndStoreInvoice(ctx context.Context, merchantID, payme
 	pdf.Cell(40, 10, "CPay Invoice")
 	pdf.Ln(14)
 	pdf.SetFont("Arial", "", 12)
-	pdf.Cell(80, 8, fmt.Sprintf("Payment Intent: %s", paymentIntentID.String()))
+	pdf.Cell(80, 8, fmt.Sprintf("Payment Intent: %s", paymentIntentID))
 	pdf.Ln(8)
-	pdf.Cell(80, 8, fmt.Sprintf("Merchant: %s", merchantID.String()))
+	pdf.Cell(80, 8, fmt.Sprintf("Merchant: %s", merchantID))
 	pdf.Ln(8)
 	pdf.Cell(80, 8, fmt.Sprintf("Title: %s", title))
 	pdf.Ln(8)
@@ -1156,7 +1156,7 @@ func (s *Service) generateAndStoreInvoice(ctx context.Context, merchantID, payme
 		return "", err
 	}
 
-	objectKey := fmt.Sprintf("invoices/%s/%s.pdf", merchantID.String(), paymentIntentID.String())
+	objectKey := fmt.Sprintf("invoices/%s/%s.pdf", merchantID, paymentIntentID)
 	if err := s.minio.PutObjectBytes(ctx, objectKey, "application/pdf", buf.Bytes()); err != nil {
 		return "", err
 	}

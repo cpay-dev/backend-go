@@ -225,6 +225,58 @@ func (x *UserInfo) GetRole() string {
 	return ""
 }
 
+type MerchantSettings struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	MerchantId        string                 `protobuf:"bytes,1,opt,name=merchant_id,json=merchantId,proto3" json:"merchant_id,omitempty"`
+	SettlementAddress string                 `protobuf:"bytes,2,opt,name=settlement_address,json=settlementAddress,proto3" json:"settlement_address,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *MerchantSettings) Reset() {
+	*x = MerchantSettings{}
+	mi := &file_cpay_v1_auth_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MerchantSettings) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MerchantSettings) ProtoMessage() {}
+
+func (x *MerchantSettings) ProtoReflect() protoreflect.Message {
+	mi := &file_cpay_v1_auth_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MerchantSettings.ProtoReflect.Descriptor instead.
+func (*MerchantSettings) Descriptor() ([]byte, []int) {
+	return file_cpay_v1_auth_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *MerchantSettings) GetMerchantId() string {
+	if x != nil {
+		return x.MerchantId
+	}
+	return ""
+}
+
+func (x *MerchantSettings) GetSettlementAddress() string {
+	if x != nil {
+		return x.SettlementAddress
+	}
+	return ""
+}
+
 type LoginRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Email         string                 `protobuf:"bytes,1,opt,name=email,proto3" json:"email,omitempty"`
@@ -235,7 +287,7 @@ type LoginRequest struct {
 
 func (x *LoginRequest) Reset() {
 	*x = LoginRequest{}
-	mi := &file_cpay_v1_auth_proto_msgTypes[3]
+	mi := &file_cpay_v1_auth_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -247,7 +299,7 @@ func (x *LoginRequest) String() string {
 func (*LoginRequest) ProtoMessage() {}
 
 func (x *LoginRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cpay_v1_auth_proto_msgTypes[3]
+	mi := &file_cpay_v1_auth_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -260,7 +312,7 @@ func (x *LoginRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LoginRequest.ProtoReflect.Descriptor instead.
 func (*LoginRequest) Descriptor() ([]byte, []int) {
-	return file_cpay_v1_auth_proto_rawDescGZIP(), []int{3}
+	return file_cpay_v1_auth_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *LoginRequest) GetEmail() string {
@@ -287,7 +339,7 @@ type LoginResponse struct {
 
 func (x *LoginResponse) Reset() {
 	*x = LoginResponse{}
-	mi := &file_cpay_v1_auth_proto_msgTypes[4]
+	mi := &file_cpay_v1_auth_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -299,7 +351,7 @@ func (x *LoginResponse) String() string {
 func (*LoginResponse) ProtoMessage() {}
 
 func (x *LoginResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cpay_v1_auth_proto_msgTypes[4]
+	mi := &file_cpay_v1_auth_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -312,7 +364,7 @@ func (x *LoginResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LoginResponse.ProtoReflect.Descriptor instead.
 func (*LoginResponse) Descriptor() ([]byte, []int) {
-	return file_cpay_v1_auth_proto_rawDescGZIP(), []int{4}
+	return file_cpay_v1_auth_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *LoginResponse) GetTokens() *TokenPair {
@@ -338,7 +390,7 @@ type RefreshRequest struct {
 
 func (x *RefreshRequest) Reset() {
 	*x = RefreshRequest{}
-	mi := &file_cpay_v1_auth_proto_msgTypes[5]
+	mi := &file_cpay_v1_auth_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -350,7 +402,7 @@ func (x *RefreshRequest) String() string {
 func (*RefreshRequest) ProtoMessage() {}
 
 func (x *RefreshRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cpay_v1_auth_proto_msgTypes[5]
+	mi := &file_cpay_v1_auth_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -363,7 +415,7 @@ func (x *RefreshRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RefreshRequest.ProtoReflect.Descriptor instead.
 func (*RefreshRequest) Descriptor() ([]byte, []int) {
-	return file_cpay_v1_auth_proto_rawDescGZIP(), []int{5}
+	return file_cpay_v1_auth_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *RefreshRequest) GetRefreshToken() string {
@@ -382,7 +434,7 @@ type RefreshResponse struct {
 
 func (x *RefreshResponse) Reset() {
 	*x = RefreshResponse{}
-	mi := &file_cpay_v1_auth_proto_msgTypes[6]
+	mi := &file_cpay_v1_auth_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -394,7 +446,7 @@ func (x *RefreshResponse) String() string {
 func (*RefreshResponse) ProtoMessage() {}
 
 func (x *RefreshResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cpay_v1_auth_proto_msgTypes[6]
+	mi := &file_cpay_v1_auth_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -407,7 +459,7 @@ func (x *RefreshResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RefreshResponse.ProtoReflect.Descriptor instead.
 func (*RefreshResponse) Descriptor() ([]byte, []int) {
-	return file_cpay_v1_auth_proto_rawDescGZIP(), []int{6}
+	return file_cpay_v1_auth_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *RefreshResponse) GetTokens() *TokenPair {
@@ -428,7 +480,7 @@ type CreateApiKeyRequest struct {
 
 func (x *CreateApiKeyRequest) Reset() {
 	*x = CreateApiKeyRequest{}
-	mi := &file_cpay_v1_auth_proto_msgTypes[7]
+	mi := &file_cpay_v1_auth_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -440,7 +492,7 @@ func (x *CreateApiKeyRequest) String() string {
 func (*CreateApiKeyRequest) ProtoMessage() {}
 
 func (x *CreateApiKeyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cpay_v1_auth_proto_msgTypes[7]
+	mi := &file_cpay_v1_auth_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -453,7 +505,7 @@ func (x *CreateApiKeyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateApiKeyRequest.ProtoReflect.Descriptor instead.
 func (*CreateApiKeyRequest) Descriptor() ([]byte, []int) {
-	return file_cpay_v1_auth_proto_rawDescGZIP(), []int{7}
+	return file_cpay_v1_auth_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *CreateApiKeyRequest) GetMerchantId() string {
@@ -492,7 +544,7 @@ type ApiKey struct {
 
 func (x *ApiKey) Reset() {
 	*x = ApiKey{}
-	mi := &file_cpay_v1_auth_proto_msgTypes[8]
+	mi := &file_cpay_v1_auth_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -504,7 +556,7 @@ func (x *ApiKey) String() string {
 func (*ApiKey) ProtoMessage() {}
 
 func (x *ApiKey) ProtoReflect() protoreflect.Message {
-	mi := &file_cpay_v1_auth_proto_msgTypes[8]
+	mi := &file_cpay_v1_auth_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -517,7 +569,7 @@ func (x *ApiKey) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ApiKey.ProtoReflect.Descriptor instead.
 func (*ApiKey) Descriptor() ([]byte, []int) {
-	return file_cpay_v1_auth_proto_rawDescGZIP(), []int{8}
+	return file_cpay_v1_auth_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *ApiKey) GetId() string {
@@ -579,7 +631,7 @@ type CreateApiKeyResponse struct {
 
 func (x *CreateApiKeyResponse) Reset() {
 	*x = CreateApiKeyResponse{}
-	mi := &file_cpay_v1_auth_proto_msgTypes[9]
+	mi := &file_cpay_v1_auth_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -591,7 +643,7 @@ func (x *CreateApiKeyResponse) String() string {
 func (*CreateApiKeyResponse) ProtoMessage() {}
 
 func (x *CreateApiKeyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cpay_v1_auth_proto_msgTypes[9]
+	mi := &file_cpay_v1_auth_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -604,7 +656,7 @@ func (x *CreateApiKeyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateApiKeyResponse.ProtoReflect.Descriptor instead.
 func (*CreateApiKeyResponse) Descriptor() ([]byte, []int) {
-	return file_cpay_v1_auth_proto_rawDescGZIP(), []int{9}
+	return file_cpay_v1_auth_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *CreateApiKeyResponse) GetApiKey() *ApiKey {
@@ -630,7 +682,7 @@ type ListApiKeysRequest struct {
 
 func (x *ListApiKeysRequest) Reset() {
 	*x = ListApiKeysRequest{}
-	mi := &file_cpay_v1_auth_proto_msgTypes[10]
+	mi := &file_cpay_v1_auth_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -642,7 +694,7 @@ func (x *ListApiKeysRequest) String() string {
 func (*ListApiKeysRequest) ProtoMessage() {}
 
 func (x *ListApiKeysRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cpay_v1_auth_proto_msgTypes[10]
+	mi := &file_cpay_v1_auth_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -655,7 +707,7 @@ func (x *ListApiKeysRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListApiKeysRequest.ProtoReflect.Descriptor instead.
 func (*ListApiKeysRequest) Descriptor() ([]byte, []int) {
-	return file_cpay_v1_auth_proto_rawDescGZIP(), []int{10}
+	return file_cpay_v1_auth_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *ListApiKeysRequest) GetMerchantId() string {
@@ -674,7 +726,7 @@ type ListApiKeysResponse struct {
 
 func (x *ListApiKeysResponse) Reset() {
 	*x = ListApiKeysResponse{}
-	mi := &file_cpay_v1_auth_proto_msgTypes[11]
+	mi := &file_cpay_v1_auth_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -686,7 +738,7 @@ func (x *ListApiKeysResponse) String() string {
 func (*ListApiKeysResponse) ProtoMessage() {}
 
 func (x *ListApiKeysResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cpay_v1_auth_proto_msgTypes[11]
+	mi := &file_cpay_v1_auth_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -699,7 +751,7 @@ func (x *ListApiKeysResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListApiKeysResponse.ProtoReflect.Descriptor instead.
 func (*ListApiKeysResponse) Descriptor() ([]byte, []int) {
-	return file_cpay_v1_auth_proto_rawDescGZIP(), []int{11}
+	return file_cpay_v1_auth_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *ListApiKeysResponse) GetData() []*ApiKey {
@@ -719,7 +771,7 @@ type RevokeApiKeyRequest struct {
 
 func (x *RevokeApiKeyRequest) Reset() {
 	*x = RevokeApiKeyRequest{}
-	mi := &file_cpay_v1_auth_proto_msgTypes[12]
+	mi := &file_cpay_v1_auth_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -731,7 +783,7 @@ func (x *RevokeApiKeyRequest) String() string {
 func (*RevokeApiKeyRequest) ProtoMessage() {}
 
 func (x *RevokeApiKeyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cpay_v1_auth_proto_msgTypes[12]
+	mi := &file_cpay_v1_auth_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -744,7 +796,7 @@ func (x *RevokeApiKeyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RevokeApiKeyRequest.ProtoReflect.Descriptor instead.
 func (*RevokeApiKeyRequest) Descriptor() ([]byte, []int) {
-	return file_cpay_v1_auth_proto_rawDescGZIP(), []int{12}
+	return file_cpay_v1_auth_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *RevokeApiKeyRequest) GetMerchantId() string {
@@ -771,7 +823,7 @@ type RevokeApiKeyResponse struct {
 
 func (x *RevokeApiKeyResponse) Reset() {
 	*x = RevokeApiKeyResponse{}
-	mi := &file_cpay_v1_auth_proto_msgTypes[13]
+	mi := &file_cpay_v1_auth_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -783,7 +835,7 @@ func (x *RevokeApiKeyResponse) String() string {
 func (*RevokeApiKeyResponse) ProtoMessage() {}
 
 func (x *RevokeApiKeyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cpay_v1_auth_proto_msgTypes[13]
+	mi := &file_cpay_v1_auth_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -796,7 +848,7 @@ func (x *RevokeApiKeyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RevokeApiKeyResponse.ProtoReflect.Descriptor instead.
 func (*RevokeApiKeyResponse) Descriptor() ([]byte, []int) {
-	return file_cpay_v1_auth_proto_rawDescGZIP(), []int{13}
+	return file_cpay_v1_auth_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *RevokeApiKeyResponse) GetId() string {
@@ -813,6 +865,190 @@ func (x *RevokeApiKeyResponse) GetRevoked() bool {
 	return false
 }
 
+type GetMerchantSettingsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	MerchantId    string                 `protobuf:"bytes,1,opt,name=merchant_id,json=merchantId,proto3" json:"merchant_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetMerchantSettingsRequest) Reset() {
+	*x = GetMerchantSettingsRequest{}
+	mi := &file_cpay_v1_auth_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetMerchantSettingsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetMerchantSettingsRequest) ProtoMessage() {}
+
+func (x *GetMerchantSettingsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_cpay_v1_auth_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetMerchantSettingsRequest.ProtoReflect.Descriptor instead.
+func (*GetMerchantSettingsRequest) Descriptor() ([]byte, []int) {
+	return file_cpay_v1_auth_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *GetMerchantSettingsRequest) GetMerchantId() string {
+	if x != nil {
+		return x.MerchantId
+	}
+	return ""
+}
+
+type GetMerchantSettingsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Settings      *MerchantSettings      `protobuf:"bytes,1,opt,name=settings,proto3" json:"settings,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetMerchantSettingsResponse) Reset() {
+	*x = GetMerchantSettingsResponse{}
+	mi := &file_cpay_v1_auth_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetMerchantSettingsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetMerchantSettingsResponse) ProtoMessage() {}
+
+func (x *GetMerchantSettingsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_cpay_v1_auth_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetMerchantSettingsResponse.ProtoReflect.Descriptor instead.
+func (*GetMerchantSettingsResponse) Descriptor() ([]byte, []int) {
+	return file_cpay_v1_auth_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *GetMerchantSettingsResponse) GetSettings() *MerchantSettings {
+	if x != nil {
+		return x.Settings
+	}
+	return nil
+}
+
+type UpdateMerchantSettingsRequest struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	MerchantId        string                 `protobuf:"bytes,1,opt,name=merchant_id,json=merchantId,proto3" json:"merchant_id,omitempty"`
+	SettlementAddress string                 `protobuf:"bytes,2,opt,name=settlement_address,json=settlementAddress,proto3" json:"settlement_address,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *UpdateMerchantSettingsRequest) Reset() {
+	*x = UpdateMerchantSettingsRequest{}
+	mi := &file_cpay_v1_auth_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateMerchantSettingsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateMerchantSettingsRequest) ProtoMessage() {}
+
+func (x *UpdateMerchantSettingsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_cpay_v1_auth_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateMerchantSettingsRequest.ProtoReflect.Descriptor instead.
+func (*UpdateMerchantSettingsRequest) Descriptor() ([]byte, []int) {
+	return file_cpay_v1_auth_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *UpdateMerchantSettingsRequest) GetMerchantId() string {
+	if x != nil {
+		return x.MerchantId
+	}
+	return ""
+}
+
+func (x *UpdateMerchantSettingsRequest) GetSettlementAddress() string {
+	if x != nil {
+		return x.SettlementAddress
+	}
+	return ""
+}
+
+type UpdateMerchantSettingsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Settings      *MerchantSettings      `protobuf:"bytes,1,opt,name=settings,proto3" json:"settings,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateMerchantSettingsResponse) Reset() {
+	*x = UpdateMerchantSettingsResponse{}
+	mi := &file_cpay_v1_auth_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateMerchantSettingsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateMerchantSettingsResponse) ProtoMessage() {}
+
+func (x *UpdateMerchantSettingsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_cpay_v1_auth_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateMerchantSettingsResponse.ProtoReflect.Descriptor instead.
+func (*UpdateMerchantSettingsResponse) Descriptor() ([]byte, []int) {
+	return file_cpay_v1_auth_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *UpdateMerchantSettingsResponse) GetSettings() *MerchantSettings {
+	if x != nil {
+		return x.Settings
+	}
+	return nil
+}
+
 type ValidateCredentialRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Authorization string                 `protobuf:"bytes,1,opt,name=authorization,proto3" json:"authorization,omitempty"`
@@ -823,7 +1059,7 @@ type ValidateCredentialRequest struct {
 
 func (x *ValidateCredentialRequest) Reset() {
 	*x = ValidateCredentialRequest{}
-	mi := &file_cpay_v1_auth_proto_msgTypes[14]
+	mi := &file_cpay_v1_auth_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -835,7 +1071,7 @@ func (x *ValidateCredentialRequest) String() string {
 func (*ValidateCredentialRequest) ProtoMessage() {}
 
 func (x *ValidateCredentialRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cpay_v1_auth_proto_msgTypes[14]
+	mi := &file_cpay_v1_auth_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -848,7 +1084,7 @@ func (x *ValidateCredentialRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ValidateCredentialRequest.ProtoReflect.Descriptor instead.
 func (*ValidateCredentialRequest) Descriptor() ([]byte, []int) {
-	return file_cpay_v1_auth_proto_rawDescGZIP(), []int{14}
+	return file_cpay_v1_auth_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *ValidateCredentialRequest) GetAuthorization() string {
@@ -874,7 +1110,7 @@ type ValidateCredentialResponse struct {
 
 func (x *ValidateCredentialResponse) Reset() {
 	*x = ValidateCredentialResponse{}
-	mi := &file_cpay_v1_auth_proto_msgTypes[15]
+	mi := &file_cpay_v1_auth_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -886,7 +1122,7 @@ func (x *ValidateCredentialResponse) String() string {
 func (*ValidateCredentialResponse) ProtoMessage() {}
 
 func (x *ValidateCredentialResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cpay_v1_auth_proto_msgTypes[15]
+	mi := &file_cpay_v1_auth_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -899,7 +1135,7 @@ func (x *ValidateCredentialResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ValidateCredentialResponse.ProtoReflect.Descriptor instead.
 func (*ValidateCredentialResponse) Descriptor() ([]byte, []int) {
-	return file_cpay_v1_auth_proto_rawDescGZIP(), []int{15}
+	return file_cpay_v1_auth_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *ValidateCredentialResponse) GetPrincipal() *Principal {
@@ -933,7 +1169,11 @@ const file_cpay_v1_auth_proto_rawDesc = "" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1f\n" +
 	"\vmerchant_id\x18\x02 \x01(\tR\n" +
 	"merchantId\x12\x12\n" +
-	"\x04role\x18\x03 \x01(\tR\x04role\"@\n" +
+	"\x04role\x18\x03 \x01(\tR\x04role\"b\n" +
+	"\x10MerchantSettings\x12\x1f\n" +
+	"\vmerchant_id\x18\x01 \x01(\tR\n" +
+	"merchantId\x12-\n" +
+	"\x12settlement_address\x18\x02 \x01(\tR\x11settlementAddress\"@\n" +
 	"\fLoginRequest\x12\x14\n" +
 	"\x05email\x18\x01 \x01(\tR\x05email\x12\x1a\n" +
 	"\bpassword\x18\x02 \x01(\tR\bpassword\"b\n" +
@@ -974,18 +1214,31 @@ const file_cpay_v1_auth_proto_rawDesc = "" +
 	"\x02id\x18\x02 \x01(\tR\x02id\"@\n" +
 	"\x14RevokeApiKeyResponse\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x18\n" +
-	"\arevoked\x18\x02 \x01(\bR\arevoked\"Z\n" +
+	"\arevoked\x18\x02 \x01(\bR\arevoked\"=\n" +
+	"\x1aGetMerchantSettingsRequest\x12\x1f\n" +
+	"\vmerchant_id\x18\x01 \x01(\tR\n" +
+	"merchantId\"T\n" +
+	"\x1bGetMerchantSettingsResponse\x125\n" +
+	"\bsettings\x18\x01 \x01(\v2\x19.cpay.v1.MerchantSettingsR\bsettings\"o\n" +
+	"\x1dUpdateMerchantSettingsRequest\x12\x1f\n" +
+	"\vmerchant_id\x18\x01 \x01(\tR\n" +
+	"merchantId\x12-\n" +
+	"\x12settlement_address\x18\x02 \x01(\tR\x11settlementAddress\"W\n" +
+	"\x1eUpdateMerchantSettingsResponse\x125\n" +
+	"\bsettings\x18\x01 \x01(\v2\x19.cpay.v1.MerchantSettingsR\bsettings\"Z\n" +
 	"\x19ValidateCredentialRequest\x12$\n" +
 	"\rauthorization\x18\x01 \x01(\tR\rauthorization\x12\x17\n" +
 	"\aapi_key\x18\x02 \x01(\tR\x06apiKey\"N\n" +
 	"\x1aValidateCredentialResponse\x120\n" +
-	"\tprincipal\x18\x01 \x01(\v2\x12.cpay.v1.PrincipalR\tprincipal2\xc6\x03\n" +
+	"\tprincipal\x18\x01 \x01(\v2\x12.cpay.v1.PrincipalR\tprincipal2\x93\x05\n" +
 	"\vAuthService\x126\n" +
 	"\x05Login\x12\x15.cpay.v1.LoginRequest\x1a\x16.cpay.v1.LoginResponse\x12<\n" +
 	"\aRefresh\x12\x17.cpay.v1.RefreshRequest\x1a\x18.cpay.v1.RefreshResponse\x12K\n" +
 	"\fCreateApiKey\x12\x1c.cpay.v1.CreateApiKeyRequest\x1a\x1d.cpay.v1.CreateApiKeyResponse\x12H\n" +
 	"\vListApiKeys\x12\x1b.cpay.v1.ListApiKeysRequest\x1a\x1c.cpay.v1.ListApiKeysResponse\x12K\n" +
-	"\fRevokeApiKey\x12\x1c.cpay.v1.RevokeApiKeyRequest\x1a\x1d.cpay.v1.RevokeApiKeyResponse\x12]\n" +
+	"\fRevokeApiKey\x12\x1c.cpay.v1.RevokeApiKeyRequest\x1a\x1d.cpay.v1.RevokeApiKeyResponse\x12`\n" +
+	"\x13GetMerchantSettings\x12#.cpay.v1.GetMerchantSettingsRequest\x1a$.cpay.v1.GetMerchantSettingsResponse\x12i\n" +
+	"\x16UpdateMerchantSettings\x12&.cpay.v1.UpdateMerchantSettingsRequest\x1a'.cpay.v1.UpdateMerchantSettingsResponse\x12]\n" +
 	"\x12ValidateCredential\x12\".cpay.v1.ValidateCredentialRequest\x1a#.cpay.v1.ValidateCredentialResponseB6Z4github.com/cpay-dev/cpay/internal/gen/cpay/v1;cpayv1b\x06proto3"
 
 var (
@@ -1000,49 +1253,60 @@ func file_cpay_v1_auth_proto_rawDescGZIP() []byte {
 	return file_cpay_v1_auth_proto_rawDescData
 }
 
-var file_cpay_v1_auth_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
+var file_cpay_v1_auth_proto_msgTypes = make([]protoimpl.MessageInfo, 21)
 var file_cpay_v1_auth_proto_goTypes = []any{
-	(*Principal)(nil),                  // 0: cpay.v1.Principal
-	(*TokenPair)(nil),                  // 1: cpay.v1.TokenPair
-	(*UserInfo)(nil),                   // 2: cpay.v1.UserInfo
-	(*LoginRequest)(nil),               // 3: cpay.v1.LoginRequest
-	(*LoginResponse)(nil),              // 4: cpay.v1.LoginResponse
-	(*RefreshRequest)(nil),             // 5: cpay.v1.RefreshRequest
-	(*RefreshResponse)(nil),            // 6: cpay.v1.RefreshResponse
-	(*CreateApiKeyRequest)(nil),        // 7: cpay.v1.CreateApiKeyRequest
-	(*ApiKey)(nil),                     // 8: cpay.v1.ApiKey
-	(*CreateApiKeyResponse)(nil),       // 9: cpay.v1.CreateApiKeyResponse
-	(*ListApiKeysRequest)(nil),         // 10: cpay.v1.ListApiKeysRequest
-	(*ListApiKeysResponse)(nil),        // 11: cpay.v1.ListApiKeysResponse
-	(*RevokeApiKeyRequest)(nil),        // 12: cpay.v1.RevokeApiKeyRequest
-	(*RevokeApiKeyResponse)(nil),       // 13: cpay.v1.RevokeApiKeyResponse
-	(*ValidateCredentialRequest)(nil),  // 14: cpay.v1.ValidateCredentialRequest
-	(*ValidateCredentialResponse)(nil), // 15: cpay.v1.ValidateCredentialResponse
+	(*Principal)(nil),                      // 0: cpay.v1.Principal
+	(*TokenPair)(nil),                      // 1: cpay.v1.TokenPair
+	(*UserInfo)(nil),                       // 2: cpay.v1.UserInfo
+	(*MerchantSettings)(nil),               // 3: cpay.v1.MerchantSettings
+	(*LoginRequest)(nil),                   // 4: cpay.v1.LoginRequest
+	(*LoginResponse)(nil),                  // 5: cpay.v1.LoginResponse
+	(*RefreshRequest)(nil),                 // 6: cpay.v1.RefreshRequest
+	(*RefreshResponse)(nil),                // 7: cpay.v1.RefreshResponse
+	(*CreateApiKeyRequest)(nil),            // 8: cpay.v1.CreateApiKeyRequest
+	(*ApiKey)(nil),                         // 9: cpay.v1.ApiKey
+	(*CreateApiKeyResponse)(nil),           // 10: cpay.v1.CreateApiKeyResponse
+	(*ListApiKeysRequest)(nil),             // 11: cpay.v1.ListApiKeysRequest
+	(*ListApiKeysResponse)(nil),            // 12: cpay.v1.ListApiKeysResponse
+	(*RevokeApiKeyRequest)(nil),            // 13: cpay.v1.RevokeApiKeyRequest
+	(*RevokeApiKeyResponse)(nil),           // 14: cpay.v1.RevokeApiKeyResponse
+	(*GetMerchantSettingsRequest)(nil),     // 15: cpay.v1.GetMerchantSettingsRequest
+	(*GetMerchantSettingsResponse)(nil),    // 16: cpay.v1.GetMerchantSettingsResponse
+	(*UpdateMerchantSettingsRequest)(nil),  // 17: cpay.v1.UpdateMerchantSettingsRequest
+	(*UpdateMerchantSettingsResponse)(nil), // 18: cpay.v1.UpdateMerchantSettingsResponse
+	(*ValidateCredentialRequest)(nil),      // 19: cpay.v1.ValidateCredentialRequest
+	(*ValidateCredentialResponse)(nil),     // 20: cpay.v1.ValidateCredentialResponse
 }
 var file_cpay_v1_auth_proto_depIdxs = []int32{
 	1,  // 0: cpay.v1.LoginResponse.tokens:type_name -> cpay.v1.TokenPair
 	2,  // 1: cpay.v1.LoginResponse.user:type_name -> cpay.v1.UserInfo
 	1,  // 2: cpay.v1.RefreshResponse.tokens:type_name -> cpay.v1.TokenPair
-	8,  // 3: cpay.v1.CreateApiKeyResponse.api_key:type_name -> cpay.v1.ApiKey
-	8,  // 4: cpay.v1.ListApiKeysResponse.data:type_name -> cpay.v1.ApiKey
-	0,  // 5: cpay.v1.ValidateCredentialResponse.principal:type_name -> cpay.v1.Principal
-	3,  // 6: cpay.v1.AuthService.Login:input_type -> cpay.v1.LoginRequest
-	5,  // 7: cpay.v1.AuthService.Refresh:input_type -> cpay.v1.RefreshRequest
-	7,  // 8: cpay.v1.AuthService.CreateApiKey:input_type -> cpay.v1.CreateApiKeyRequest
-	10, // 9: cpay.v1.AuthService.ListApiKeys:input_type -> cpay.v1.ListApiKeysRequest
-	12, // 10: cpay.v1.AuthService.RevokeApiKey:input_type -> cpay.v1.RevokeApiKeyRequest
-	14, // 11: cpay.v1.AuthService.ValidateCredential:input_type -> cpay.v1.ValidateCredentialRequest
-	4,  // 12: cpay.v1.AuthService.Login:output_type -> cpay.v1.LoginResponse
-	6,  // 13: cpay.v1.AuthService.Refresh:output_type -> cpay.v1.RefreshResponse
-	9,  // 14: cpay.v1.AuthService.CreateApiKey:output_type -> cpay.v1.CreateApiKeyResponse
-	11, // 15: cpay.v1.AuthService.ListApiKeys:output_type -> cpay.v1.ListApiKeysResponse
-	13, // 16: cpay.v1.AuthService.RevokeApiKey:output_type -> cpay.v1.RevokeApiKeyResponse
-	15, // 17: cpay.v1.AuthService.ValidateCredential:output_type -> cpay.v1.ValidateCredentialResponse
-	12, // [12:18] is the sub-list for method output_type
-	6,  // [6:12] is the sub-list for method input_type
-	6,  // [6:6] is the sub-list for extension type_name
-	6,  // [6:6] is the sub-list for extension extendee
-	0,  // [0:6] is the sub-list for field type_name
+	9,  // 3: cpay.v1.CreateApiKeyResponse.api_key:type_name -> cpay.v1.ApiKey
+	9,  // 4: cpay.v1.ListApiKeysResponse.data:type_name -> cpay.v1.ApiKey
+	3,  // 5: cpay.v1.GetMerchantSettingsResponse.settings:type_name -> cpay.v1.MerchantSettings
+	3,  // 6: cpay.v1.UpdateMerchantSettingsResponse.settings:type_name -> cpay.v1.MerchantSettings
+	0,  // 7: cpay.v1.ValidateCredentialResponse.principal:type_name -> cpay.v1.Principal
+	4,  // 8: cpay.v1.AuthService.Login:input_type -> cpay.v1.LoginRequest
+	6,  // 9: cpay.v1.AuthService.Refresh:input_type -> cpay.v1.RefreshRequest
+	8,  // 10: cpay.v1.AuthService.CreateApiKey:input_type -> cpay.v1.CreateApiKeyRequest
+	11, // 11: cpay.v1.AuthService.ListApiKeys:input_type -> cpay.v1.ListApiKeysRequest
+	13, // 12: cpay.v1.AuthService.RevokeApiKey:input_type -> cpay.v1.RevokeApiKeyRequest
+	15, // 13: cpay.v1.AuthService.GetMerchantSettings:input_type -> cpay.v1.GetMerchantSettingsRequest
+	17, // 14: cpay.v1.AuthService.UpdateMerchantSettings:input_type -> cpay.v1.UpdateMerchantSettingsRequest
+	19, // 15: cpay.v1.AuthService.ValidateCredential:input_type -> cpay.v1.ValidateCredentialRequest
+	5,  // 16: cpay.v1.AuthService.Login:output_type -> cpay.v1.LoginResponse
+	7,  // 17: cpay.v1.AuthService.Refresh:output_type -> cpay.v1.RefreshResponse
+	10, // 18: cpay.v1.AuthService.CreateApiKey:output_type -> cpay.v1.CreateApiKeyResponse
+	12, // 19: cpay.v1.AuthService.ListApiKeys:output_type -> cpay.v1.ListApiKeysResponse
+	14, // 20: cpay.v1.AuthService.RevokeApiKey:output_type -> cpay.v1.RevokeApiKeyResponse
+	16, // 21: cpay.v1.AuthService.GetMerchantSettings:output_type -> cpay.v1.GetMerchantSettingsResponse
+	18, // 22: cpay.v1.AuthService.UpdateMerchantSettings:output_type -> cpay.v1.UpdateMerchantSettingsResponse
+	20, // 23: cpay.v1.AuthService.ValidateCredential:output_type -> cpay.v1.ValidateCredentialResponse
+	16, // [16:24] is the sub-list for method output_type
+	8,  // [8:16] is the sub-list for method input_type
+	8,  // [8:8] is the sub-list for extension type_name
+	8,  // [8:8] is the sub-list for extension extendee
+	0,  // [0:8] is the sub-list for field type_name
 }
 
 func init() { file_cpay_v1_auth_proto_init() }
@@ -1056,7 +1320,7 @@ func file_cpay_v1_auth_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_cpay_v1_auth_proto_rawDesc), len(file_cpay_v1_auth_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   16,
+			NumMessages:   21,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -11,7 +11,7 @@ import (
 
 	"github.com/cpay-dev/cpay/internal/platform/storage"
 	"github.com/cpay-dev/cpay/internal/shared/events"
-	"github.com/google/uuid"
+	"github.com/cpay-dev/cpay/internal/shared/ids"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/nats-io/nats.go"
@@ -304,7 +304,7 @@ func (w *EmailDispatcher) dispatch(ctx context.Context, env events.Envelope, tem
 
 func (w *EmailDispatcher) reserveNotification(ctx context.Context, env events.Envelope, template, recipient string) (bool, error) {
 	var merchantID any
-	if v, err := uuid.Parse(strings.TrimSpace(env.MerchantID)); err == nil {
+	if v, err := ids.Parse(strings.TrimSpace(env.MerchantID)); err == nil {
 		merchantID = v
 	}
 	cmd, err := w.DB.Exec(ctx, `
@@ -313,7 +313,7 @@ func (w *EmailDispatcher) reserveNotification(ctx context.Context, env events.En
 		)
 		VALUES($1, $2, $3, $4, $5, $6, 'pending', 0, NOW(), NOW())
 		ON CONFLICT (event_id, template, recipient) DO NOTHING
-	`, uuid.New(), env.ID, env.Type, merchantID, template, recipient)
+	`, ids.New(), env.ID, env.Type, merchantID, template, recipient)
 	if err != nil {
 		return false, err
 	}

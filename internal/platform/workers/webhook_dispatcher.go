@@ -14,7 +14,7 @@ import (
 	"time"
 
 	cryptox "github.com/cpay-dev/cpay/internal/shared/crypto"
-	"github.com/google/uuid"
+	"github.com/cpay-dev/cpay/internal/shared/ids"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/nats-io/nats.go"
 	"github.com/rs/zerolog"
@@ -100,14 +100,14 @@ func (w *WebhookDispatcher) handleIncoming(payload []byte) error {
 		if !eventAllowed(eventsRaw, env.Type) {
 			continue
 		}
-		deliveryID := uuid.New()
+		deliveryID := ids.New()
 		_, _ = w.DB.Exec(context.Background(), `
 			INSERT INTO checkout.webhook_deliveries(
 				id, webhook_endpoint_id, merchant_id, event_id, event_type, payload, attempt, status, created_at, updated_at
 			)
 			VALUES($1, $2, $3, $4, $5, $6::jsonb, 1, 'pending', NOW(), NOW())
 		`, deliveryID, endpointID, env.MerchantID, env.ID, env.Type, string(payload))
-		w.deliverAndUpdate(context.Background(), deliveryID.String(), url, secretEncrypted, payload, env.ID, env.Type, 1, maxRetries)
+		w.deliverAndUpdate(context.Background(), deliveryID, url, secretEncrypted, payload, env.ID, env.Type, 1, maxRetries)
 	}
 	return nil
 }

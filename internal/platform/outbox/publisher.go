@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 
 	"github.com/cpay-dev/cpay/internal/shared/events"
-	"github.com/google/uuid"
+	"github.com/cpay-dev/cpay/internal/shared/ids"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -19,7 +19,7 @@ func New(db *pgxpool.Pool, source string) *Publisher {
 	return &Publisher{DB: db, Source: source}
 }
 
-func (p *Publisher) Enqueue(ctx context.Context, aggregateType, aggregateID string, merchantID *uuid.UUID, eventType string, payload any) error {
+func (p *Publisher) Enqueue(ctx context.Context, aggregateType, aggregateID string, merchantID *string, eventType string, payload any) error {
 	env, err := events.NewEnvelope(eventType, p.Source, merchantIDString(merchantID), aggregateID, payload)
 	if err != nil {
 		return err
@@ -31,11 +31,11 @@ func (p *Publisher) Enqueue(ctx context.Context, aggregateType, aggregateID stri
 	_, err = p.DB.Exec(ctx, `
 		INSERT INTO platform.outbox_events(id, aggregate_type, aggregate_id, merchant_id, event_type, payload, headers, status, available_at, created_at, updated_at)
 		VALUES($1, $2, $3, $4, $5, $6::jsonb, '{}'::jsonb, 'pending', NOW(), NOW(), NOW())
-	`, uuid.New(), aggregateType, aggregateID, merchantID, eventType, string(raw))
+	`, ids.New(), aggregateType, aggregateID, merchantID, eventType, string(raw))
 	return err
 }
 
-func (p *Publisher) EnqueueTx(ctx context.Context, tx pgx.Tx, aggregateType, aggregateID string, merchantID *uuid.UUID, eventType string, payload any) error {
+func (p *Publisher) EnqueueTx(ctx context.Context, tx pgx.Tx, aggregateType, aggregateID string, merchantID *string, eventType string, payload any) error {
 	env, err := events.NewEnvelope(eventType, p.Source, merchantIDString(merchantID), aggregateID, payload)
 	if err != nil {
 		return err
@@ -47,13 +47,13 @@ func (p *Publisher) EnqueueTx(ctx context.Context, tx pgx.Tx, aggregateType, agg
 	_, err = tx.Exec(ctx, `
 		INSERT INTO platform.outbox_events(id, aggregate_type, aggregate_id, merchant_id, event_type, payload, headers, status, available_at, created_at, updated_at)
 		VALUES($1, $2, $3, $4, $5, $6::jsonb, '{}'::jsonb, 'pending', NOW(), NOW(), NOW())
-	`, uuid.New(), aggregateType, aggregateID, merchantID, eventType, string(raw))
+	`, ids.New(), aggregateType, aggregateID, merchantID, eventType, string(raw))
 	return err
 }
 
-func merchantIDString(id *uuid.UUID) string {
+func merchantIDString(id *string) string {
 	if id == nil {
 		return ""
 	}
-	return id.String()
+	return *id
 }

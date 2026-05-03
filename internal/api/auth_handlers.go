@@ -9,9 +9,9 @@ import (
 
 	"github.com/cpay-dev/cpay/internal/shared/auth"
 	"github.com/cpay-dev/cpay/internal/shared/httpx"
+	"github.com/cpay-dev/cpay/internal/shared/ids"
 	"github.com/cpay-dev/cpay/internal/shared/middleware"
 	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -136,7 +136,7 @@ func (s *Server) handleCreateAPIKey(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return 0, nil, err
 		}
-		id := uuid.New()
+		id := ids.New()
 		scopesRaw, _ := json.Marshal(req.Scopes)
 		_, err = s.db.Exec(r.Context(), `
 			INSERT INTO api_keys(id, merchant_id, name, key_prefix, key_hash, scopes, created_at)
@@ -145,7 +145,7 @@ func (s *Server) handleCreateAPIKey(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return 0, nil, err
 		}
-		_ = s.enqueueEvent(r.Context(), "api_key", id.String(), reqAuth.MerchantID, "api_key.created", map[string]any{
+		_ = s.enqueueEvent(r.Context(), "api_key", id, reqAuth.MerchantID, "api_key.created", map[string]any{
 			"api_key_id": id,
 			"name":       req.Name,
 			"scopes":     req.Scopes,
@@ -202,7 +202,7 @@ func (s *Server) handleRevokeAPIKey(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	id, err := ids.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "invalid api key id", middleware.GetRequestID(r.Context()))
 		return
@@ -220,7 +220,7 @@ func (s *Server) handleRevokeAPIKey(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusNotFound, "not_found", "api key not found", middleware.GetRequestID(r.Context()))
 		return
 	}
-	_ = s.enqueueEvent(r.Context(), "api_key", id.String(), reqAuth.MerchantID, "api_key.revoked", map[string]any{"api_key_id": id})
+	_ = s.enqueueEvent(r.Context(), "api_key", id, reqAuth.MerchantID, "api_key.revoked", map[string]any{"api_key_id": id})
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{"id": id, "revoked": true})
 }
 

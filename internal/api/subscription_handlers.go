@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/cpay-dev/cpay/internal/shared/httpx"
+	"github.com/cpay-dev/cpay/internal/shared/ids"
 	"github.com/cpay-dev/cpay/internal/shared/middleware"
 	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 )
 
 type vaultAuthorizationInput struct {
@@ -85,14 +85,14 @@ func (s *Server) handleCreateSubscription(w http.ResponseWriter, r *http.Request
 		}
 		periodEnd := addInterval(nextBilling, req.IntervalUnit, req.IntervalCount)
 
-		subID := uuid.New()
-		vaultID := uuid.New()
-		cycleID := uuid.New()
+		subID := ids.New()
+		vaultID := ids.New()
+		cycleID := ids.New()
 		metadataRaw, _ := jsonMarshal(req.Metadata)
 
 		var paymentLinkID any
 		if req.PaymentLinkID != nil && strings.TrimSpace(*req.PaymentLinkID) != "" {
-			pid, err := uuid.Parse(strings.TrimSpace(*req.PaymentLinkID))
+			pid, err := ids.Parse(strings.TrimSpace(*req.PaymentLinkID))
 			if err != nil {
 				return 0, nil, badRequest("invalid payment_link_id")
 			}
@@ -142,7 +142,7 @@ func (s *Server) handleCreateSubscription(w http.ResponseWriter, r *http.Request
 			return 0, nil, err
 		}
 
-		if err = s.enqueueEventTx(r.Context(), tx, "subscription", subID.String(), reqAuth.MerchantID, "subscription.created", map[string]any{
+		if err = s.enqueueEventTx(r.Context(), tx, "subscription", subID, reqAuth.MerchantID, "subscription.created", map[string]any{
 			"subscription_id": subID,
 			"next_billing_at": nextBilling,
 			"amount":          req.Amount,
@@ -175,7 +175,7 @@ func (s *Server) handlePauseSubscription(w http.ResponseWriter, r *http.Request)
 	if !ok {
 		return
 	}
-	subID, err := uuid.Parse(strings.TrimSpace(chi.URLParam(r, "id")))
+	subID, err := ids.Parse(strings.TrimSpace(chi.URLParam(r, "id")))
 	if err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "invalid subscription id", middleware.GetRequestID(r.Context()))
 		return
@@ -192,7 +192,7 @@ func (s *Server) handlePauseSubscription(w http.ResponseWriter, r *http.Request)
 		httpx.WriteError(w, http.StatusNotFound, "not_found", "subscription not found or not active", middleware.GetRequestID(r.Context()))
 		return
 	}
-	_ = s.enqueueEvent(r.Context(), "subscription", subID.String(), reqAuth.MerchantID, "subscription.paused", map[string]any{"subscription_id": subID})
+	_ = s.enqueueEvent(r.Context(), "subscription", subID, reqAuth.MerchantID, "subscription.paused", map[string]any{"subscription_id": subID})
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{"id": subID, "status": "paused"})
 }
 
@@ -201,7 +201,7 @@ func (s *Server) handleResumeSubscription(w http.ResponseWriter, r *http.Request
 	if !ok {
 		return
 	}
-	subID, err := uuid.Parse(strings.TrimSpace(chi.URLParam(r, "id")))
+	subID, err := ids.Parse(strings.TrimSpace(chi.URLParam(r, "id")))
 	if err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "invalid subscription id", middleware.GetRequestID(r.Context()))
 		return
@@ -218,7 +218,7 @@ func (s *Server) handleResumeSubscription(w http.ResponseWriter, r *http.Request
 		httpx.WriteError(w, http.StatusNotFound, "not_found", "subscription not found", middleware.GetRequestID(r.Context()))
 		return
 	}
-	_ = s.enqueueEvent(r.Context(), "subscription", subID.String(), reqAuth.MerchantID, "subscription.resumed", map[string]any{"subscription_id": subID})
+	_ = s.enqueueEvent(r.Context(), "subscription", subID, reqAuth.MerchantID, "subscription.resumed", map[string]any{"subscription_id": subID})
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{"id": subID, "status": "active"})
 }
 
@@ -227,7 +227,7 @@ func (s *Server) handleGetSubscriptionCycles(w http.ResponseWriter, r *http.Requ
 	if !ok {
 		return
 	}
-	subID, err := uuid.Parse(strings.TrimSpace(chi.URLParam(r, "id")))
+	subID, err := ids.Parse(strings.TrimSpace(chi.URLParam(r, "id")))
 	if err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "invalid subscription id", middleware.GetRequestID(r.Context()))
 		return

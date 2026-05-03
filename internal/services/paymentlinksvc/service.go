@@ -14,8 +14,8 @@ import (
 	cpayv1 "github.com/cpay-dev/cpay/internal/gen/cpay/v1"
 	"github.com/cpay-dev/cpay/internal/platform/outbox"
 	"github.com/cpay-dev/cpay/internal/shared/config"
+	"github.com/cpay-dev/cpay/internal/shared/ids"
 	"github.com/cpay-dev/cpay/internal/shared/rpcx"
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog"
@@ -41,7 +41,7 @@ func New(cfg config.Config, log zerolog.Logger, db *pgxpool.Pool) *Service {
 }
 
 func (s *Service) CreatePaymentLink(ctx context.Context, req *cpayv1.CreatePaymentLinkRequest) (*cpayv1.CreatePaymentLinkResponse, error) {
-	merchantID, err := uuid.Parse(strings.TrimSpace(req.GetMerchantId()))
+	merchantID, err := ids.Parse(strings.TrimSpace(req.GetMerchantId()))
 	if err != nil {
 		return nil, rpcx.E(codes.InvalidArgument, "invalid_request", "merchant_id is invalid")
 	}
@@ -97,7 +97,7 @@ func (s *Service) CreatePaymentLink(ctx context.Context, req *cpayv1.CreatePayme
 		return nil, rpcx.E(codes.InvalidArgument, "invalid_request", err.Error())
 	}
 
-	linkID := uuid.New()
+	linkID := ids.New()
 	code, err := newLinkCode()
 	if err != nil {
 		return nil, rpcx.E(codes.Internal, "internal_error", "failed to generate link code")
@@ -120,7 +120,7 @@ func (s *Service) CreatePaymentLink(ctx context.Context, req *cpayv1.CreatePayme
 
 	var productID any
 	if strings.TrimSpace(req.GetProductId()) != "" {
-		pid, err := uuid.Parse(strings.TrimSpace(req.GetProductId()))
+		pid, err := ids.Parse(strings.TrimSpace(req.GetProductId()))
 		if err != nil {
 			return nil, rpcx.E(codes.InvalidArgument, "invalid_request", "product_id is invalid")
 		}
@@ -183,7 +183,7 @@ func (s *Service) CreatePaymentLink(ctx context.Context, req *cpayv1.CreatePayme
 		return nil, rpcx.E(codes.Internal, "internal_error", "failed to save link options")
 	}
 
-	if err = s.outbox.EnqueueTx(ctx, tx, "payment_link", linkID.String(), &merchantID, "payment_link.created", map[string]any{
+	if err = s.outbox.EnqueueTx(ctx, tx, "payment_link", linkID, &merchantID, "payment_link.created", map[string]any{
 		"payment_link_id": linkID,
 		"code":            code,
 		"title":           req.GetTitle(),
@@ -197,7 +197,7 @@ func (s *Service) CreatePaymentLink(ctx context.Context, req *cpayv1.CreatePayme
 	}
 
 	return &cpayv1.CreatePaymentLinkResponse{
-		Id:        linkID.String(),
+		Id:        linkID,
 		Code:      code,
 		Url:       fmt.Sprintf("/pay/%s", code),
 		Title:     req.GetTitle(),
@@ -206,7 +206,7 @@ func (s *Service) CreatePaymentLink(ctx context.Context, req *cpayv1.CreatePayme
 }
 
 func (s *Service) ListPaymentLinks(ctx context.Context, req *cpayv1.ListPaymentLinksRequest) (*cpayv1.ListPaymentLinksResponse, error) {
-	merchantID, err := uuid.Parse(strings.TrimSpace(req.GetMerchantId()))
+	merchantID, err := ids.Parse(strings.TrimSpace(req.GetMerchantId()))
 	if err != nil {
 		return nil, rpcx.E(codes.InvalidArgument, "invalid_request", "merchant_id is invalid")
 	}
@@ -265,7 +265,7 @@ func (s *Service) ListPaymentLinks(ctx context.Context, req *cpayv1.ListPaymentL
 }
 
 func (s *Service) GetPaymentLink(ctx context.Context, req *cpayv1.GetPaymentLinkRequest) (*cpayv1.PaymentLink, error) {
-	merchantID, err := uuid.Parse(strings.TrimSpace(req.GetMerchantId()))
+	merchantID, err := ids.Parse(strings.TrimSpace(req.GetMerchantId()))
 	if err != nil {
 		return nil, rpcx.E(codes.InvalidArgument, "invalid_request", "merchant_id is invalid")
 	}
@@ -379,7 +379,7 @@ func (s *Service) GetPaymentLink(ctx context.Context, req *cpayv1.GetPaymentLink
 }
 
 func (s *Service) ArchivePaymentLink(ctx context.Context, req *cpayv1.ArchivePaymentLinkRequest) (*cpayv1.ArchivePaymentLinkResponse, error) {
-	merchantID, err := uuid.Parse(strings.TrimSpace(req.GetMerchantId()))
+	merchantID, err := ids.Parse(strings.TrimSpace(req.GetMerchantId()))
 	if err != nil {
 		return nil, rpcx.E(codes.InvalidArgument, "invalid_request", "merchant_id is invalid")
 	}
@@ -403,7 +403,7 @@ func (s *Service) ArchivePaymentLink(ctx context.Context, req *cpayv1.ArchivePay
 }
 
 func (s *Service) UpdatePaymentLink(ctx context.Context, req *cpayv1.UpdatePaymentLinkRequest) (*cpayv1.UpdatePaymentLinkResponse, error) {
-	merchantID, err := uuid.Parse(strings.TrimSpace(req.GetMerchantId()))
+	merchantID, err := ids.Parse(strings.TrimSpace(req.GetMerchantId()))
 	if err != nil {
 		return nil, rpcx.E(codes.InvalidArgument, "invalid_request", "merchant_id is invalid")
 	}

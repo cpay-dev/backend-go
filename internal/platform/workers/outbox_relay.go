@@ -17,6 +17,13 @@ type OutboxRelay struct {
 	PollInterval time.Duration
 }
 
+type outboxEvent struct {
+	ID        string
+	EventType string
+	Payload   string
+	Retry     int
+}
+
 func (w *OutboxRelay) Run(ctx context.Context) {
 	if w.PollInterval <= 0 {
 		w.PollInterval = 2 * time.Second
@@ -61,28 +68,42 @@ func (w *OutboxRelay) process(ctx context.Context) {
 	}
 	defer rows.Close()
 
+	events := make([]outboxEvent, 0, 100)
 	for rows.Next() {
-		var id, eventType, payload string
-		var retry int
-		if err := rows.Scan(&id, &eventType, &payload, &retry); err != nil {
+		var event outboxEvent
+		if err := rows.Scan(&event.ID, &event.EventType, &event.Payload, &event.Retry); err != nil {
 			w.Log.Error().Err(err).Msg("outbox: scan failed")
 			continue
 		}
-		subject := "events." + strings.TrimSpace(eventType)
-		if err := w.NATS.Publish(subject, []byte(payload)); err != nil {
-			backoff := time.Duration(retry+1) * time.Second * 2
-			_, _ = tx.Exec(ctx, `
+		events = append(events, event)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		w.Log.Error().Err(err).Msg("outbox: rows failed")
+		return
+	}
+
+	for _, event := range events {
+		subject := "events." + strings.TrimSpace(event.EventType)
+		if err := w.NATS.Publish(subject, []byte(event.Payload)); err != nil {
+			backoff := time.Duration(event.Retry+1) * time.Second * 2
+			if _, updateErr := tx.Exec(ctx, `
 				UPDATE platform.outbox_events
 				SET status='failed', retry_count=retry_count+1, last_error=$2, available_at=NOW()+$3::interval, updated_at=NOW()
 				WHERE id=$1
-			`, id, err.Error(), backoff.String())
+			`, event.ID, err.Error(), backoff.String()); updateErr != nil {
+				w.Log.Error().Err(updateErr).Str("outbox_event_id", event.ID).Msg("outbox: mark failed failed")
+			}
 			continue
 		}
-		_, _ = tx.Exec(ctx, `
+		if _, err := tx.Exec(ctx, `
 			UPDATE platform.outbox_events
 			SET status='published', published_at=NOW(), updated_at=NOW(), last_error=NULL
 			WHERE id=$1
-		`, id)
+		`, event.ID); err != nil {
+			w.Log.Error().Err(err).Str("outbox_event_id", event.ID).Msg("outbox: mark published failed")
+			return
+		}
 	}
 
 	if err := tx.Commit(ctx); err != nil {

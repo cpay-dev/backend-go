@@ -138,7 +138,7 @@ func TestCreatePublicCheckoutSessionHandlerMapsRequest(t *testing.T) {
 	}
 }
 
-func TestGetPublicCheckoutSessionUsesHeaderSecret(t *testing.T) {
+func TestGetPublicCheckoutSessionUsesSessionIDOnly(t *testing.T) {
 	var got *cpayv1.GetPublicCheckoutSessionRequest
 	client := newCheckoutTestClient(t, &checkoutHandlerTestServer{
 		createPublicFn: func(context.Context, *cpayv1.CreatePublicCheckoutSessionRequest) (*cpayv1.CreateCheckoutSessionResponse, error) {
@@ -156,6 +156,11 @@ func TestGetPublicCheckoutSessionUsesHeaderSecret(t *testing.T) {
 				TokenSymbol:             "USDC",
 				ExpiresAt:               "2026-04-05T12:00:00Z",
 				PaymentIntentId:         "pi_test_456",
+				PaymentIntentStatus:     "awaiting_funds",
+				ReceivedAmount:          19.95,
+				TxHash:                  "0xabc123",
+				Confirmations:           121,
+				RequiredConfirmations:   20,
 				DepositAddress:          "0xdef",
 				LinkTitle:               "Support Us",
 				CtaText:                 "Pay",
@@ -167,7 +172,6 @@ func TestGetPublicCheckoutSessionUsesHeaderSecret(t *testing.T) {
 	s := &Server{checkoutClient: client}
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/public/checkout/cs_test_456", nil)
-	req.Header.Set("X-Client-Secret", "secret_from_header")
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("session_id", "cs_test_456")
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
@@ -184,9 +188,6 @@ func TestGetPublicCheckoutSessionUsesHeaderSecret(t *testing.T) {
 	if got.GetSessionId() != "cs_test_456" {
 		t.Fatalf("expected session_id cs_test_456, got %q", got.GetSessionId())
 	}
-	if got.GetClientSecret() != "secret_from_header" {
-		t.Fatalf("expected header client secret forwarded, got %q", got.GetClientSecret())
-	}
 
 	var payload map[string]any
 	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
@@ -194,5 +195,17 @@ func TestGetPublicCheckoutSessionUsesHeaderSecret(t *testing.T) {
 	}
 	if payload["id"] != "cs_test_456" {
 		t.Fatalf("expected id cs_test_456, got %#v", payload["id"])
+	}
+	if payload["payment_intent_status"] != "awaiting_funds" {
+		t.Fatalf("expected payment intent status awaiting_funds, got %#v", payload["payment_intent_status"])
+	}
+	if payload["tx_hash"] != "0xabc123" {
+		t.Fatalf("expected tx_hash 0xabc123, got %#v", payload["tx_hash"])
+	}
+	if payload["confirmations"] != float64(121) {
+		t.Fatalf("expected confirmations 121, got %#v", payload["confirmations"])
+	}
+	if payload["required_confirmations"] != float64(20) {
+		t.Fatalf("expected required confirmations 20, got %#v", payload["required_confirmations"])
 	}
 }

@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/google/uuid"
+	"github.com/cpay-dev/cpay/internal/shared/ids"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog"
 )
@@ -85,7 +85,7 @@ func (w *SubscriptionScheduler) process(ctx context.Context) {
 				INSERT INTO checkout.subscription_cycles(id, subscription_id, cycle_index, period_start, period_end, due_at, status, amount, retry_count, created_at, updated_at)
 				VALUES($1, $2, $3, $4, $5, $4, 'due', $6, 0, NOW(), NOW())
 				ON CONFLICT (subscription_id, cycle_index) DO NOTHING
-			`, uuid.New(), subID, cycleIndex+1, nextDue, nextEnd, amount)
+			`, ids.New(), subID, cycleIndex+1, nextDue, nextEnd, amount)
 			_ = enqueueOutboxTx(ctx, tx, w.Source, "subscription", subID, merchantID, "subscription.debit_succeeded", map[string]any{
 				"subscription_id": subID,
 				"cycle_id":        cycleID,

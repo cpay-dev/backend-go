@@ -7,6 +7,7 @@ import (
 	cpayv1 "github.com/cpay-dev/cpay/internal/gen/cpay/v1"
 	"github.com/cpay-dev/cpay/internal/shared/httpx"
 	"github.com/cpay-dev/cpay/internal/shared/middleware"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -22,6 +23,10 @@ type refreshRequest struct {
 type createAPIKeyRequest struct {
 	Name   string   `json:"name"`
 	Scopes []string `json:"scopes"`
+}
+
+type updateMerchantSettingsRequest struct {
+	SettlementAddress string `json:"settlement_address"`
 }
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
@@ -85,7 +90,7 @@ func (s *Server) handleCreateAPIKey(w http.ResponseWriter, r *http.Request) {
 
 	s.withIdempotency(w, r, reqAuth.MerchantID, "/v1/api_keys", func() (int, any, error) {
 		resp, err := s.authClient.CreateApiKey(s.rpcContext(r.Context()), &cpayv1.CreateApiKeyRequest{
-			MerchantId: reqAuth.MerchantID.String(),
+			MerchantId: reqAuth.MerchantID,
 			Name:       req.Name,
 			Scopes:     req.Scopes,
 		})
@@ -108,7 +113,7 @@ func (s *Server) handleListAPIKeys(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	resp, err := s.authClient.ListApiKeys(s.rpcContext(r.Context()), &cpayv1.ListApiKeysRequest{MerchantId: reqAuth.MerchantID.String()})
+	resp, err := s.authClient.ListApiKeys(s.rpcContext(r.Context()), &cpayv1.ListApiKeysRequest{MerchantId: reqAuth.MerchantID})
 	if err != nil {
 		s.writeRPCError(w, r, err)
 		return
@@ -138,12 +143,60 @@ func (s *Server) handleRevokeAPIKey(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "id is required", middleware.GetRequestID(r.Context()))
 		return
 	}
-	resp, err := s.authClient.RevokeApiKey(s.rpcContext(r.Context()), &cpayv1.RevokeApiKeyRequest{MerchantId: reqAuth.MerchantID.String(), Id: id})
+	resp, err := s.authClient.RevokeApiKey(s.rpcContext(r.Context()), &cpayv1.RevokeApiKeyRequest{MerchantId: reqAuth.MerchantID, Id: id})
 	if err != nil {
 		s.writeRPCError(w, r, err)
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{"id": resp.GetId(), "revoked": resp.GetRevoked()})
+}
+
+func (s *Server) handleGetMerchantSettings(w http.ResponseWriter, r *http.Request) {
+	reqAuth, ok := s.requireUser(w, r)
+	if !ok {
+		return
+	}
+	resp, err := s.authClient.GetMerchantSettings(s.rpcContext(r.Context()), &cpayv1.GetMerchantSettingsRequest{MerchantId: reqAuth.MerchantID})
+	if err != nil {
+		s.writeRPCError(w, r, err)
+		return
+	}
+	settings := resp.GetSettings()
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{
+		"merchant_id":        settings.GetMerchantId(),
+		"settlement_address": emptyToNil(settings.GetSettlementAddress()),
+	})
+}
+
+func (s *Server) handleUpdateMerchantSettings(w http.ResponseWriter, r *http.Request) {
+	reqAuth, ok := s.requireUser(w, r)
+	if !ok {
+		return
+	}
+	var req updateMerchantSettingsRequest
+	if !s.parseJSON(w, r, &req) {
+		return
+	}
+	req.SettlementAddress = strings.TrimSpace(req.SettlementAddress)
+	if !common.IsHexAddress(req.SettlementAddress) {
+		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "settlement_address is invalid", middleware.GetRequestID(r.Context()))
+		return
+	}
+	checksumAddress := common.HexToAddress(req.SettlementAddress).Hex()
+
+	resp, err := s.authClient.UpdateMerchantSettings(s.rpcContext(r.Context()), &cpayv1.UpdateMerchantSettingsRequest{
+		MerchantId:        reqAuth.MerchantID,
+		SettlementAddress: checksumAddress,
+	})
+	if err != nil {
+		s.writeRPCError(w, r, err)
+		return
+	}
+	settings := resp.GetSettings()
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{
+		"merchant_id":        settings.GetMerchantId(),
+		"settlement_address": settings.GetSettlementAddress(),
+	})
 }
 
 func emptyToNil(v string) any {

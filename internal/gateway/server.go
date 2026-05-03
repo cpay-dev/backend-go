@@ -14,10 +14,10 @@ import (
 	"github.com/cpay-dev/cpay/internal/platform/outbox"
 	"github.com/cpay-dev/cpay/internal/shared/config"
 	"github.com/cpay-dev/cpay/internal/shared/httpx"
+	"github.com/cpay-dev/cpay/internal/shared/ids"
 	"github.com/cpay-dev/cpay/internal/shared/middleware"
 	"github.com/cpay-dev/cpay/internal/shared/rpcx"
 	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog"
@@ -28,21 +28,27 @@ type authContextKey string
 const requesterKey authContextKey = "requester"
 
 type requester struct {
-	MerchantID uuid.UUID
-	UserID     *uuid.UUID
+	MerchantID string
+	UserID     *string
 	Role       string
-	APIKeyID   *uuid.UUID
+	APIKeyID   *string
 	IsUser     bool
 }
 
 type gatewayOutboxPublisher interface {
-	Enqueue(ctx context.Context, aggregateType, aggregateID string, merchantID *uuid.UUID, eventType string, payload any) error
+	Enqueue(ctx context.Context, aggregateType, aggregateID string, merchantID *string, eventType string, payload any) error
+}
+
+type gatewayObjectStore interface {
+	PutObjectBytes(ctx context.Context, objectKey, contentType string, payload []byte) error
+	GetObjectBytes(ctx context.Context, objectKey string) ([]byte, string, error)
 }
 
 type Server struct {
 	cfg            config.Config
 	log            zerolog.Logger
 	db             *pgxpool.Pool
+	mediaStore     gatewayObjectStore
 	outbox         gatewayOutboxPublisher
 	authClient     cpayv1.AuthServiceClient
 	linkClient     cpayv1.PaymentLinkServiceClient
@@ -53,6 +59,7 @@ func NewServer(
 	cfg config.Config,
 	log zerolog.Logger,
 	db *pgxpool.Pool,
+	mediaStore gatewayObjectStore,
 	authClient cpayv1.AuthServiceClient,
 	linkClient cpayv1.PaymentLinkServiceClient,
 	checkoutClient cpayv1.CheckoutServiceClient,
@@ -61,6 +68,7 @@ func NewServer(
 		cfg:            cfg,
 		log:            log,
 		db:             db,
+		mediaStore:     mediaStore,
 		outbox:         outbox.New(db, cfg.ServiceName),
 		authClient:     authClient,
 		linkClient:     linkClient,
@@ -82,13 +90,18 @@ func (s *Server) Router() http.Handler {
 		r.Post("/auth/refresh", s.handleRefresh)
 
 		r.Get("/public/payment_links/{code}", s.handleGetPublicPaymentLink)
+		r.Get("/public/products/{id}", s.handleGetPublicProduct)
+		r.Get("/products/{id}", s.handleGetPublicProduct)
 		r.Post("/public/payment_links/{id}/sessions", s.handleCreatePublicCheckoutSession)
 		r.Get("/public/checkout/{session_id}", s.handleGetPublicCheckoutSession)
+		r.Get("/public/product_images/{merchant_id}/{product_id}/{image_id}", s.handleGetProductImage)
 
 		r.Group(func(r chi.Router) {
 			r.Use(s.authn)
 
 			r.Get("/me", s.handleMe)
+			r.Get("/merchant/settings", s.handleGetMerchantSettings)
+			r.Patch("/merchant/settings", s.handleUpdateMerchantSettings)
 
 			r.Post("/api_keys", s.handleCreateAPIKey)
 			r.Get("/api_keys", s.handleListAPIKeys)
@@ -96,8 +109,8 @@ func (s *Server) Router() http.Handler {
 
 			r.Post("/products", s.handleCreateProduct)
 			r.Get("/products", s.handleListProducts)
-			r.Get("/products/{id}", s.handleGetProduct)
 			r.Post("/products/{id}", s.handleUpdateProduct)
+			r.Post("/products/{id}/image", s.handleUploadProductImage)
 			r.Delete("/products/{id}", s.handleDeleteProduct)
 
 			r.Post("/payment_links", s.handleCreatePaymentLink)
@@ -174,21 +187,21 @@ func (s *Server) authn(next http.Handler) http.Handler {
 			return
 		}
 		principal := resp.GetPrincipal()
-		merchantID, err := uuid.Parse(principal.GetMerchantId())
+		merchantID, err := ids.Parse(principal.GetMerchantId())
 		if err != nil {
 			httpx.WriteError(w, http.StatusUnauthorized, "unauthorized", "invalid merchant", middleware.GetRequestID(r.Context()))
 			return
 		}
-		var userID *uuid.UUID
+		var userID *string
 		if strings.TrimSpace(principal.GetUserId()) != "" {
-			uid, err := uuid.Parse(principal.GetUserId())
+			uid, err := ids.Parse(principal.GetUserId())
 			if err == nil {
 				userID = &uid
 			}
 		}
-		var apiKeyID *uuid.UUID
+		var apiKeyID *string
 		if strings.TrimSpace(principal.GetApiKeyId()) != "" {
-			kid, err := uuid.Parse(principal.GetApiKeyId())
+			kid, err := ids.Parse(principal.GetApiKeyId())
 			if err == nil {
 				apiKeyID = &kid
 			}
@@ -251,7 +264,7 @@ func (s *Server) writeRPCError(w http.ResponseWriter, r *http.Request, err error
 	httpx.WriteError(w, rpcx.HTTPFromGRPC(code), reason, msg, middleware.GetRequestID(r.Context()))
 }
 
-func (s *Server) withIdempotency(w http.ResponseWriter, r *http.Request, merchantID uuid.UUID, endpoint string, fn func() (int, any, error)) {
+func (s *Server) withIdempotency(w http.ResponseWriter, r *http.Request, merchantID string, endpoint string, fn func() (int, any, error)) {
 	idempotencyKey := middleware.GetIdempotencyKey(r.Context())
 	if idempotencyKey == "" {
 		status, payload, err := fn()
@@ -296,7 +309,7 @@ func (s *Server) withIdempotency(w http.ResponseWriter, r *http.Request, merchan
 		INSERT INTO platform.idempotency_keys(id, merchant_id, endpoint, idempotency_key, request_hash, response_status, response_body, expires_at)
 		VALUES($1, $2, $3, $4, $5, $6, $7::jsonb, NOW() + INTERVAL '24 hours')
 		ON CONFLICT (merchant_id, endpoint, idempotency_key) DO NOTHING
-	`, uuid.New(), merchantID, endpoint, idempotencyKey, hashRequest(r), status, string(payloadBytes))
+	`, ids.New(), merchantID, endpoint, idempotencyKey, hashRequest(r), status, string(payloadBytes))
 
 	httpx.WriteJSON(w, status, payload)
 }

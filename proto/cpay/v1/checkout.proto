@@ -90,6 +90,11 @@ message PublicCheckoutSession {
   string after_payment_type = 14;
   string after_payment_redirect_url = 15;
   string after_payment_success_message = 16;
+  string payment_intent_status = 17;
+  double received_amount = 18;
+  string tx_hash = 19;
+  int32 confirmations = 20;
+  int32 required_confirmations = 21;
 }
 
 message GetCheckoutSessionRequest {
@@ -99,7 +104,8 @@ message GetCheckoutSessionRequest {
 
 message GetPublicCheckoutSessionRequest {
   string session_id = 1;
-  string client_secret = 2;
+  reserved 2;
+  reserved "client_secret";
 }
 
 message ConfirmCheckoutSessionRequest {

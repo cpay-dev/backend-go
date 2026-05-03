@@ -11,8 +11,9 @@ import (
 	"github.com/cpay-dev/cpay/internal/platform/outbox"
 	"github.com/cpay-dev/cpay/internal/shared/auth"
 	"github.com/cpay-dev/cpay/internal/shared/config"
+	"github.com/cpay-dev/cpay/internal/shared/ids"
 	"github.com/cpay-dev/cpay/internal/shared/rpcx"
-	"github.com/google/uuid"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog"
@@ -47,8 +48,8 @@ func (s *Service) EnsureBootstrap(ctx context.Context) error {
 		return nil
 	}
 
-	merchantID := uuid.New()
-	userID := uuid.New()
+	merchantID := ids.New()
+	userID := ids.New()
 	adminEmail := strings.ToLower(strings.TrimSpace(s.cfg.BootstrapAdminEmail))
 	passHash, err := bcrypt.GenerateFromPassword([]byte(s.cfg.BootstrapAdminPass), bcrypt.DefaultCost)
 	if err != nil {
@@ -73,7 +74,7 @@ func (s *Service) EnsureBootstrap(ctx context.Context) error {
 	`, userID, merchantID, adminEmail, string(passHash)); err != nil {
 		return err
 	}
-	if err = s.outbox.EnqueueTx(ctx, tx, "user", userID.String(), &merchantID, "user.signed_up", map[string]any{
+	if err = s.outbox.EnqueueTx(ctx, tx, "user", userID, &merchantID, "user.signed_up", map[string]any{
 		"user_id":     userID,
 		"merchant_id": merchantID,
 		"email":       adminEmail,
@@ -154,7 +155,7 @@ func (s *Service) Refresh(ctx context.Context, req *cpayv1.RefreshRequest) (*cpa
 }
 
 func (s *Service) CreateApiKey(ctx context.Context, req *cpayv1.CreateApiKeyRequest) (*cpayv1.CreateApiKeyResponse, error) {
-	merchantID, err := parseUUID(req.GetMerchantId(), "merchant_id")
+	merchantID, err := parseID(req.GetMerchantId(), "merchant_id")
 	if err != nil {
 		return nil, err
 	}
@@ -171,7 +172,7 @@ func (s *Service) CreateApiKey(ctx context.Context, req *cpayv1.CreateApiKeyRequ
 	if err != nil {
 		return nil, rpcx.E(codes.Internal, "internal_error", "failed to generate api key")
 	}
-	keyID := uuid.New()
+	keyID := ids.New()
 	scopesRaw, _ := json.Marshal(scopes)
 	_, err = s.db.Exec(ctx, `
 		INSERT INTO auth.api_keys(id, merchant_id, name, key_prefix, key_hash, scopes, created_at)
@@ -181,7 +182,7 @@ func (s *Service) CreateApiKey(ctx context.Context, req *cpayv1.CreateApiKeyRequ
 		return nil, rpcx.E(codes.Internal, "internal_error", "failed to create api key")
 	}
 
-	_ = s.outbox.Enqueue(ctx, "api_key", keyID.String(), &merchantID, "api_key.created", map[string]any{
+	_ = s.outbox.Enqueue(ctx, "api_key", keyID, &merchantID, "api_key.created", map[string]any{
 		"api_key_id": keyID,
 		"name":       name,
 		"scopes":     scopes,
@@ -190,7 +191,7 @@ func (s *Service) CreateApiKey(ctx context.Context, req *cpayv1.CreateApiKeyRequ
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	return &cpayv1.CreateApiKeyResponse{
 		ApiKey: &cpayv1.ApiKey{
-			Id:        keyID.String(),
+			Id:        keyID,
 			Name:      name,
 			Prefix:    prefix,
 			Scopes:    scopes,
@@ -201,7 +202,7 @@ func (s *Service) CreateApiKey(ctx context.Context, req *cpayv1.CreateApiKeyRequ
 }
 
 func (s *Service) ListApiKeys(ctx context.Context, req *cpayv1.ListApiKeysRequest) (*cpayv1.ListApiKeysResponse, error) {
-	merchantID, err := parseUUID(req.GetMerchantId(), "merchant_id")
+	merchantID, err := parseID(req.GetMerchantId(), "merchant_id")
 	if err != nil {
 		return nil, err
 	}
@@ -243,11 +244,11 @@ func (s *Service) ListApiKeys(ctx context.Context, req *cpayv1.ListApiKeysReques
 }
 
 func (s *Service) RevokeApiKey(ctx context.Context, req *cpayv1.RevokeApiKeyRequest) (*cpayv1.RevokeApiKeyResponse, error) {
-	merchantID, err := parseUUID(req.GetMerchantId(), "merchant_id")
+	merchantID, err := parseID(req.GetMerchantId(), "merchant_id")
 	if err != nil {
 		return nil, err
 	}
-	keyID, err := parseUUID(req.GetId(), "id")
+	keyID, err := parseID(req.GetId(), "id")
 	if err != nil {
 		return nil, err
 	}
@@ -264,8 +265,70 @@ func (s *Service) RevokeApiKey(ctx context.Context, req *cpayv1.RevokeApiKeyRequ
 		return nil, rpcx.E(codes.NotFound, "not_found", "api key not found")
 	}
 
-	_ = s.outbox.Enqueue(ctx, "api_key", keyID.String(), &merchantID, "api_key.revoked", map[string]any{"api_key_id": keyID})
-	return &cpayv1.RevokeApiKeyResponse{Id: keyID.String(), Revoked: true}, nil
+	_ = s.outbox.Enqueue(ctx, "api_key", keyID, &merchantID, "api_key.revoked", map[string]any{"api_key_id": keyID})
+	return &cpayv1.RevokeApiKeyResponse{Id: keyID, Revoked: true}, nil
+}
+
+func (s *Service) GetMerchantSettings(ctx context.Context, req *cpayv1.GetMerchantSettingsRequest) (*cpayv1.GetMerchantSettingsResponse, error) {
+	merchantID, err := parseID(req.GetMerchantId(), "merchant_id")
+	if err != nil {
+		return nil, err
+	}
+
+	var settlementAddress string
+	err = s.db.QueryRow(ctx, `
+		SELECT COALESCE(settlement_address, '')
+		FROM auth.merchants
+		WHERE id=$1
+	`, merchantID).Scan(&settlementAddress)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, rpcx.E(codes.NotFound, "not_found", "merchant not found")
+		}
+		return nil, rpcx.E(codes.Internal, "internal_error", "failed to load merchant settings")
+	}
+
+	return &cpayv1.GetMerchantSettingsResponse{
+		Settings: &cpayv1.MerchantSettings{
+			MerchantId:        merchantID,
+			SettlementAddress: settlementAddress,
+		},
+	}, nil
+}
+
+func (s *Service) UpdateMerchantSettings(ctx context.Context, req *cpayv1.UpdateMerchantSettingsRequest) (*cpayv1.UpdateMerchantSettingsResponse, error) {
+	merchantID, err := parseID(req.GetMerchantId(), "merchant_id")
+	if err != nil {
+		return nil, err
+	}
+	settlementAddress, err := normalizeSettlementAddress(req.GetSettlementAddress())
+	if err != nil {
+		return nil, err
+	}
+
+	cmd, err := s.db.Exec(ctx, `
+		UPDATE auth.merchants
+		SET settlement_address=$2, updated_at=NOW()
+		WHERE id=$1
+	`, merchantID, settlementAddress)
+	if err != nil {
+		return nil, rpcx.E(codes.Internal, "internal_error", "failed to update merchant settings")
+	}
+	if cmd.RowsAffected() == 0 {
+		return nil, rpcx.E(codes.NotFound, "not_found", "merchant not found")
+	}
+
+	_ = s.outbox.Enqueue(ctx, "merchant", merchantID, &merchantID, "merchant.settings_updated", map[string]any{
+		"merchant_id":        merchantID,
+		"settlement_address": settlementAddress,
+	})
+
+	return &cpayv1.UpdateMerchantSettingsResponse{
+		Settings: &cpayv1.MerchantSettings{
+			MerchantId:        merchantID,
+			SettlementAddress: settlementAddress,
+		},
+	}, nil
 }
 
 func (s *Service) ValidateCredential(ctx context.Context, req *cpayv1.ValidateCredentialRequest) (*cpayv1.ValidateCredentialResponse, error) {
@@ -276,10 +339,10 @@ func (s *Service) ValidateCredential(ctx context.Context, req *cpayv1.ValidateCr
 		if err != nil || claims.TokenType != "access" {
 			return nil, rpcx.E(codes.Unauthenticated, "invalid_token", "invalid access token")
 		}
-		if _, err := uuid.Parse(claims.MerchantID); err != nil {
+		if _, err := ids.Parse(claims.MerchantID); err != nil {
 			return nil, rpcx.E(codes.Unauthenticated, "invalid_token", "invalid merchant in token")
 		}
-		if _, err := uuid.Parse(claims.UserID); err != nil {
+		if _, err := ids.Parse(claims.UserID); err != nil {
 			return nil, rpcx.E(codes.Unauthenticated, "invalid_token", "invalid user in token")
 		}
 		return &cpayv1.ValidateCredentialResponse{Principal: &cpayv1.Principal{
@@ -310,7 +373,7 @@ func (s *Service) ValidateCredential(ctx context.Context, req *cpayv1.ValidateCr
 		return nil, rpcx.E(codes.Internal, "internal_error", "auth lookup failed")
 	}
 
-	if _, err := uuid.Parse(merchantID); err != nil {
+	if _, err := ids.Parse(merchantID); err != nil {
 		return nil, rpcx.E(codes.Unauthenticated, "unauthorized", "invalid api key")
 	}
 	_, _ = s.db.Exec(ctx, `UPDATE auth.api_keys SET last_used_at=NOW() WHERE id=$1`, keyID)
@@ -323,12 +386,20 @@ func (s *Service) ValidateCredential(ctx context.Context, req *cpayv1.ValidateCr
 	}}, nil
 }
 
-func parseUUID(raw, field string) (uuid.UUID, error) {
-	id, err := uuid.Parse(strings.TrimSpace(raw))
+func parseID(raw, field string) (string, error) {
+	id, err := ids.Parse(strings.TrimSpace(raw))
 	if err != nil {
-		return uuid.Nil, rpcx.E(codes.InvalidArgument, "invalid_request", field+" is invalid")
+		return "", rpcx.E(codes.InvalidArgument, "invalid_request", field+" is invalid")
 	}
 	return id, nil
+}
+
+func normalizeSettlementAddress(raw string) (string, error) {
+	addr := strings.TrimSpace(raw)
+	if !common.IsHexAddress(addr) {
+		return "", rpcx.E(codes.InvalidArgument, "invalid_request", "settlement_address is invalid")
+	}
+	return common.HexToAddress(addr).Hex(), nil
 }
 
 func formatTimePtr(v *time.Time) string {

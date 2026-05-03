@@ -1,8 +1,8 @@
 CREATE TABLE IF NOT EXISTS platform.email_notifications (
-    id UUID PRIMARY KEY,
-    event_id TEXT NOT NULL,
+    id ulid PRIMARY KEY,
+    event_id ulid NOT NULL,
     event_type TEXT NOT NULL,
-    merchant_id UUID,
+    merchant_id ulid,
     template TEXT NOT NULL,
     recipient TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'pending',

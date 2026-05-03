@@ -7,8 +7,8 @@ import (
 
 	cpayv1 "github.com/cpay-dev/cpay/internal/gen/cpay/v1"
 	"github.com/cpay-dev/cpay/internal/shared/httpx"
+	"github.com/cpay-dev/cpay/internal/shared/ids"
 	"github.com/cpay-dev/cpay/internal/shared/middleware"
-	"github.com/google/uuid"
 )
 
 type createMockTransferRequest struct {
@@ -63,7 +63,7 @@ func (s *Server) handleCreateMockTransfer(w http.ResponseWriter, r *http.Request
 	}
 
 	session, err := s.checkoutClient.GetCheckoutSession(s.rpcContext(r.Context()), &cpayv1.GetCheckoutSessionRequest{
-		MerchantId: reqAuth.MerchantID.String(),
+		MerchantId: reqAuth.MerchantID,
 		SessionId:  sessionID,
 	})
 	if err != nil {
@@ -89,7 +89,7 @@ func (s *Server) handleCreateMockTransfer(w http.ResponseWriter, r *http.Request
 
 	txHash := strings.TrimSpace(req.TxHash)
 	if txHash == "" {
-		txHash = "mock_tx_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+		txHash = "mock_tx_" + strings.ReplaceAll(ids.New(), "-", "")
 	}
 
 	toAddress := strings.TrimSpace(req.ToAddress)
@@ -97,24 +97,24 @@ func (s *Server) handleCreateMockTransfer(w http.ResponseWriter, r *http.Request
 		toAddress = strings.TrimSpace(intent.GetDepositAddress())
 	}
 
-	requestID := uuid.New()
+	requestID := ids.New()
 	eventPayload := req.RawPayload
 	if eventPayload == nil {
 		eventPayload = map[string]any{
 			"source":       "admin_mock_transfer",
 			"requested_at": time.Now().UTC().Format(time.RFC3339Nano),
-			"request_id":   requestID.String(),
+			"request_id":   requestID,
 		}
 	}
 
 	requestedByUserID := ""
 	if reqAuth.UserID != nil {
-		requestedByUserID = reqAuth.UserID.String()
+		requestedByUserID = *reqAuth.UserID
 	}
 
-	if err := s.outbox.Enqueue(r.Context(), "mock_transfer", requestID.String(), &reqAuth.MerchantID, "mock_transfer.requested", mockTransferRequestedEvent{
-		RequestID:         requestID.String(),
-		MerchantID:        reqAuth.MerchantID.String(),
+	if err := s.outbox.Enqueue(r.Context(), "mock_transfer", requestID, &reqAuth.MerchantID, "mock_transfer.requested", mockTransferRequestedEvent{
+		RequestID:         requestID,
+		MerchantID:        reqAuth.MerchantID,
 		SessionID:         sessionID,
 		PaymentIntentID:   intent.GetId(),
 		TxHash:            txHash,
@@ -131,7 +131,7 @@ func (s *Server) handleCreateMockTransfer(w http.ResponseWriter, r *http.Request
 	}
 
 	httpx.WriteJSON(w, http.StatusAccepted, map[string]any{
-		"request_id":        requestID.String(),
+		"request_id":        requestID,
 		"session_id":        sessionID,
 		"payment_intent_id": intent.GetId(),
 		"tx_hash":           txHash,

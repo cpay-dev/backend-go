@@ -16,9 +16,9 @@ import (
 	"github.com/cpay-dev/cpay/internal/shared/chain"
 	"github.com/cpay-dev/cpay/internal/shared/config"
 	"github.com/cpay-dev/cpay/internal/shared/httpx"
+	"github.com/cpay-dev/cpay/internal/shared/ids"
 	"github.com/cpay-dev/cpay/internal/shared/middleware"
 	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/nats-io/nats.go"
@@ -31,10 +31,10 @@ type authContextKey string
 const requesterKey authContextKey = "requester"
 
 type requester struct {
-	MerchantID uuid.UUID
-	UserID     *uuid.UUID
+	MerchantID string
+	UserID     *string
 	Role       string
-	APIKeyID   *uuid.UUID
+	APIKeyID   *string
 }
 
 type Server struct {
@@ -143,12 +143,12 @@ func (s *Server) authn(next http.Handler) http.Handler {
 				httpx.WriteError(w, http.StatusUnauthorized, "invalid_token", "invalid access token", middleware.GetRequestID(r.Context()))
 				return
 			}
-			merchantID, err := uuid.Parse(claims.MerchantID)
+			merchantID, err := ids.Parse(claims.MerchantID)
 			if err != nil {
 				httpx.WriteError(w, http.StatusUnauthorized, "invalid_token", "invalid merchant in token", middleware.GetRequestID(r.Context()))
 				return
 			}
-			uid, err := uuid.Parse(claims.UserID)
+			uid, err := ids.Parse(claims.UserID)
 			if err != nil {
 				httpx.WriteError(w, http.StatusUnauthorized, "invalid_token", "invalid user in token", middleware.GetRequestID(r.Context()))
 				return
@@ -180,8 +180,8 @@ func (s *Server) authn(next http.Handler) http.Handler {
 			return
 		}
 
-		keyID, _ := uuid.Parse(keyIDStr)
-		merchantID, _ := uuid.Parse(merchantIDStr)
+		keyID, _ := ids.Parse(keyIDStr)
+		merchantID, _ := ids.Parse(merchantIDStr)
 		_, _ = s.db.Exec(r.Context(), `UPDATE api_keys SET last_used_at=NOW() WHERE id=$1`, keyID)
 
 		req := requester{MerchantID: merchantID, APIKeyID: &keyID, Role: "api_key"}
@@ -227,7 +227,7 @@ func (s *Server) parseJSON(w http.ResponseWriter, r *http.Request, dst any) bool
 	return true
 }
 
-func (s *Server) withIdempotency(w http.ResponseWriter, r *http.Request, merchantID uuid.UUID, endpoint string, fn func() (int, any, error)) {
+func (s *Server) withIdempotency(w http.ResponseWriter, r *http.Request, merchantID string, endpoint string, fn func() (int, any, error)) {
 	idempotencyKey := middleware.GetIdempotencyKey(r.Context())
 	if idempotencyKey == "" {
 		status, payload, err := fn()
@@ -272,7 +272,7 @@ func (s *Server) withIdempotency(w http.ResponseWriter, r *http.Request, merchan
 		INSERT INTO idempotency_keys(id, merchant_id, endpoint, idempotency_key, request_hash, response_status, response_body, expires_at)
 		VALUES($1, $2, $3, $4, $5, $6, $7::jsonb, NOW() + INTERVAL '24 hours')
 		ON CONFLICT (merchant_id, endpoint, idempotency_key) DO NOTHING
-	`, uuid.New(), merchantID, endpoint, idempotencyKey, hashRequest(r), status, string(payloadBytes))
+	`, ids.New(), merchantID, endpoint, idempotencyKey, hashRequest(r), status, string(payloadBytes))
 
 	httpx.WriteJSON(w, status, payload)
 }
@@ -322,8 +322,8 @@ func (s *Server) EnsureBootstrap(ctx context.Context) error {
 	if count > 0 {
 		return nil
 	}
-	merchantID := uuid.New()
-	userID := uuid.New()
+	merchantID := ids.New()
+	userID := ids.New()
 	passHash, err := bcrypt.GenerateFromPassword([]byte(s.cfg.BootstrapAdminPass), bcrypt.DefaultCost)
 	if err != nil {
 		return err

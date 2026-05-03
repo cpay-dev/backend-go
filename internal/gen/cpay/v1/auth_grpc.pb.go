@@ -19,12 +19,14 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	AuthService_Login_FullMethodName              = "/cpay.v1.AuthService/Login"
-	AuthService_Refresh_FullMethodName            = "/cpay.v1.AuthService/Refresh"
-	AuthService_CreateApiKey_FullMethodName       = "/cpay.v1.AuthService/CreateApiKey"
-	AuthService_ListApiKeys_FullMethodName        = "/cpay.v1.AuthService/ListApiKeys"
-	AuthService_RevokeApiKey_FullMethodName       = "/cpay.v1.AuthService/RevokeApiKey"
-	AuthService_ValidateCredential_FullMethodName = "/cpay.v1.AuthService/ValidateCredential"
+	AuthService_Login_FullMethodName                  = "/cpay.v1.AuthService/Login"
+	AuthService_Refresh_FullMethodName                = "/cpay.v1.AuthService/Refresh"
+	AuthService_CreateApiKey_FullMethodName           = "/cpay.v1.AuthService/CreateApiKey"
+	AuthService_ListApiKeys_FullMethodName            = "/cpay.v1.AuthService/ListApiKeys"
+	AuthService_RevokeApiKey_FullMethodName           = "/cpay.v1.AuthService/RevokeApiKey"
+	AuthService_GetMerchantSettings_FullMethodName    = "/cpay.v1.AuthService/GetMerchantSettings"
+	AuthService_UpdateMerchantSettings_FullMethodName = "/cpay.v1.AuthService/UpdateMerchantSettings"
+	AuthService_ValidateCredential_FullMethodName     = "/cpay.v1.AuthService/ValidateCredential"
 )
 
 // AuthServiceClient is the client API for AuthService service.
@@ -36,6 +38,8 @@ type AuthServiceClient interface {
 	CreateApiKey(ctx context.Context, in *CreateApiKeyRequest, opts ...grpc.CallOption) (*CreateApiKeyResponse, error)
 	ListApiKeys(ctx context.Context, in *ListApiKeysRequest, opts ...grpc.CallOption) (*ListApiKeysResponse, error)
 	RevokeApiKey(ctx context.Context, in *RevokeApiKeyRequest, opts ...grpc.CallOption) (*RevokeApiKeyResponse, error)
+	GetMerchantSettings(ctx context.Context, in *GetMerchantSettingsRequest, opts ...grpc.CallOption) (*GetMerchantSettingsResponse, error)
+	UpdateMerchantSettings(ctx context.Context, in *UpdateMerchantSettingsRequest, opts ...grpc.CallOption) (*UpdateMerchantSettingsResponse, error)
 	ValidateCredential(ctx context.Context, in *ValidateCredentialRequest, opts ...grpc.CallOption) (*ValidateCredentialResponse, error)
 }
 
@@ -97,6 +101,26 @@ func (c *authServiceClient) RevokeApiKey(ctx context.Context, in *RevokeApiKeyRe
 	return out, nil
 }
 
+func (c *authServiceClient) GetMerchantSettings(ctx context.Context, in *GetMerchantSettingsRequest, opts ...grpc.CallOption) (*GetMerchantSettingsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetMerchantSettingsResponse)
+	err := c.cc.Invoke(ctx, AuthService_GetMerchantSettings_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *authServiceClient) UpdateMerchantSettings(ctx context.Context, in *UpdateMerchantSettingsRequest, opts ...grpc.CallOption) (*UpdateMerchantSettingsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(UpdateMerchantSettingsResponse)
+	err := c.cc.Invoke(ctx, AuthService_UpdateMerchantSettings_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *authServiceClient) ValidateCredential(ctx context.Context, in *ValidateCredentialRequest, opts ...grpc.CallOption) (*ValidateCredentialResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ValidateCredentialResponse)
@@ -116,6 +140,8 @@ type AuthServiceServer interface {
 	CreateApiKey(context.Context, *CreateApiKeyRequest) (*CreateApiKeyResponse, error)
 	ListApiKeys(context.Context, *ListApiKeysRequest) (*ListApiKeysResponse, error)
 	RevokeApiKey(context.Context, *RevokeApiKeyRequest) (*RevokeApiKeyResponse, error)
+	GetMerchantSettings(context.Context, *GetMerchantSettingsRequest) (*GetMerchantSettingsResponse, error)
+	UpdateMerchantSettings(context.Context, *UpdateMerchantSettingsRequest) (*UpdateMerchantSettingsResponse, error)
 	ValidateCredential(context.Context, *ValidateCredentialRequest) (*ValidateCredentialResponse, error)
 	mustEmbedUnimplementedAuthServiceServer()
 }
@@ -141,6 +167,12 @@ func (UnimplementedAuthServiceServer) ListApiKeys(context.Context, *ListApiKeysR
 }
 func (UnimplementedAuthServiceServer) RevokeApiKey(context.Context, *RevokeApiKeyRequest) (*RevokeApiKeyResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method RevokeApiKey not implemented")
+}
+func (UnimplementedAuthServiceServer) GetMerchantSettings(context.Context, *GetMerchantSettingsRequest) (*GetMerchantSettingsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetMerchantSettings not implemented")
+}
+func (UnimplementedAuthServiceServer) UpdateMerchantSettings(context.Context, *UpdateMerchantSettingsRequest) (*UpdateMerchantSettingsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method UpdateMerchantSettings not implemented")
 }
 func (UnimplementedAuthServiceServer) ValidateCredential(context.Context, *ValidateCredentialRequest) (*ValidateCredentialResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ValidateCredential not implemented")
@@ -256,6 +288,42 @@ func _AuthService_RevokeApiKey_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AuthService_GetMerchantSettings_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetMerchantSettingsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AuthServiceServer).GetMerchantSettings(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AuthService_GetMerchantSettings_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthServiceServer).GetMerchantSettings(ctx, req.(*GetMerchantSettingsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AuthService_UpdateMerchantSettings_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateMerchantSettingsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AuthServiceServer).UpdateMerchantSettings(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AuthService_UpdateMerchantSettings_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthServiceServer).UpdateMerchantSettings(ctx, req.(*UpdateMerchantSettingsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _AuthService_ValidateCredential_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ValidateCredentialRequest)
 	if err := dec(in); err != nil {
@@ -300,6 +368,14 @@ var AuthService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "RevokeApiKey",
 			Handler:    _AuthService_RevokeApiKey_Handler,
+		},
+		{
+			MethodName: "GetMerchantSettings",
+			Handler:    _AuthService_GetMerchantSettings_Handler,
+		},
+		{
+			MethodName: "UpdateMerchantSettings",
+			Handler:    _AuthService_UpdateMerchantSettings_Handler,
 		},
 		{
 			MethodName: "ValidateCredential",

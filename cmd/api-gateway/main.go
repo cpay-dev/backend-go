@@ -12,6 +12,7 @@ import (
 	cpayv1 "github.com/cpay-dev/cpay/internal/gen/cpay/v1"
 	"github.com/cpay-dev/cpay/internal/platform/db"
 	"github.com/cpay-dev/cpay/internal/platform/migrate"
+	"github.com/cpay-dev/cpay/internal/platform/storage"
 	"github.com/cpay-dev/cpay/internal/shared/config"
 	"github.com/cpay-dev/cpay/internal/shared/logx"
 	"google.golang.org/grpc"
@@ -33,6 +34,11 @@ func main() {
 
 	if err := migrate.RunUp(ctx, dbPool); err != nil {
 		log.Fatal().Err(err).Msg("migrations failed")
+	}
+
+	mediaStore, err := storage.NewMinIO(ctx, cfg)
+	if err != nil {
+		log.Fatal().Err(err).Msg("minio init failed")
 	}
 
 	authConn, err := dialGRPC(ctx, cfg.AuthGRPCAddr)
@@ -57,6 +63,7 @@ func main() {
 		cfg,
 		log,
 		dbPool,
+		mediaStore,
 		cpayv1.NewAuthServiceClient(authConn),
 		cpayv1.NewPaymentLinkServiceClient(linkConn),
 		cpayv1.NewCheckoutServiceClient(checkoutConn),

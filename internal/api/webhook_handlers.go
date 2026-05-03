@@ -9,8 +9,8 @@ import (
 
 	cryptox "github.com/cpay-dev/cpay/internal/shared/crypto"
 	"github.com/cpay-dev/cpay/internal/shared/httpx"
+	"github.com/cpay-dev/cpay/internal/shared/ids"
 	"github.com/cpay-dev/cpay/internal/shared/middleware"
-	"github.com/google/uuid"
 )
 
 type createWebhookEndpointRequest struct {
@@ -51,7 +51,7 @@ func (s *Server) handleCreateWebhookEndpoint(w http.ResponseWriter, r *http.Requ
 			return 0, nil, err
 		}
 		eventsRaw, _ := json.Marshal(req.Events)
-		id := uuid.New()
+		id := ids.New()
 		_, err = s.db.Exec(r.Context(), `
 			INSERT INTO webhook_endpoints(
 				id, merchant_id, url, description, enabled, events, secret_encrypted, max_retries, created_at, updated_at
@@ -61,7 +61,7 @@ func (s *Server) handleCreateWebhookEndpoint(w http.ResponseWriter, r *http.Requ
 		if err != nil {
 			return 0, nil, err
 		}
-		_ = s.enqueueEvent(r.Context(), "webhook_endpoint", id.String(), reqAuth.MerchantID, "webhook_endpoint.created", map[string]any{
+		_ = s.enqueueEvent(r.Context(), "webhook_endpoint", id, reqAuth.MerchantID, "webhook_endpoint.created", map[string]any{
 			"webhook_endpoint_id": id,
 			"url":                 strings.TrimSpace(req.URL),
 			"events":              req.Events,

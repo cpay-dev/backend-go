@@ -21,6 +21,7 @@ import (
 	"github.com/cpay-dev/cpay/internal/shared/chain"
 	"github.com/cpay-dev/cpay/internal/shared/config"
 	cryptox "github.com/cpay-dev/cpay/internal/shared/crypto"
+	"github.com/cpay-dev/cpay/internal/shared/ids"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog"
 	"google.golang.org/grpc/codes"
@@ -46,6 +47,61 @@ func TestMigrationsRunUpTwice(t *testing.T) {
 	assertRelationExists(t, ctx, pool, "catalog.payment_links")
 	assertRelationExists(t, ctx, pool, "checkout.payment_intents")
 	assertRelationExists(t, ctx, pool, "platform.outbox_events")
+}
+
+func TestPostgresULIDType_SQLAndGoRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	pool, _ := openIntegrationDB(t)
+	defer pool.Close()
+
+	resetDatabase(t, ctx, pool)
+	t.Setenv("MIGRATIONS_PATH", cfgMigrationsPath(t))
+	if err := migrate.RunUp(ctx, pool); err != nil {
+		t.Fatalf("migrate up failed: %v", err)
+	}
+
+	var generatedID, generatedType string
+	if err := pool.QueryRow(ctx, `
+		WITH generated AS (SELECT gen_ulid() AS id)
+		SELECT id::text, pg_typeof(id)::text
+		FROM generated
+	`).Scan(&generatedID, &generatedType); err != nil {
+		t.Fatalf("generate sql ulid failed: %v", err)
+	}
+	if generatedType != "ulid" {
+		t.Fatalf("expected sql type ulid, got %q", generatedType)
+	}
+	if !ids.IsValid(generatedID) {
+		t.Fatalf("expected valid sql-generated ULID, got %q", generatedID)
+	}
+
+	merchantID := ids.New()
+	var insertedID, insertedType string
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO auth.merchants(id, name, created_at, updated_at)
+		VALUES($1, 'ULID Merchant', NOW(), NOW())
+		RETURNING id, pg_typeof(id)::text
+	`, merchantID).Scan(&insertedID, &insertedType); err != nil {
+		t.Fatalf("insert go-generated ULID failed: %v", err)
+	}
+	if insertedID != merchantID {
+		t.Fatalf("expected inserted id %s, got %s", merchantID, insertedID)
+	}
+	if insertedType != "ulid" {
+		t.Fatalf("expected inserted column type ulid, got %q", insertedType)
+	}
+
+	var selectedID string
+	if err := pool.QueryRow(ctx, `
+		SELECT id
+		FROM auth.merchants
+		WHERE id=$1
+	`, merchantID).Scan(&selectedID); err != nil {
+		t.Fatalf("select native ulid into Go string failed: %v", err)
+	}
+	if selectedID != merchantID {
+		t.Fatalf("expected selected id %s, got %s", merchantID, selectedID)
+	}
 }
 
 func TestM1ServiceFlow_AuthPaymentLinkCheckout(t *testing.T) {

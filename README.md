@@ -46,6 +46,9 @@ External API is REST on `api-gateway`; internal service-to-service communication
   - `POST /v1/api_keys`
   - `GET /v1/api_keys`
   - `POST /v1/api_keys/{id}/revoke`
+- Merchant settings
+  - `GET /v1/merchant/settings`
+  - `PATCH /v1/merchant/settings`
 - Products
   - `POST /v1/products`
   - `GET /v1/products`
@@ -80,6 +83,8 @@ External API is REST on `api-gateway`; internal service-to-service communication
 - `chain-observer-service` expires stale pending payment intents.
 - `payout-service` schedules/completes payouts and marks intents settled.
 - `subscription-service` processes due cycles against prepaid vault balances.
+
+Payouts run in production mode by default. Configure `CHAIN_RPC_URLS` as a comma-separated map such as `base=https://...` and set each merchant's `settlement_address` via `/v1/merchant/settings`. Use `PAYOUT_MODE=mock` only for local/demo runs that should preserve mocked sweep hashes.
 
 ## Local run
 

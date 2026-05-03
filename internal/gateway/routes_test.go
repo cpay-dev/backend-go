@@ -26,10 +26,22 @@ func TestRouterMethodRegistration(t *testing.T) {
 		{http.MethodPatch, "/v1/payment_links/some-id"},
 		{http.MethodPost, "/v1/payment_links/some-id/archive"},
 		{http.MethodPost, "/v1/payment_links/some-id/sessions"},
+		{http.MethodGet, "/v1/public/payment_links/some-code"},
+		{http.MethodPost, "/v1/public/payment_links/some-code/sessions"},
+		// products
+		{http.MethodPost, "/v1/products"},
+		{http.MethodGet, "/v1/products"},
+		{http.MethodGet, "/v1/products/some-id"},
+		{http.MethodGet, "/v1/public/products/some-id"},
+		{http.MethodPost, "/v1/products/some-id"},
+		{http.MethodPost, "/v1/products/some-id/image"},
+		{http.MethodDelete, "/v1/products/some-id"},
 		// checkout
 		{http.MethodGet, "/v1/checkout/cs_test"},
 		{http.MethodPost, "/v1/checkout/cs_test/confirm"},
 		{http.MethodPost, "/v1/mock_transfers"},
+		// public media
+		{http.MethodGet, "/v1/public/product_images/merchant/product/image.png"},
 	}
 
 	for _, tc := range routes {
@@ -40,6 +52,23 @@ func TestRouterMethodRegistration(t *testing.T) {
 
 			if rr.Code == http.StatusMethodNotAllowed {
 				t.Errorf("route %s %s is not registered (got 405 — add it to Router())", tc.method, tc.path)
+			}
+		})
+	}
+}
+
+func TestProductDetailRoutesArePublic(t *testing.T) {
+	s := &Server{}
+	handler := s.Router()
+
+	for _, path := range []string{"/v1/products/some-id", "/v1/public/products/some-id"} {
+		t.Run(path, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			rr := httptest.NewRecorder()
+			handler.ServeHTTP(rr, req)
+
+			if rr.Code == http.StatusUnauthorized {
+				t.Fatalf("product detail route should be public, got %d", rr.Code)
 			}
 		})
 	}

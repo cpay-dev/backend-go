@@ -639,6 +639,11 @@ type PublicCheckoutSession struct {
 	AfterPaymentType           string                 `protobuf:"bytes,14,opt,name=after_payment_type,json=afterPaymentType,proto3" json:"after_payment_type,omitempty"`
 	AfterPaymentRedirectUrl    string                 `protobuf:"bytes,15,opt,name=after_payment_redirect_url,json=afterPaymentRedirectUrl,proto3" json:"after_payment_redirect_url,omitempty"`
 	AfterPaymentSuccessMessage string                 `protobuf:"bytes,16,opt,name=after_payment_success_message,json=afterPaymentSuccessMessage,proto3" json:"after_payment_success_message,omitempty"`
+	PaymentIntentStatus        string                 `protobuf:"bytes,17,opt,name=payment_intent_status,json=paymentIntentStatus,proto3" json:"payment_intent_status,omitempty"`
+	ReceivedAmount             float64                `protobuf:"fixed64,18,opt,name=received_amount,json=receivedAmount,proto3" json:"received_amount,omitempty"`
+	TxHash                     string                 `protobuf:"bytes,19,opt,name=tx_hash,json=txHash,proto3" json:"tx_hash,omitempty"`
+	Confirmations              int32                  `protobuf:"varint,20,opt,name=confirmations,proto3" json:"confirmations,omitempty"`
+	RequiredConfirmations      int32                  `protobuf:"varint,21,opt,name=required_confirmations,json=requiredConfirmations,proto3" json:"required_confirmations,omitempty"`
 	unknownFields              protoimpl.UnknownFields
 	sizeCache                  protoimpl.SizeCache
 }
@@ -785,6 +790,41 @@ func (x *PublicCheckoutSession) GetAfterPaymentSuccessMessage() string {
 	return ""
 }
 
+func (x *PublicCheckoutSession) GetPaymentIntentStatus() string {
+	if x != nil {
+		return x.PaymentIntentStatus
+	}
+	return ""
+}
+
+func (x *PublicCheckoutSession) GetReceivedAmount() float64 {
+	if x != nil {
+		return x.ReceivedAmount
+	}
+	return 0
+}
+
+func (x *PublicCheckoutSession) GetTxHash() string {
+	if x != nil {
+		return x.TxHash
+	}
+	return ""
+}
+
+func (x *PublicCheckoutSession) GetConfirmations() int32 {
+	if x != nil {
+		return x.Confirmations
+	}
+	return 0
+}
+
+func (x *PublicCheckoutSession) GetRequiredConfirmations() int32 {
+	if x != nil {
+		return x.RequiredConfirmations
+	}
+	return 0
+}
+
 type GetCheckoutSessionRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	MerchantId    string                 `protobuf:"bytes,1,opt,name=merchant_id,json=merchantId,proto3" json:"merchant_id,omitempty"`
@@ -840,7 +880,6 @@ func (x *GetCheckoutSessionRequest) GetSessionId() string {
 type GetPublicCheckoutSessionRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	SessionId     string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
-	ClientSecret  string                 `protobuf:"bytes,2,opt,name=client_secret,json=clientSecret,proto3" json:"client_secret,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -878,13 +917,6 @@ func (*GetPublicCheckoutSessionRequest) Descriptor() ([]byte, []int) {
 func (x *GetPublicCheckoutSessionRequest) GetSessionId() string {
 	if x != nil {
 		return x.SessionId
-	}
-	return ""
-}
-
-func (x *GetPublicCheckoutSessionRequest) GetClientSecret() string {
-	if x != nil {
-		return x.ClientSecret
 	}
 	return ""
 }
@@ -2279,7 +2311,7 @@ const file_cpay_v1_checkout_proto_rawDesc = "" +
 	"successUrl\x12\x1d\n" +
 	"\n" +
 	"created_at\x18\x0f \x01(\tR\tcreatedAt\x12=\n" +
-	"\x0epayment_intent\x18\x10 \x01(\v2\x16.cpay.v1.PaymentIntentR\rpaymentIntent\"\xd9\x04\n" +
+	"\x0epayment_intent\x18\x10 \x01(\v2\x16.cpay.v1.PaymentIntentR\rpaymentIntent\"\xac\x06\n" +
 	"\x15PublicCheckoutSession\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x16\n" +
 	"\x06status\x18\x02 \x01(\tR\x06status\x12\x16\n" +
@@ -2299,16 +2331,20 @@ const file_cpay_v1_checkout_proto_rawDesc = "" +
 	"\bcta_text\x18\r \x01(\tR\actaText\x12,\n" +
 	"\x12after_payment_type\x18\x0e \x01(\tR\x10afterPaymentType\x12;\n" +
 	"\x1aafter_payment_redirect_url\x18\x0f \x01(\tR\x17afterPaymentRedirectUrl\x12A\n" +
-	"\x1dafter_payment_success_message\x18\x10 \x01(\tR\x1aafterPaymentSuccessMessage\"[\n" +
+	"\x1dafter_payment_success_message\x18\x10 \x01(\tR\x1aafterPaymentSuccessMessage\x122\n" +
+	"\x15payment_intent_status\x18\x11 \x01(\tR\x13paymentIntentStatus\x12'\n" +
+	"\x0freceived_amount\x18\x12 \x01(\x01R\x0ereceivedAmount\x12\x17\n" +
+	"\atx_hash\x18\x13 \x01(\tR\x06txHash\x12$\n" +
+	"\rconfirmations\x18\x14 \x01(\x05R\rconfirmations\x125\n" +
+	"\x16required_confirmations\x18\x15 \x01(\x05R\x15requiredConfirmations\"[\n" +
 	"\x19GetCheckoutSessionRequest\x12\x1f\n" +
 	"\vmerchant_id\x18\x01 \x01(\tR\n" +
 	"merchantId\x12\x1d\n" +
 	"\n" +
-	"session_id\x18\x02 \x01(\tR\tsessionId\"e\n" +
+	"session_id\x18\x02 \x01(\tR\tsessionId\"U\n" +
 	"\x1fGetPublicCheckoutSessionRequest\x12\x1d\n" +
 	"\n" +
-	"session_id\x18\x01 \x01(\tR\tsessionId\x12#\n" +
-	"\rclient_secret\x18\x02 \x01(\tR\fclientSecret\"\x80\x03\n" +
+	"session_id\x18\x01 \x01(\tR\tsessionIdJ\x04\b\x02\x10\x03R\rclient_secret\"\x80\x03\n" +
 	"\x1dConfirmCheckoutSessionRequest\x12\x1f\n" +
 	"\vmerchant_id\x18\x01 \x01(\tR\n" +
 	"merchantId\x12\x1d\n" +

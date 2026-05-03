@@ -10,7 +10,7 @@ import (
 
 	cpayv1 "github.com/cpay-dev/cpay/internal/gen/cpay/v1"
 	"github.com/cpay-dev/cpay/internal/shared/config"
-	"github.com/google/uuid"
+	"github.com/cpay-dev/cpay/internal/shared/ids"
 	"google.golang.org/grpc"
 )
 
@@ -29,12 +29,12 @@ func (f *fakeCheckoutClient) GetCheckoutSession(ctx context.Context, in *cpayv1.
 type fakeGatewayOutbox struct {
 	aggregateType string
 	aggregateID   string
-	merchantID    *uuid.UUID
+	merchantID    *string
 	eventType     string
 	payload       any
 }
 
-func (f *fakeGatewayOutbox) Enqueue(_ context.Context, aggregateType, aggregateID string, merchantID *uuid.UUID, eventType string, payload any) error {
+func (f *fakeGatewayOutbox) Enqueue(_ context.Context, aggregateType, aggregateID string, merchantID *string, eventType string, payload any) error {
 	f.aggregateType = aggregateType
 	f.aggregateID = aggregateID
 	f.merchantID = merchantID
@@ -56,7 +56,7 @@ func TestHandleCreateMockTransferRequiresUserToken(t *testing.T) {
 }
 
 func TestHandleCreateMockTransferRejectsAPIKeyPrincipal(t *testing.T) {
-	merchantID := uuid.New()
+	merchantID := ids.New()
 	s := &Server{}
 	req := httptest.NewRequest(http.MethodPost, "/v1/mock_transfers", strings.NewReader(`{"session_id":"cs_1"}`))
 	req = req.WithContext(context.WithValue(req.Context(), requesterKey, requester{
@@ -73,12 +73,12 @@ func TestHandleCreateMockTransferRejectsAPIKeyPrincipal(t *testing.T) {
 }
 
 func TestHandleCreateMockTransferQueuesOutboxEventWithDefaults(t *testing.T) {
-	merchantID := uuid.New()
-	userID := uuid.New()
+	merchantID := ids.New()
+	userID := ids.New()
 	fakeOutbox := &fakeGatewayOutbox{}
 	fakeCheckout := &fakeCheckoutClient{
 		getCheckoutSessionFn: func(_ context.Context, in *cpayv1.GetCheckoutSessionRequest, _ ...grpc.CallOption) (*cpayv1.CheckoutSession, error) {
-			if in.GetMerchantId() != merchantID.String() {
+			if in.GetMerchantId() != merchantID {
 				t.Fatalf("unexpected merchant id: %s", in.GetMerchantId())
 			}
 			if in.GetSessionId() != "cs_123" {

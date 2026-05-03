@@ -3,8 +3,10 @@ CREATE SCHEMA IF NOT EXISTS catalog;
 CREATE SCHEMA IF NOT EXISTS checkout;
 CREATE SCHEMA IF NOT EXISTS platform;
 
+CREATE EXTENSION IF NOT EXISTS ulid;
+
 CREATE TABLE IF NOT EXISTS auth.merchants (
-    id UUID PRIMARY KEY,
+    id ulid PRIMARY KEY,
     name TEXT NOT NULL,
     settlement_address TEXT,
     metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -13,8 +15,8 @@ CREATE TABLE IF NOT EXISTS auth.merchants (
 );
 
 CREATE TABLE IF NOT EXISTS auth.users (
-    id UUID PRIMARY KEY,
-    merchant_id UUID NOT NULL REFERENCES auth.merchants(id) ON DELETE CASCADE,
+    id ulid PRIMARY KEY,
+    merchant_id ulid NOT NULL REFERENCES auth.merchants(id) ON DELETE CASCADE,
     email TEXT NOT NULL,
     password_hash TEXT NOT NULL,
     role TEXT NOT NULL DEFAULT 'admin',
@@ -24,8 +26,8 @@ CREATE TABLE IF NOT EXISTS auth.users (
 );
 
 CREATE TABLE IF NOT EXISTS auth.api_keys (
-    id UUID PRIMARY KEY,
-    merchant_id UUID NOT NULL REFERENCES auth.merchants(id) ON DELETE CASCADE,
+    id ulid PRIMARY KEY,
+    merchant_id ulid NOT NULL REFERENCES auth.merchants(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     key_prefix TEXT NOT NULL,
     key_hash TEXT NOT NULL,
@@ -37,8 +39,8 @@ CREATE TABLE IF NOT EXISTS auth.api_keys (
 );
 
 CREATE TABLE IF NOT EXISTS catalog.products (
-    id UUID PRIMARY KEY,
-    merchant_id UUID NOT NULL REFERENCES auth.merchants(id) ON DELETE CASCADE,
+    id ulid PRIMARY KEY,
+    merchant_id ulid NOT NULL REFERENCES auth.merchants(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     description TEXT,
     image_url TEXT,
@@ -50,9 +52,9 @@ CREATE TABLE IF NOT EXISTS catalog.products (
 );
 
 CREATE TABLE IF NOT EXISTS catalog.payment_links (
-    id UUID PRIMARY KEY,
-    merchant_id UUID NOT NULL REFERENCES auth.merchants(id) ON DELETE CASCADE,
-    product_id UUID REFERENCES catalog.products(id) ON DELETE SET NULL,
+    id ulid PRIMARY KEY,
+    merchant_id ulid NOT NULL REFERENCES auth.merchants(id) ON DELETE CASCADE,
+    product_id ulid REFERENCES catalog.products(id) ON DELETE SET NULL,
     code TEXT NOT NULL,
     title TEXT NOT NULL,
     description TEXT,
@@ -85,7 +87,7 @@ CREATE TABLE IF NOT EXISTS catalog.payment_links (
 );
 
 CREATE TABLE IF NOT EXISTS catalog.link_options (
-    payment_link_id UUID PRIMARY KEY REFERENCES catalog.payment_links(id) ON DELETE CASCADE,
+    payment_link_id ulid PRIMARY KEY REFERENCES catalog.payment_links(id) ON DELETE CASCADE,
     collect_email BOOLEAN NOT NULL DEFAULT FALSE,
     collect_name BOOLEAN NOT NULL DEFAULT FALSE,
     collect_phone BOOLEAN NOT NULL DEFAULT FALSE,
@@ -99,9 +101,9 @@ CREATE TABLE IF NOT EXISTS catalog.link_options (
 );
 
 CREATE TABLE IF NOT EXISTS checkout.checkout_sessions (
-    id UUID PRIMARY KEY,
-    payment_link_id UUID NOT NULL REFERENCES catalog.payment_links(id) ON DELETE CASCADE,
-    merchant_id UUID NOT NULL REFERENCES auth.merchants(id) ON DELETE CASCADE,
+    id ulid PRIMARY KEY,
+    payment_link_id ulid NOT NULL REFERENCES catalog.payment_links(id) ON DELETE CASCADE,
+    merchant_id ulid NOT NULL REFERENCES auth.merchants(id) ON DELETE CASCADE,
     status TEXT NOT NULL,
     customer_email TEXT,
     customer_name TEXT,
@@ -121,10 +123,10 @@ CREATE TABLE IF NOT EXISTS checkout.checkout_sessions (
 );
 
 CREATE TABLE IF NOT EXISTS checkout.payment_intents (
-    id UUID PRIMARY KEY,
-    checkout_session_id UUID NOT NULL REFERENCES checkout.checkout_sessions(id) ON DELETE CASCADE,
-    payment_link_id UUID NOT NULL REFERENCES catalog.payment_links(id) ON DELETE CASCADE,
-    merchant_id UUID NOT NULL REFERENCES auth.merchants(id) ON DELETE CASCADE,
+    id ulid PRIMARY KEY,
+    checkout_session_id ulid NOT NULL REFERENCES checkout.checkout_sessions(id) ON DELETE CASCADE,
+    payment_link_id ulid NOT NULL REFERENCES catalog.payment_links(id) ON DELETE CASCADE,
+    merchant_id ulid NOT NULL REFERENCES auth.merchants(id) ON DELETE CASCADE,
     status TEXT NOT NULL,
     chain TEXT NOT NULL,
     token_symbol TEXT NOT NULL,
@@ -146,9 +148,9 @@ CREATE TABLE IF NOT EXISTS checkout.payment_intents (
 );
 
 CREATE TABLE IF NOT EXISTS checkout.deposit_addresses (
-    id UUID PRIMARY KEY,
-    payment_intent_id UUID NOT NULL UNIQUE REFERENCES checkout.payment_intents(id) ON DELETE CASCADE,
-    merchant_id UUID NOT NULL REFERENCES auth.merchants(id) ON DELETE CASCADE,
+    id ulid PRIMARY KEY,
+    payment_intent_id ulid NOT NULL UNIQUE REFERENCES checkout.payment_intents(id) ON DELETE CASCADE,
+    merchant_id ulid NOT NULL REFERENCES auth.merchants(id) ON DELETE CASCADE,
     chain TEXT NOT NULL,
     address TEXT NOT NULL,
     encrypted_private_key TEXT NOT NULL,
@@ -159,8 +161,8 @@ CREATE TABLE IF NOT EXISTS checkout.deposit_addresses (
 );
 
 CREATE TABLE IF NOT EXISTS checkout.chain_transactions (
-    id UUID PRIMARY KEY,
-    payment_intent_id UUID NOT NULL REFERENCES checkout.payment_intents(id) ON DELETE CASCADE,
+    id ulid PRIMARY KEY,
+    payment_intent_id ulid NOT NULL REFERENCES checkout.payment_intents(id) ON DELETE CASCADE,
     chain TEXT NOT NULL,
     tx_hash TEXT NOT NULL,
     block_number BIGINT,
@@ -179,8 +181,8 @@ CREATE TABLE IF NOT EXISTS checkout.chain_transactions (
 );
 
 CREATE TABLE IF NOT EXISTS checkout.webhook_endpoints (
-    id UUID PRIMARY KEY,
-    merchant_id UUID NOT NULL REFERENCES auth.merchants(id) ON DELETE CASCADE,
+    id ulid PRIMARY KEY,
+    merchant_id ulid NOT NULL REFERENCES auth.merchants(id) ON DELETE CASCADE,
     url TEXT NOT NULL,
     description TEXT,
     enabled BOOLEAN NOT NULL DEFAULT TRUE,
@@ -192,10 +194,10 @@ CREATE TABLE IF NOT EXISTS checkout.webhook_endpoints (
 );
 
 CREATE TABLE IF NOT EXISTS checkout.webhook_deliveries (
-    id UUID PRIMARY KEY,
-    webhook_endpoint_id UUID NOT NULL REFERENCES checkout.webhook_endpoints(id) ON DELETE CASCADE,
-    merchant_id UUID NOT NULL REFERENCES auth.merchants(id) ON DELETE CASCADE,
-    event_id TEXT NOT NULL,
+    id ulid PRIMARY KEY,
+    webhook_endpoint_id ulid NOT NULL REFERENCES checkout.webhook_endpoints(id) ON DELETE CASCADE,
+    merchant_id ulid NOT NULL REFERENCES auth.merchants(id) ON DELETE CASCADE,
+    event_id ulid NOT NULL,
     event_type TEXT NOT NULL,
     payload JSONB NOT NULL,
     attempt INTEGER NOT NULL DEFAULT 1,
@@ -210,9 +212,9 @@ CREATE TABLE IF NOT EXISTS checkout.webhook_deliveries (
 );
 
 CREATE TABLE IF NOT EXISTS checkout.invoices (
-    id UUID PRIMARY KEY,
-    payment_intent_id UUID NOT NULL UNIQUE REFERENCES checkout.payment_intents(id) ON DELETE CASCADE,
-    merchant_id UUID NOT NULL REFERENCES auth.merchants(id) ON DELETE CASCADE,
+    id ulid PRIMARY KEY,
+    payment_intent_id ulid NOT NULL UNIQUE REFERENCES checkout.payment_intents(id) ON DELETE CASCADE,
+    merchant_id ulid NOT NULL REFERENCES auth.merchants(id) ON DELETE CASCADE,
     object_key TEXT NOT NULL,
     amount NUMERIC(36, 18) NOT NULL,
     currency TEXT NOT NULL,
@@ -220,8 +222,8 @@ CREATE TABLE IF NOT EXISTS checkout.invoices (
 );
 
 CREATE TABLE IF NOT EXISTS checkout.payouts (
-    id UUID PRIMARY KEY,
-    merchant_id UUID NOT NULL REFERENCES auth.merchants(id) ON DELETE CASCADE,
+    id ulid PRIMARY KEY,
+    merchant_id ulid NOT NULL REFERENCES auth.merchants(id) ON DELETE CASCADE,
     status TEXT NOT NULL,
     schedule_at TIMESTAMPTZ NOT NULL,
     tx_hash TEXT,
@@ -229,6 +231,8 @@ CREATE TABLE IF NOT EXISTS checkout.payouts (
     fee_amount NUMERIC(36, 18) NOT NULL DEFAULT 0,
     token_symbol TEXT NOT NULL,
     chain TEXT NOT NULL,
+    attempt_count INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     completed_at TIMESTAMPTZ,
@@ -236,17 +240,22 @@ CREATE TABLE IF NOT EXISTS checkout.payouts (
 );
 
 CREATE TABLE IF NOT EXISTS checkout.payout_items (
-    id UUID PRIMARY KEY,
-    payout_id UUID NOT NULL REFERENCES checkout.payouts(id) ON DELETE CASCADE,
-    payment_intent_id UUID NOT NULL UNIQUE REFERENCES checkout.payment_intents(id) ON DELETE CASCADE,
+    id ulid PRIMARY KEY,
+    payout_id ulid NOT NULL REFERENCES checkout.payouts(id) ON DELETE CASCADE,
+    payment_intent_id ulid NOT NULL UNIQUE REFERENCES checkout.payment_intents(id) ON DELETE CASCADE,
     amount NUMERIC(36, 18) NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    status TEXT NOT NULL DEFAULT 'pending',
+    tx_hash TEXT,
+    last_error TEXT,
+    completed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CHECK (status IN ('pending', 'processing', 'completed', 'failed'))
 );
 
 CREATE TABLE IF NOT EXISTS checkout.subscriptions (
-    id UUID PRIMARY KEY,
-    merchant_id UUID NOT NULL REFERENCES auth.merchants(id) ON DELETE CASCADE,
-    payment_link_id UUID REFERENCES catalog.payment_links(id) ON DELETE SET NULL,
+    id ulid PRIMARY KEY,
+    merchant_id ulid NOT NULL REFERENCES auth.merchants(id) ON DELETE CASCADE,
+    payment_link_id ulid REFERENCES catalog.payment_links(id) ON DELETE SET NULL,
     customer_ref TEXT,
     status TEXT NOT NULL,
     chain TEXT NOT NULL,
@@ -266,15 +275,15 @@ CREATE TABLE IF NOT EXISTS checkout.subscriptions (
 );
 
 CREATE TABLE IF NOT EXISTS checkout.subscription_cycles (
-    id UUID PRIMARY KEY,
-    subscription_id UUID NOT NULL REFERENCES checkout.subscriptions(id) ON DELETE CASCADE,
+    id ulid PRIMARY KEY,
+    subscription_id ulid NOT NULL REFERENCES checkout.subscriptions(id) ON DELETE CASCADE,
     cycle_index INTEGER NOT NULL,
     period_start TIMESTAMPTZ NOT NULL,
     period_end TIMESTAMPTZ NOT NULL,
     due_at TIMESTAMPTZ NOT NULL,
     status TEXT NOT NULL,
     amount NUMERIC(36, 18) NOT NULL,
-    payment_intent_id UUID REFERENCES checkout.payment_intents(id) ON DELETE SET NULL,
+    payment_intent_id ulid REFERENCES checkout.payment_intents(id) ON DELETE SET NULL,
     retry_count INTEGER NOT NULL DEFAULT 0,
     last_error TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -284,9 +293,9 @@ CREATE TABLE IF NOT EXISTS checkout.subscription_cycles (
 );
 
 CREATE TABLE IF NOT EXISTS checkout.vault_authorizations (
-    id UUID PRIMARY KEY,
-    merchant_id UUID NOT NULL REFERENCES auth.merchants(id) ON DELETE CASCADE,
-    subscription_id UUID NOT NULL UNIQUE REFERENCES checkout.subscriptions(id) ON DELETE CASCADE,
+    id ulid PRIMARY KEY,
+    merchant_id ulid NOT NULL REFERENCES auth.merchants(id) ON DELETE CASCADE,
+    subscription_id ulid NOT NULL UNIQUE REFERENCES checkout.subscriptions(id) ON DELETE CASCADE,
     chain TEXT NOT NULL,
     contract_address TEXT NOT NULL,
     customer_wallet TEXT NOT NULL,
@@ -302,10 +311,10 @@ CREATE TABLE IF NOT EXISTS checkout.vault_authorizations (
 );
 
 CREATE TABLE IF NOT EXISTS platform.outbox_events (
-    id UUID PRIMARY KEY,
+    id ulid PRIMARY KEY,
     aggregate_type TEXT NOT NULL,
     aggregate_id TEXT NOT NULL,
-    merchant_id UUID,
+    merchant_id ulid,
     event_type TEXT NOT NULL,
     payload JSONB NOT NULL,
     headers JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -320,8 +329,8 @@ CREATE TABLE IF NOT EXISTS platform.outbox_events (
 );
 
 CREATE TABLE IF NOT EXISTS platform.idempotency_keys (
-    id UUID PRIMARY KEY,
-    merchant_id UUID NOT NULL REFERENCES auth.merchants(id) ON DELETE CASCADE,
+    id ulid PRIMARY KEY,
+    merchant_id ulid NOT NULL REFERENCES auth.merchants(id) ON DELETE CASCADE,
     endpoint TEXT NOT NULL,
     idempotency_key TEXT NOT NULL,
     request_hash TEXT,

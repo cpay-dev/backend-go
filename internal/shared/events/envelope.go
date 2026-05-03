@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/google/uuid"
+	"github.com/cpay-dev/cpay/internal/shared/ids"
 )
 
 type Envelope struct {
@@ -24,7 +24,7 @@ func NewEnvelope(eventType, source, merchantID, aggregateID string, payload any)
 		return Envelope{}, err
 	}
 	return Envelope{
-		ID:          uuid.NewString(),
+		ID:          ids.New(),
 		Type:        eventType,
 		Version:     "v1",
 		OccurredAt:  time.Now().UTC(),

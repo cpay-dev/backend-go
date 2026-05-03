@@ -10,9 +10,9 @@ import (
 	"github.com/cpay-dev/cpay/internal/domain/payment"
 	cryptox "github.com/cpay-dev/cpay/internal/shared/crypto"
 	"github.com/cpay-dev/cpay/internal/shared/httpx"
+	"github.com/cpay-dev/cpay/internal/shared/ids"
 	"github.com/cpay-dev/cpay/internal/shared/middleware"
 	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -172,9 +172,9 @@ func (s *Server) handleCreateCheckoutSession(w http.ResponseWriter, r *http.Requ
 			return 0, nil, err
 		}
 
-		sessionID := uuid.New()
-		intentID := uuid.New()
-		addressID := uuid.New()
+		sessionID := ids.New()
+		intentID := ids.New()
+		addressID := ids.New()
 		custAddressRaw, _ := json.Marshal(req.CustomerAddress)
 
 		tx, err := s.db.Begin(r.Context())
@@ -222,7 +222,7 @@ func (s *Server) handleCreateCheckoutSession(w http.ResponseWriter, r *http.Requ
 			return 0, nil, err
 		}
 
-		if err = s.enqueueEventTx(r.Context(), tx, "payment_intent", intentID.String(), reqAuth.MerchantID, "payment_intent.created", map[string]any{
+		if err = s.enqueueEventTx(r.Context(), tx, "payment_intent", intentID, reqAuth.MerchantID, "payment_intent.created", map[string]any{
 			"payment_intent_id": intentID,
 			"checkout_session":  sessionID,
 			"payment_link_id":   linkIDStr,
@@ -268,7 +268,7 @@ func (s *Server) handleGetCheckoutSession(w http.ResponseWriter, r *http.Request
 	if !ok {
 		return
 	}
-	sessionID, err := uuid.Parse(strings.TrimSpace(chi.URLParam(r, "session_id")))
+	sessionID, err := ids.Parse(strings.TrimSpace(chi.URLParam(r, "session_id")))
 	if err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "invalid session id", middleware.GetRequestID(r.Context()))
 		return
@@ -347,7 +347,7 @@ func (s *Server) handleConfirmCheckoutSession(w http.ResponseWriter, r *http.Req
 	if !ok {
 		return
 	}
-	sessionID, err := uuid.Parse(strings.TrimSpace(chi.URLParam(r, "session_id")))
+	sessionID, err := ids.Parse(strings.TrimSpace(chi.URLParam(r, "session_id")))
 	if err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "invalid session id", middleware.GetRequestID(r.Context()))
 		return
@@ -394,7 +394,7 @@ func (s *Server) handleConfirmCheckoutSession(w http.ResponseWriter, r *http.Req
 		txStatus = "confirmed"
 	}
 
-	intentID, _ := uuid.Parse(intentIDStr)
+	intentID, _ := ids.Parse(intentIDStr)
 	rawPayload, _ := json.Marshal(req.RawPayload)
 
 	tx, err := s.db.Begin(r.Context())
@@ -412,7 +412,7 @@ func (s *Server) handleConfirmCheckoutSession(w http.ResponseWriter, r *http.Req
 		VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, NULL, $10, $11, $12::jsonb, NOW(), NOW())
 		ON CONFLICT (chain, tx_hash, payment_intent_id)
 		DO UPDATE SET confirmations=EXCLUDED.confirmations, status=EXCLUDED.status, raw_payload=EXCLUDED.raw_payload
-	`, uuid.New(), intentID, chainName, req.TxHash, req.BlockNumber, req.FromAddress, req.ToAddress, req.ReceivedAmount,
+	`, ids.New(), intentID, chainName, req.TxHash, req.BlockNumber, req.FromAddress, req.ToAddress, req.ReceivedAmount,
 		tokenSymbol, req.Confirmations, txStatus, string(rawPayload))
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "internal_error", "failed to write chain transaction", middleware.GetRequestID(r.Context()))
@@ -471,7 +471,7 @@ func (s *Server) handleConfirmCheckoutSession(w http.ResponseWriter, r *http.Req
 				INSERT INTO invoices(id, payment_intent_id, merchant_id, object_key, amount, currency, created_at)
 				VALUES($1, $2, $3, $4, $5, $6, NOW())
 				ON CONFLICT (payment_intent_id) DO NOTHING
-			`, uuid.New(), intentID, reqAuth.MerchantID, objectKey, req.ReceivedAmount, currency)
+			`, ids.New(), intentID, reqAuth.MerchantID, objectKey, req.ReceivedAmount, currency)
 		}
 	}
 

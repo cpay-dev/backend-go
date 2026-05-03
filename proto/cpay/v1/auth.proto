@@ -25,6 +25,11 @@ message UserInfo {
   string role = 3;
 }
 
+message MerchantSettings {
+  string merchant_id = 1;
+  string settlement_address = 2;
+}
+
 message LoginRequest {
   string email = 1;
   string password = 2;
@@ -82,6 +87,23 @@ message RevokeApiKeyResponse {
   bool revoked = 2;
 }
 
+message GetMerchantSettingsRequest {
+  string merchant_id = 1;
+}
+
+message GetMerchantSettingsResponse {
+  MerchantSettings settings = 1;
+}
+
+message UpdateMerchantSettingsRequest {
+  string merchant_id = 1;
+  string settlement_address = 2;
+}
+
+message UpdateMerchantSettingsResponse {
+  MerchantSettings settings = 1;
+}
+
 message ValidateCredentialRequest {
   string authorization = 1;
   string api_key = 2;
@@ -97,5 +119,7 @@ service AuthService {
   rpc CreateApiKey(CreateApiKeyRequest) returns (CreateApiKeyResponse);
   rpc ListApiKeys(ListApiKeysRequest) returns (ListApiKeysResponse);
   rpc RevokeApiKey(RevokeApiKeyRequest) returns (RevokeApiKeyResponse);
+  rpc GetMerchantSettings(GetMerchantSettingsRequest) returns (GetMerchantSettingsResponse);
+  rpc UpdateMerchantSettings(UpdateMerchantSettingsRequest) returns (UpdateMerchantSettingsResponse);
   rpc ValidateCredential(ValidateCredentialRequest) returns (ValidateCredentialResponse);
 }

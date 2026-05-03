@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/google/uuid"
+	"github.com/cpay-dev/cpay/internal/shared/ids"
 )
 
 type ctxKey string
@@ -15,7 +15,7 @@ func RequestID(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		rid := r.Header.Get("X-Request-ID")
 		if rid == "" {
-			rid = uuid.NewString()
+			rid = ids.New()
 		}
 		ctx := context.WithValue(r.Context(), RequestIDKey, rid)
 		w.Header().Set("X-Request-ID", rid)

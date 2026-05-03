@@ -1,6 +1,8 @@
 services:
   postgres:
-    image: postgres:18
+    build:
+      context: .
+      dockerfile: docker/postgres-ulid.Dockerfile
     container_name: cpay-postgres
     environment:
       POSTGRES_DB: cpay
@@ -9,7 +11,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - ./pgdata:/var/lib/postgresql
+      - cpay-postgres-data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d cpay"]
       interval: 5s
@@ -76,7 +78,9 @@ services:
       MINIO_ROOT_PASSWORD: cpay-secret-key
       MINIO_BUCKET: cpay-invoices
       MINIO_USE_SSL: "false"
-      CHAIN_CONFIRMATIONS: ethereum:12,polygon:12,arbitrum:20,base:12
+      CHAIN_CONFIRMATIONS: ethereum:12,polygon:12,arbitrum:20,base:12,hyperevm:12
+      CHAIN_RPC_URLS: ${CHAIN_RPC_URLS:-}
+      PAYOUT_MODE: ${PAYOUT_MODE:-production}
       DEFAULT_TOLERANCE_PERCENT: "0.25"
       BOOTSTRAP_MERCHANT_NAME: Demo Merchant
       BOOTSTRAP_ADMIN_EMAIL: admin@cpay.dev
@@ -273,3 +277,6 @@ services:
     ports:
       - "8089:8089"
       - "9093:9093"
+
+volumes:
+  cpay-postgres-data:

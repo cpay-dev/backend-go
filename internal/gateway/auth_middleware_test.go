@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	cpayv1 "github.com/cpay-dev/cpay/internal/gen/cpay/v1"
+	"github.com/cpay-dev/cpay/internal/shared/ids"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
@@ -15,11 +16,21 @@ import (
 
 type authMiddlewareTestServer struct {
 	cpayv1.UnimplementedAuthServiceServer
-	validateFn func(context.Context, *cpayv1.ValidateCredentialRequest) (*cpayv1.ValidateCredentialResponse, error)
+	validateFn               func(context.Context, *cpayv1.ValidateCredentialRequest) (*cpayv1.ValidateCredentialResponse, error)
+	getMerchantSettingsFn    func(context.Context, *cpayv1.GetMerchantSettingsRequest) (*cpayv1.GetMerchantSettingsResponse, error)
+	updateMerchantSettingsFn func(context.Context, *cpayv1.UpdateMerchantSettingsRequest) (*cpayv1.UpdateMerchantSettingsResponse, error)
 }
 
 func (s *authMiddlewareTestServer) ValidateCredential(ctx context.Context, req *cpayv1.ValidateCredentialRequest) (*cpayv1.ValidateCredentialResponse, error) {
 	return s.validateFn(ctx, req)
+}
+
+func (s *authMiddlewareTestServer) GetMerchantSettings(ctx context.Context, req *cpayv1.GetMerchantSettingsRequest) (*cpayv1.GetMerchantSettingsResponse, error) {
+	return s.getMerchantSettingsFn(ctx, req)
+}
+
+func (s *authMiddlewareTestServer) UpdateMerchantSettings(ctx context.Context, req *cpayv1.UpdateMerchantSettingsRequest) (*cpayv1.UpdateMerchantSettingsResponse, error) {
+	return s.updateMerchantSettingsFn(ctx, req)
 }
 
 func newAuthTestClient(t *testing.T, srv cpayv1.AuthServiceServer) cpayv1.AuthServiceClient {
@@ -89,8 +100,8 @@ func TestAuthnSetsRequesterFromValidatedPrincipal(t *testing.T) {
 			gotAPIKey = req.GetApiKey()
 			return &cpayv1.ValidateCredentialResponse{
 				Principal: &cpayv1.Principal{
-					MerchantId: "570f856f-fc76-46d9-b17f-8d60af3f27b6",
-					UserId:     "9f9a2f89-b2b7-4547-bf1a-0246f22968fc",
+					MerchantId: ids.New(),
+					UserId:     ids.New(),
 					Role:       "admin",
 					IsUser:     true,
 				},

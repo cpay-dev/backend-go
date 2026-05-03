@@ -12,9 +12,9 @@ import (
 
 	"github.com/cpay-dev/cpay/internal/domain/payment"
 	"github.com/cpay-dev/cpay/internal/shared/httpx"
+	"github.com/cpay-dev/cpay/internal/shared/ids"
 	"github.com/cpay-dev/cpay/internal/shared/middleware"
 	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -118,7 +118,7 @@ func (s *Server) handleCreatePaymentLink(w http.ResponseWriter, r *http.Request)
 	}
 
 	s.withIdempotency(w, r, reqAuth.MerchantID, "/v1/payment_links", func() (int, any, error) {
-		linkID := uuid.New()
+		linkID := ids.New()
 		code, err := newLinkCode()
 		if err != nil {
 			return 0, nil, err
@@ -136,7 +136,7 @@ func (s *Server) handleCreatePaymentLink(w http.ResponseWriter, r *http.Request)
 
 		var productID any
 		if req.ProductID != nil && strings.TrimSpace(*req.ProductID) != "" {
-			pid, err := uuid.Parse(strings.TrimSpace(*req.ProductID))
+			pid, err := ids.Parse(strings.TrimSpace(*req.ProductID))
 			if err != nil {
 				return 0, nil, badRequest("invalid product_id")
 			}
@@ -188,7 +188,7 @@ func (s *Server) handleCreatePaymentLink(w http.ResponseWriter, r *http.Request)
 			return 0, nil, err
 		}
 
-		if err = s.enqueueEventTx(r.Context(), tx, "payment_link", linkID.String(), reqAuth.MerchantID, "payment_link.created", map[string]any{
+		if err = s.enqueueEventTx(r.Context(), tx, "payment_link", linkID, reqAuth.MerchantID, "payment_link.created", map[string]any{
 			"payment_link_id": linkID,
 			"code":            code,
 			"title":           req.Title,

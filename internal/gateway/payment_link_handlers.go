@@ -97,7 +97,7 @@ func (s *Server) handleCreatePaymentLink(w http.ResponseWriter, r *http.Request)
 
 	s.withIdempotency(w, r, reqAuth.MerchantID, "/v1/payment_links", func() (int, any, error) {
 		rpcReq := &cpayv1.CreatePaymentLinkRequest{
-			MerchantId:       reqAuth.MerchantID.String(),
+			MerchantId:       reqAuth.MerchantID,
 			Title:            req.Title,
 			Description:      req.Description,
 			ImageUrl:         req.ImageURL,
@@ -170,7 +170,7 @@ func (s *Server) handleListPaymentLinks(w http.ResponseWriter, r *http.Request) 
 	}
 
 	resp, err := s.linkClient.ListPaymentLinks(s.rpcContext(r.Context()), &cpayv1.ListPaymentLinksRequest{
-		MerchantId: reqAuth.MerchantID.String(),
+		MerchantId: reqAuth.MerchantID,
 		Limit:      int32(limit),
 		Offset:     int32(offset),
 	})
@@ -209,7 +209,7 @@ func (s *Server) handleGetPaymentLink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := s.linkClient.GetPaymentLink(s.rpcContext(r.Context()), &cpayv1.GetPaymentLinkRequest{MerchantId: reqAuth.MerchantID.String(), Id: id})
+	resp, err := s.linkClient.GetPaymentLink(s.rpcContext(r.Context()), &cpayv1.GetPaymentLinkRequest{MerchantId: reqAuth.MerchantID, Id: id})
 	if err != nil {
 		s.writeRPCError(w, r, err)
 		return
@@ -282,7 +282,7 @@ func (s *Server) handleArchivePaymentLink(w http.ResponseWriter, r *http.Request
 		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "id is required", middleware.GetRequestID(r.Context()))
 		return
 	}
-	resp, err := s.linkClient.ArchivePaymentLink(s.rpcContext(r.Context()), &cpayv1.ArchivePaymentLinkRequest{MerchantId: reqAuth.MerchantID.String(), Id: id})
+	resp, err := s.linkClient.ArchivePaymentLink(s.rpcContext(r.Context()), &cpayv1.ArchivePaymentLinkRequest{MerchantId: reqAuth.MerchantID, Id: id})
 	if err != nil {
 		s.writeRPCError(w, r, err)
 		return
@@ -323,7 +323,7 @@ func (s *Server) handleUpdatePaymentLink(w http.ResponseWriter, r *http.Request)
 		})
 	}
 	resp, err := s.linkClient.UpdatePaymentLink(s.rpcContext(r.Context()), &cpayv1.UpdatePaymentLinkRequest{
-		MerchantId:          reqAuth.MerchantID.String(),
+		MerchantId:          reqAuth.MerchantID,
 		Id:                  id,
 		Title:               req.Title,
 		PricingMode:         req.PricingMode,
@@ -347,18 +347,27 @@ func (s *Server) handleGetPublicPaymentLink(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	var title, mode, currency, cta, amountRaw string
-	var allowedRaw []byte
-	var collectEmail bool
+	var linkID, linkCode, title, mode, currency, cta, amountRaw, afterType string
+	var description, imageURL, successMessage, redirectURL *string
+	var productID, productName, productDescription, productImageURL *string
+	var allowedRaw, customerFieldsRaw, customFieldsRaw []byte
+	var collectEmail, collectName, collectPhone, collectAddress bool
 
 	err := s.db.QueryRow(r.Context(), `
-		SELECT p.title, p.pricing_mode, COALESCE(p.amount::text, ''), p.currency,
-			p.cta_text, p.allowed_tokens,
-			COALESCE(l.collect_email, false)
+		SELECT p.id::text, p.code, p.title, p.description, p.image_url, p.pricing_mode, COALESCE(p.amount::text, ''), p.currency,
+			p.cta_text, p.allowed_tokens, p.customer_fields, p.custom_fields, p.after_payment_type, p.success_message, p.redirect_url,
+			COALESCE(l.collect_email, false), COALESCE(l.collect_name, false), COALESCE(l.collect_phone, false), COALESCE(l.collect_address, false),
+			pr.id::text, pr.name, pr.description, pr.image_url
 		FROM catalog.payment_links p
 		LEFT JOIN catalog.link_options l ON l.payment_link_id = p.id
-		WHERE p.code = $1 AND p.status = 'active'
-	`, code).Scan(&title, &mode, &amountRaw, &currency, &cta, &allowedRaw, &collectEmail)
+		LEFT JOIN catalog.products pr ON pr.id = p.product_id
+		WHERE p.code = $1 AND p.status = 'active' AND (p.expires_at IS NULL OR p.expires_at > NOW())
+	`, code).Scan(
+		&linkID, &linkCode, &title, &description, &imageURL, &mode, &amountRaw, &currency,
+		&cta, &allowedRaw, &customerFieldsRaw, &customFieldsRaw, &afterType, &successMessage, &redirectURL,
+		&collectEmail, &collectName, &collectPhone, &collectAddress,
+		&productID, &productName, &productDescription, &productImageURL,
+	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			httpx.WriteError(w, http.StatusNotFound, "not_found", "payment link not found", middleware.GetRequestID(r.Context()))
@@ -373,17 +382,41 @@ func (s *Server) handleGetPublicPaymentLink(w http.ResponseWriter, r *http.Reque
 		amount = parseJSONValue(amountRaw, nil)
 	}
 
-	httpx.WriteJSON(w, http.StatusOK, map[string]any{
-		"title":          title,
-		"pricing_mode":   mode,
-		"amount":         amount,
-		"currency":       currency,
-		"cta_text":       cta,
-		"allowed_tokens": parseJSONValue(string(allowedRaw), []any{}),
-		"options": map[string]any{
-			"collect_email": collectEmail,
+	payload := map[string]any{
+		"id":              linkID,
+		"code":            linkCode,
+		"title":           title,
+		"description":     strPtrToAny(description),
+		"image_url":       strPtrToAny(imageURL),
+		"pricing_mode":    mode,
+		"amount":          amount,
+		"currency":        currency,
+		"cta_text":        cta,
+		"allowed_tokens":  parseJSONValue(string(allowedRaw), []any{}),
+		"customer_fields": parseJSONValue(string(customerFieldsRaw), []any{}),
+		"custom_fields":   parseJSONValue(string(customFieldsRaw), []any{}),
+		"after_payment": map[string]any{
+			"type":            afterType,
+			"success_message": strPtrToAny(successMessage),
+			"redirect_url":    strPtrToAny(redirectURL),
 		},
-	})
+		"options": map[string]any{
+			"collect_email":   collectEmail,
+			"collect_name":    collectName,
+			"collect_phone":   collectPhone,
+			"collect_address": collectAddress,
+		},
+	}
+	if productID != nil {
+		payload["product"] = map[string]any{
+			"id":          strPtrToAny(productID),
+			"name":        strPtrToAny(productName),
+			"description": strPtrToAny(productDescription),
+			"image_url":   strPtrToAny(productImageURL),
+		}
+	}
+
+	httpx.WriteJSON(w, http.StatusOK, payload)
 }
 
 func mustJSON(v any, def string) string {

@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -40,6 +41,8 @@ type Config struct {
 
 	DefaultTolerancePercent float64
 	ChainConfirmations      map[string]int
+	ChainRPCURLs            map[string]string
+	PayoutMode              string
 
 	OutboxPollInterval time.Duration
 	WorkerInterval     time.Duration
@@ -84,7 +87,9 @@ func Load(serviceName string) Config {
 		CheckoutGRPCAddr:    getEnv("CHECKOUT_GRPC_ADDR", "localhost:9093"),
 
 		DefaultTolerancePercent: getFloat("DEFAULT_TOLERANCE_PERCENT", 0.25),
-		ChainConfirmations:      parseConfirmations(getEnv("CHAIN_CONFIRMATIONS", "ethereum:12,polygon:12,arbitrum:20,base:12")),
+		ChainConfirmations:      parseConfirmations(getEnv("CHAIN_CONFIRMATIONS", "ethereum:12,polygon:12,arbitrum:20,base:12,hyperevm:12")),
+		ChainRPCURLs:            parseChainRPCURLs(getEnv("CHAIN_RPC_URLS", "")),
+		PayoutMode:              strings.ToLower(strings.TrimSpace(getEnv("PAYOUT_MODE", "production"))),
 
 		OutboxPollInterval: getDuration("OUTBOX_POLL_INTERVAL", 2*time.Second),
 		WorkerInterval:     getDuration("WORKER_INTERVAL", 10*time.Second),
@@ -120,6 +125,43 @@ func parseConfirmations(raw string) map[string]int {
 		out["polygon"] = 12
 	}
 	return out
+}
+
+func parseChainRPCURLs(raw string) map[string]string {
+	out := map[string]string{}
+	for _, item := range strings.Split(raw, ",") {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		parts := strings.SplitN(item, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		chain := strings.ToLower(strings.TrimSpace(parts[0]))
+		rpcURL := strings.TrimSpace(parts[1])
+		if chain == "" || rpcURL == "" {
+			continue
+		}
+		out[chain] = rpcURL
+	}
+	return out
+}
+
+func ValidateChainRPCURLs(urls map[string]string) error {
+	if len(urls) == 0 {
+		return fmt.Errorf("CHAIN_RPC_URLS is required in production payout mode")
+	}
+	for chainName, rpcURL := range urls {
+		u, err := url.Parse(rpcURL)
+		if err != nil || u.Scheme == "" || u.Host == "" {
+			return fmt.Errorf("CHAIN_RPC_URLS has invalid url for %s", chainName)
+		}
+		if u.Scheme != "http" && u.Scheme != "https" && u.Scheme != "ws" && u.Scheme != "wss" {
+			return fmt.Errorf("CHAIN_RPC_URLS has unsupported scheme for %s", chainName)
+		}
+	}
+	return nil
 }
 
 func getEnv(key, def string) string {
@@ -195,6 +237,9 @@ func (c Config) Validate() error {
 	}
 	if c.JWTSecret == "" {
 		return fmt.Errorf("JWT_SECRET is required")
+	}
+	if c.PayoutMode != "production" && c.PayoutMode != "mock" {
+		return fmt.Errorf("PAYOUT_MODE must be production or mock")
 	}
 	return nil
 }

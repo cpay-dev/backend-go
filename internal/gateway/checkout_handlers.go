@@ -84,7 +84,7 @@ func (s *Server) handleCreateCheckoutSession(w http.ResponseWriter, r *http.Requ
 
 	s.withIdempotency(w, r, reqAuth.MerchantID, "/v1/payment_links/:id/sessions", func() (int, any, error) {
 		resp, err := s.checkoutClient.CreateCheckoutSession(s.rpcContext(r.Context()), &cpayv1.CreateCheckoutSessionRequest{
-			MerchantId:          reqAuth.MerchantID.String(),
+			MerchantId:          reqAuth.MerchantID,
 			LinkIdentifier:      linkIdentifier,
 			Amount:              req.Amount,
 			Chain:               req.Chain,
@@ -140,15 +140,15 @@ func (s *Server) handleCreatePublicCheckoutSession(w http.ResponseWriter, r *htt
 
 func checkoutSessionCreateToResponse(resp *cpayv1.CreateCheckoutSessionResponse) map[string]any {
 	return map[string]any{
-		"id":                resp.GetId(),
-		"payment_intent_id": resp.GetPaymentIntentId(),
-		"payment_link_code": resp.GetPaymentLinkCode(),
-		"status":            resp.GetStatus(),
-		"amount":            resp.GetAmount(),
-		"currency":          resp.GetCurrency(),
-		"chain":             resp.GetChain(),
-		"token_symbol":      resp.GetTokenSymbol(),
-		"deposit_address": resp.GetDepositAddress(),
+		"id":                    resp.GetId(),
+		"payment_intent_id":     resp.GetPaymentIntentId(),
+		"payment_link_code":     resp.GetPaymentLinkCode(),
+		"status":                resp.GetStatus(),
+		"amount":                resp.GetAmount(),
+		"currency":              resp.GetCurrency(),
+		"chain":                 resp.GetChain(),
+		"token_symbol":          resp.GetTokenSymbol(),
+		"deposit_address":       resp.GetDepositAddress(),
 		"tolerance_percent":     resp.GetTolerancePercent(),
 		"min_acceptable_amount": resp.GetMinAcceptableAmount(),
 		"max_acceptable_amount": resp.GetMaxAcceptableAmount(),
@@ -170,7 +170,7 @@ func (s *Server) handleGetCheckoutSession(w http.ResponseWriter, r *http.Request
 		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "session_id is required", middleware.GetRequestID(r.Context()))
 		return
 	}
-	resp, err := s.checkoutClient.GetCheckoutSession(s.rpcContext(r.Context()), &cpayv1.GetCheckoutSessionRequest{MerchantId: reqAuth.MerchantID.String(), SessionId: sessionID})
+	resp, err := s.checkoutClient.GetCheckoutSession(s.rpcContext(r.Context()), &cpayv1.GetCheckoutSessionRequest{MerchantId: reqAuth.MerchantID, SessionId: sessionID})
 	if err != nil {
 		s.writeRPCError(w, r, err)
 		return
@@ -216,29 +216,26 @@ func (s *Server) handleGetPublicCheckoutSession(w http.ResponseWriter, r *http.R
 		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "session_id is required", middleware.GetRequestID(r.Context()))
 		return
 	}
-	clientSecret := strings.TrimSpace(r.URL.Query().Get("client_secret"))
-	if clientSecret == "" {
-		clientSecret = strings.TrimSpace(r.Header.Get("X-Client-Secret"))
-	}
-	if clientSecret == "" {
-		httpx.WriteError(w, http.StatusUnauthorized, "unauthorized", "client_secret is required", middleware.GetRequestID(r.Context()))
-		return
-	}
-	resp, err := s.checkoutClient.GetPublicCheckoutSession(s.rpcContext(r.Context()), &cpayv1.GetPublicCheckoutSessionRequest{SessionId: sessionID, ClientSecret: clientSecret})
+	resp, err := s.checkoutClient.GetPublicCheckoutSession(s.rpcContext(r.Context()), &cpayv1.GetPublicCheckoutSessionRequest{SessionId: sessionID})
 	if err != nil {
 		s.writeRPCError(w, r, err)
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{
-		"id":                resp.GetId(),
-		"status":            resp.GetStatus(),
-		"amount":            resp.GetAmount(),
-		"currency":          resp.GetCurrency(),
-		"chain":             resp.GetChain(),
-		"token_symbol":      resp.GetTokenSymbol(),
-		"expires_at":        resp.GetExpiresAt(),
-		"payment_intent_id": resp.GetPaymentIntentId(),
-		"deposit_address":   resp.GetDepositAddress(),
+		"id":                     resp.GetId(),
+		"status":                 resp.GetStatus(),
+		"amount":                 resp.GetAmount(),
+		"currency":               resp.GetCurrency(),
+		"chain":                  resp.GetChain(),
+		"token_symbol":           resp.GetTokenSymbol(),
+		"expires_at":             resp.GetExpiresAt(),
+		"payment_intent_id":      resp.GetPaymentIntentId(),
+		"payment_intent_status":  resp.GetPaymentIntentStatus(),
+		"received_amount":        resp.GetReceivedAmount(),
+		"tx_hash":                emptyToNil(resp.GetTxHash()),
+		"confirmations":          resp.GetConfirmations(),
+		"required_confirmations": resp.GetRequiredConfirmations(),
+		"deposit_address":        resp.GetDepositAddress(),
 		"link": map[string]any{
 			"title":       resp.GetLinkTitle(),
 			"description": emptyToNil(resp.GetLinkDescription()),
@@ -273,7 +270,7 @@ func (s *Server) handleConfirmCheckoutSession(w http.ResponseWriter, r *http.Req
 	}
 	rawPayload, _ := json.Marshal(req.RawPayload)
 	rpcReq := &cpayv1.ConfirmCheckoutSessionRequest{
-		MerchantId:     reqAuth.MerchantID.String(),
+		MerchantId:     reqAuth.MerchantID,
 		SessionId:      sessionID,
 		TxHash:         req.TxHash,
 		ReceivedAmount: req.ReceivedAmount,
@@ -311,7 +308,7 @@ func (s *Server) handleGetPaymentIntent(w http.ResponseWriter, r *http.Request) 
 		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "id is required", middleware.GetRequestID(r.Context()))
 		return
 	}
-	resp, err := s.checkoutClient.GetPaymentIntent(s.rpcContext(r.Context()), &cpayv1.GetPaymentIntentRequest{MerchantId: reqAuth.MerchantID.String(), Id: id})
+	resp, err := s.checkoutClient.GetPaymentIntent(s.rpcContext(r.Context()), &cpayv1.GetPaymentIntentRequest{MerchantId: reqAuth.MerchantID, Id: id})
 	if err != nil {
 		s.writeRPCError(w, r, err)
 		return
@@ -352,7 +349,7 @@ func (s *Server) handleCreateWebhookEndpoint(w http.ResponseWriter, r *http.Requ
 	}
 	s.withIdempotency(w, r, reqAuth.MerchantID, "/v1/webhook_endpoints", func() (int, any, error) {
 		rpcReq := &cpayv1.CreateWebhookEndpointRequest{
-			MerchantId:  reqAuth.MerchantID.String(),
+			MerchantId:  reqAuth.MerchantID,
 			Url:         req.URL,
 			Description: req.Description,
 			Events:      req.Events,
@@ -388,7 +385,7 @@ func (s *Server) handleCreateSubscription(w http.ResponseWriter, r *http.Request
 
 	s.withIdempotency(w, r, reqAuth.MerchantID, "/v1/subscriptions", func() (int, any, error) {
 		rpcReq := &cpayv1.CreateSubscriptionRequest{
-			MerchantId:           reqAuth.MerchantID.String(),
+			MerchantId:           reqAuth.MerchantID,
 			CustomerRef:          req.CustomerRef,
 			Chain:                req.Chain,
 			TokenSymbol:          req.TokenSymbol,
@@ -445,7 +442,7 @@ func (s *Server) handlePauseSubscription(w http.ResponseWriter, r *http.Request)
 		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "id is required", middleware.GetRequestID(r.Context()))
 		return
 	}
-	resp, err := s.checkoutClient.PauseSubscription(s.rpcContext(r.Context()), &cpayv1.PauseSubscriptionRequest{MerchantId: reqAuth.MerchantID.String(), Id: id})
+	resp, err := s.checkoutClient.PauseSubscription(s.rpcContext(r.Context()), &cpayv1.PauseSubscriptionRequest{MerchantId: reqAuth.MerchantID, Id: id})
 	if err != nil {
 		s.writeRPCError(w, r, err)
 		return
@@ -463,7 +460,7 @@ func (s *Server) handleResumeSubscription(w http.ResponseWriter, r *http.Request
 		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "id is required", middleware.GetRequestID(r.Context()))
 		return
 	}
-	resp, err := s.checkoutClient.ResumeSubscription(s.rpcContext(r.Context()), &cpayv1.ResumeSubscriptionRequest{MerchantId: reqAuth.MerchantID.String(), Id: id})
+	resp, err := s.checkoutClient.ResumeSubscription(s.rpcContext(r.Context()), &cpayv1.ResumeSubscriptionRequest{MerchantId: reqAuth.MerchantID, Id: id})
 	if err != nil {
 		s.writeRPCError(w, r, err)
 		return
@@ -487,7 +484,7 @@ func (s *Server) handleGetSubscriptionCycles(w http.ResponseWriter, r *http.Requ
 			limit = v
 		}
 	}
-	resp, err := s.checkoutClient.GetSubscriptionCycles(s.rpcContext(r.Context()), &cpayv1.GetSubscriptionCyclesRequest{MerchantId: reqAuth.MerchantID.String(), Id: id, Limit: int32(limit)})
+	resp, err := s.checkoutClient.GetSubscriptionCycles(s.rpcContext(r.Context()), &cpayv1.GetSubscriptionCyclesRequest{MerchantId: reqAuth.MerchantID, Id: id, Limit: int32(limit)})
 	if err != nil {
 		s.writeRPCError(w, r, err)
 		return
