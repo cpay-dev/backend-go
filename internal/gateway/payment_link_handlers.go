@@ -347,14 +347,14 @@ func (s *Server) handleGetPublicPaymentLink(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	var linkID, linkCode, title, mode, currency, cta, amountRaw, afterType string
+	var linkID, merchantID, linkCode, title, mode, currency, cta, amountRaw, afterType string
 	var description, imageURL, successMessage, redirectURL *string
 	var productID, productName, productDescription, productImageURL *string
 	var allowedRaw, customerFieldsRaw, customFieldsRaw []byte
 	var collectEmail, collectName, collectPhone, collectAddress bool
 
 	err := s.db.QueryRow(r.Context(), `
-		SELECT p.id::text, p.code, p.title, p.description, p.image_url, p.pricing_mode, COALESCE(p.amount::text, ''), p.currency,
+		SELECT p.id::text, p.merchant_id::text, p.code, p.title, p.description, p.image_url, p.pricing_mode, COALESCE(p.amount::text, ''), p.currency,
 			p.cta_text, p.allowed_tokens, p.customer_fields, p.custom_fields, p.after_payment_type, p.success_message, p.redirect_url,
 			COALESCE(l.collect_email, false), COALESCE(l.collect_name, false), COALESCE(l.collect_phone, false), COALESCE(l.collect_address, false),
 			pr.id::text, pr.name, pr.description, pr.image_url
@@ -363,7 +363,7 @@ func (s *Server) handleGetPublicPaymentLink(w http.ResponseWriter, r *http.Reque
 		LEFT JOIN catalog.products pr ON pr.id = p.product_id
 		WHERE p.code = $1 AND p.status = 'active' AND (p.expires_at IS NULL OR p.expires_at > NOW())
 	`, code).Scan(
-		&linkID, &linkCode, &title, &description, &imageURL, &mode, &amountRaw, &currency,
+		&linkID, &merchantID, &linkCode, &title, &description, &imageURL, &mode, &amountRaw, &currency,
 		&cta, &allowedRaw, &customerFieldsRaw, &customFieldsRaw, &afterType, &successMessage, &redirectURL,
 		&collectEmail, &collectName, &collectPhone, &collectAddress,
 		&productID, &productName, &productDescription, &productImageURL,
@@ -414,6 +414,17 @@ func (s *Server) handleGetPublicPaymentLink(w http.ResponseWriter, r *http.Reque
 			"description": strPtrToAny(productDescription),
 			"image_url":   strPtrToAny(productImageURL),
 		}
+	}
+
+	if err := s.recordCheckoutConversionEvent(r.Context(), r, checkoutConversionEventInput{
+		EventType:     conversionEventCheckoutPageOpened,
+		MerchantID:    merchantID,
+		PaymentLinkID: linkID,
+		Metadata: map[string]any{
+			"payment_link_code": linkCode,
+		},
+	}); err != nil {
+		s.log.Warn().Err(err).Str("payment_link_id", linkID).Msg("failed to record checkout page open")
 	}
 
 	httpx.WriteJSON(w, http.StatusOK, payload)

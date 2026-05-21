@@ -94,6 +94,7 @@ func (s *Server) Router() http.Handler {
 		r.Get("/products/{id}", s.handleGetPublicProduct)
 		r.Post("/public/payment_links/{id}/sessions", s.handleCreatePublicCheckoutSession)
 		r.Get("/public/checkout/{session_id}", s.handleGetPublicCheckoutSession)
+		r.Post("/public/checkout/{session_id}/events", s.handleCreatePublicCheckoutEvent)
 		r.Post("/public/checkout/{session_id}/confirm", s.handleConfirmPublicCheckoutSession)
 		r.Get("/public/product_images/{merchant_id}/{product_id}/{image_id}", s.handleGetProductImage)
 
@@ -121,6 +122,7 @@ func (s *Server) Router() http.Handler {
 			r.Post("/payment_links/{id}/archive", s.handleArchivePaymentLink)
 
 			r.Post("/payment_links/{id}/sessions", s.handleCreateCheckoutSession)
+			r.Get("/checkout/stats", s.handleCheckoutStats)
 			r.Get("/checkout/{session_id}", s.handleGetCheckoutSession)
 			r.Post("/checkout/{session_id}/confirm", s.handleConfirmCheckoutSession)
 			r.Post("/mock_transfers", s.handleCreateMockTransfer)

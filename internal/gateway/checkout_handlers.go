@@ -103,6 +103,7 @@ func (s *Server) handleCreateCheckoutSession(w http.ResponseWriter, r *http.Requ
 		if err != nil {
 			return 0, nil, err
 		}
+		s.recordCheckoutConversionEventBySession(r.Context(), r, resp.GetId(), conversionEventPayClicked, map[string]any{"source": "merchant_api"})
 		return http.StatusCreated, checkoutSessionCreateToResponse(resp), nil
 	})
 }
@@ -137,6 +138,7 @@ func (s *Server) handleCreatePublicCheckoutSession(w http.ResponseWriter, r *htt
 	}
 	payload := checkoutSessionCreateToResponse(resp)
 	payload["client_secret"] = resp.GetClientSecret()
+	s.recordCheckoutConversionEventBySession(r.Context(), r, resp.GetId(), conversionEventPayClicked, map[string]any{"source": "public_checkout"})
 	httpx.WriteJSON(w, http.StatusCreated, payload)
 }
 
@@ -313,6 +315,13 @@ func (s *Server) handleConfirmCheckoutSession(w http.ResponseWriter, r *http.Req
 		s.writeRPCError(w, r, err)
 		return
 	}
+	s.recordCheckoutConversionEventBySession(r.Context(), r, sessionID, conversionEventPaymentMade, map[string]any{
+		"tx_hash":          req.TxHash,
+		"received_amount":  req.ReceivedAmount,
+		"confirmations":    resp.GetConfirmations(),
+		"payment_status":   resp.GetStatus(),
+		"confirmation_src": "merchant_api",
+	})
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{
 		"id":                     resp.GetCheckoutSessionId(),
 		"checkout_session_id":    resp.GetCheckoutSessionId(),
@@ -375,6 +384,13 @@ func (s *Server) handleConfirmPublicCheckoutSession(w http.ResponseWriter, r *ht
 		s.writeRPCError(w, r, err)
 		return
 	}
+	s.recordCheckoutConversionEventBySession(r.Context(), r, sessionID, conversionEventPaymentMade, map[string]any{
+		"tx_hash":          req.TxHash,
+		"received_amount":  req.ReceivedAmount,
+		"confirmations":    resp.GetConfirmations(),
+		"payment_status":   resp.GetStatus(),
+		"confirmation_src": "public_checkout",
+	})
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{
 		"id":                     resp.GetCheckoutSessionId(),
 		"checkout_session_id":    resp.GetCheckoutSessionId(),
