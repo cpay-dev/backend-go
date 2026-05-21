@@ -2,13 +2,18 @@ package workers
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"math"
 	"math/big"
 	"strings"
 
+	"github.com/cpay-dev/cpay/internal/shared/chain"
 	"github.com/cpay-dev/cpay/internal/shared/ids"
 	"github.com/ethereum/go-ethereum"
+	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -26,6 +31,9 @@ type PayoutExecutionRequest struct {
 	AmountRaw            string
 	DepositAddress       string
 	DepositPrivateKeyHex string
+	WalletType           string
+	FactoryAddress       string
+	WalletSalt           string
 	SettlementAddress    string
 }
 
@@ -46,6 +54,8 @@ func (MockPayoutExecutor) ExecutePayout(context.Context, PayoutExecutionRequest)
 type evmRPCClient interface {
 	PendingNonceAt(ctx context.Context, account common.Address) (uint64, error)
 	SuggestGasPrice(ctx context.Context) (*big.Int, error)
+	SuggestGasTipCap(ctx context.Context) (*big.Int, error)
+	HeaderByNumber(ctx context.Context, number *big.Int) (*types.Header, error)
 	EstimateGas(ctx context.Context, msg ethereum.CallMsg) (uint64, error)
 	SendTransaction(ctx context.Context, tx *types.Transaction) error
 	ChainID(ctx context.Context) (*big.Int, error)
@@ -54,10 +64,21 @@ type evmRPCClient interface {
 }
 
 type EVMPayoutExecutor struct {
-	clients map[string]evmRPCClient
+	clients          map[string]evmRPCClient
+	hotWalletKey     *ecdsa.PrivateKey
+	gasBufferPercent float64
 }
 
-func NewEVMPayoutExecutor(ctx context.Context, rpcURLs map[string]string) (*EVMPayoutExecutor, error) {
+type EVMPayoutExecutorConfig struct {
+	HotWalletPrivateKey string
+	GasBufferPercent    float64
+}
+
+const checkoutWalletSweepABI = `[{"inputs":[{"internalType":"bytes32","name":"salt","type":"bytes32"},{"internalType":"address","name":"token","type":"address"},{"internalType":"address","name":"recipient","type":"address"},{"internalType":"uint256","name":"amount","type":"uint256"}],"name":"deployAndSweep","outputs":[],"stateMutability":"nonpayable","type":"function"}]`
+
+var checkoutWalletSweepParsedABI = mustParsePayoutABI()
+
+func NewEVMPayoutExecutor(ctx context.Context, rpcURLs map[string]string, cfg EVMPayoutExecutorConfig) (*EVMPayoutExecutor, error) {
 	clients := make(map[string]evmRPCClient, len(rpcURLs))
 	for chainName, rpcURL := range rpcURLs {
 		client, err := ethclient.DialContext(ctx, rpcURL)
@@ -75,7 +96,20 @@ func NewEVMPayoutExecutor(ctx context.Context, rpcURLs map[string]string) (*EVMP
 	if len(clients) == 0 {
 		return nil, errors.New("at least one chain rpc url is required")
 	}
-	return &EVMPayoutExecutor{clients: clients}, nil
+	var hotWalletKey *ecdsa.PrivateKey
+	if strings.TrimSpace(cfg.HotWalletPrivateKey) != "" {
+		key, err := crypto.HexToECDSA(stripHexPrefix(cfg.HotWalletPrivateKey))
+		if err != nil {
+			closeEVMClients(clients)
+			return nil, fmt.Errorf("parse hot wallet private key: %w", err)
+		}
+		hotWalletKey = key
+	}
+	return &EVMPayoutExecutor{
+		clients:          clients,
+		hotWalletKey:     hotWalletKey,
+		gasBufferPercent: cfg.GasBufferPercent,
+	}, nil
 }
 
 func (e *EVMPayoutExecutor) Close() {
@@ -97,7 +131,21 @@ func (e *EVMPayoutExecutor) ExecutePayout(ctx context.Context, req PayoutExecuti
 	if !common.IsHexAddress(req.SettlementAddress) {
 		return PayoutExecutionResult{}, errors.New("settlement address is invalid")
 	}
+	walletType := strings.ToLower(strings.TrimSpace(req.WalletType))
+	if walletType == "" {
+		walletType = chain.WalletTypeEOA
+	}
+	switch walletType {
+	case chain.WalletTypeEOA:
+		return e.executeEOAPayout(ctx, client, req)
+	case chain.WalletTypeCreate2:
+		return e.executeCreate2Payout(ctx, client, req)
+	default:
+		return PayoutExecutionResult{}, fmt.Errorf("unsupported payout wallet type %s", walletType)
+	}
+}
 
+func (e *EVMPayoutExecutor) executeEOAPayout(ctx context.Context, client evmRPCClient, req PayoutExecutionRequest) (PayoutExecutionResult, error) {
 	keyHex := stripHexPrefix(req.DepositPrivateKeyHex)
 	privateKey, err := crypto.HexToECDSA(keyHex)
 	if err != nil {
@@ -173,6 +221,91 @@ func (e *EVMPayoutExecutor) ExecutePayout(ctx context.Context, req PayoutExecuti
 	return PayoutExecutionResult{TxHash: signed.Hash().Hex()}, nil
 }
 
+func (e *EVMPayoutExecutor) executeCreate2Payout(ctx context.Context, client evmRPCClient, req PayoutExecutionRequest) (PayoutExecutionResult, error) {
+	if e.hotWalletKey == nil {
+		return PayoutExecutionResult{}, errors.New("hot wallet private key is not configured")
+	}
+	if !common.IsHexAddress(req.FactoryAddress) {
+		return PayoutExecutionResult{}, errors.New("checkout wallet factory address is invalid")
+	}
+	salt, err := decodeBytes32(req.WalletSalt)
+	if err != nil {
+		return PayoutExecutionResult{}, err
+	}
+	settlement := common.HexToAddress(req.SettlementAddress)
+	token := common.Address{}
+	decimals := 18
+	if strings.TrimSpace(req.TokenAddress) != "" {
+		if !common.IsHexAddress(req.TokenAddress) {
+			return PayoutExecutionResult{}, errors.New("token address is invalid")
+		}
+		token = common.HexToAddress(req.TokenAddress)
+		decimals, err = e.erc20Decimals(ctx, client, token)
+		if err != nil {
+			return PayoutExecutionResult{}, err
+		}
+	}
+	amount, err := decimalToBaseUnits(req.AmountRaw, decimals)
+	if err != nil {
+		return PayoutExecutionResult{}, err
+	}
+	data, err := checkoutWalletSweepParsedABI.Pack("deployAndSweep", salt, token, settlement, amount)
+	if err != nil {
+		return PayoutExecutionResult{}, fmt.Errorf("pack deployAndSweep call: %w", err)
+	}
+	from := crypto.PubkeyToAddress(e.hotWalletKey.PublicKey)
+	factory := common.HexToAddress(req.FactoryAddress)
+	nonce, err := client.PendingNonceAt(ctx, from)
+	if err != nil {
+		return PayoutExecutionResult{}, fmt.Errorf("load nonce: %w", err)
+	}
+	gasLimit, err := client.EstimateGas(ctx, ethereum.CallMsg{From: from, To: &factory, Value: big.NewInt(0), Data: data})
+	if err != nil {
+		return PayoutExecutionResult{}, fmt.Errorf("estimate deployAndSweep gas: %w", err)
+	}
+	gasLimit = applyGasBuffer(gasLimit, e.gasBufferPercent)
+	chainID, err := client.ChainID(ctx)
+	if err != nil {
+		return PayoutExecutionResult{}, fmt.Errorf("load chain id: %w", err)
+	}
+	tx, err := e.buildHotWalletTx(ctx, client, chainID, nonce, factory, gasLimit, data)
+	if err != nil {
+		return PayoutExecutionResult{}, err
+	}
+	signed, err := types.SignTx(tx, types.LatestSignerForChainID(chainID), e.hotWalletKey)
+	if err != nil {
+		return PayoutExecutionResult{}, fmt.Errorf("sign deployAndSweep transaction: %w", err)
+	}
+	if err := client.SendTransaction(ctx, signed); err != nil {
+		return PayoutExecutionResult{}, fmt.Errorf("send deployAndSweep transaction: %w", err)
+	}
+	return PayoutExecutionResult{TxHash: signed.Hash().Hex()}, nil
+}
+
+func (e *EVMPayoutExecutor) buildHotWalletTx(ctx context.Context, client evmRPCClient, chainID *big.Int, nonce uint64, to common.Address, gasLimit uint64, data []byte) (*types.Transaction, error) {
+	header, headerErr := client.HeaderByNumber(ctx, nil)
+	tip, tipErr := client.SuggestGasTipCap(ctx)
+	if headerErr == nil && tipErr == nil && header != nil && header.BaseFee != nil && tip != nil {
+		feeCap := new(big.Int).Mul(header.BaseFee, big.NewInt(2))
+		feeCap.Add(feeCap, tip)
+		return types.NewTx(&types.DynamicFeeTx{
+			ChainID:   chainID,
+			Nonce:     nonce,
+			GasTipCap: tip,
+			GasFeeCap: feeCap,
+			Gas:       gasLimit,
+			To:        &to,
+			Value:     big.NewInt(0),
+			Data:      data,
+		}), nil
+	}
+	gasPrice, err := client.SuggestGasPrice(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("suggest gas price: %w", err)
+	}
+	return types.NewTransaction(nonce, to, big.NewInt(0), gasLimit, gasPrice, data), nil
+}
+
 func (e *EVMPayoutExecutor) erc20Decimals(ctx context.Context, client evmRPCClient, token common.Address) (int, error) {
 	selector := crypto.Keccak256([]byte("decimals()"))[:4]
 	out, err := client.CallContract(ctx, ethereum.CallMsg{To: &token, Data: selector}, nil)
@@ -187,6 +320,45 @@ func (e *EVMPayoutExecutor) erc20Decimals(ctx context.Context, client evmRPCClie
 		return 0, errors.New("token decimals response is invalid")
 	}
 	return int(decimals), nil
+}
+
+func applyGasBuffer(gas uint64, percent float64) uint64 {
+	if gas < 21000 {
+		gas = 21000
+	}
+	if percent <= 0 {
+		return gas
+	}
+	buffered := float64(gas) * (1 + percent/100)
+	if buffered > float64(math.MaxUint64) {
+		return math.MaxUint64
+	}
+	return uint64(math.Ceil(buffered))
+}
+
+func decodeBytes32(raw string) ([32]byte, error) {
+	var out [32]byte
+	value := stripHexPrefix(raw)
+	if len(value) != 64 {
+		return out, fmt.Errorf("wallet salt must be 32 bytes")
+	}
+	decoded, err := hex.DecodeString(value)
+	if err != nil {
+		return out, fmt.Errorf("wallet salt is invalid: %w", err)
+	}
+	if len(decoded) != 32 {
+		return out, fmt.Errorf("wallet salt must be 32 bytes")
+	}
+	copy(out[:], decoded)
+	return out, nil
+}
+
+func mustParsePayoutABI() abi.ABI {
+	parsed, err := abi.JSON(strings.NewReader(checkoutWalletSweepABI))
+	if err != nil {
+		panic(err)
+	}
+	return parsed
 }
 
 func erc20TransferData(to common.Address, amount *big.Int) []byte {

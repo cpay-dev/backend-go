@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/cpay-dev/cpay/internal/domain/payment"
+	"github.com/cpay-dev/cpay/internal/shared/chain"
 	cryptox "github.com/cpay-dev/cpay/internal/shared/crypto"
 	"github.com/cpay-dev/cpay/internal/shared/httpx"
 	"github.com/cpay-dev/cpay/internal/shared/ids"
@@ -163,18 +164,29 @@ func (s *Server) handleCreateCheckoutSession(w http.ResponseWriter, r *http.Requ
 
 		requiredConf := s.cfg.ConfirmationForChain(req.Chain)
 		minAccept, maxAccept := payment.ComputeBounds(amount, s.cfg.DefaultTolerancePercent)
-		wallet, err := s.chain.GenerateDepositWallet(r.Context(), req.Chain)
-		if err != nil {
-			return 0, nil, err
-		}
-		encryptedPK, err := cryptox.EncryptString(s.encryptKey, wallet.PrivateKeyHex)
-		if err != nil {
-			return 0, nil, err
-		}
-
 		sessionID := ids.New()
 		intentID := ids.New()
 		addressID := ids.New()
+		wallet, err := s.chain.GenerateDepositWallet(r.Context(), req.Chain, intentID)
+		if err != nil {
+			return 0, nil, err
+		}
+		walletType := strings.TrimSpace(wallet.WalletType)
+		if walletType == "" {
+			walletType = chain.WalletTypeEOA
+		}
+		var encryptedPK any
+		if walletType == chain.WalletTypeEOA {
+			if strings.TrimSpace(wallet.PrivateKeyHex) == "" {
+				return 0, nil, errors.New("failed to generate deposit wallet")
+			}
+			encrypted, err := cryptox.EncryptString(s.encryptKey, wallet.PrivateKeyHex)
+			if err != nil {
+				return 0, nil, err
+			}
+			encryptedPK = encrypted
+		}
+
 		custAddressRaw, _ := json.Marshal(req.CustomerAddress)
 
 		tx, err := s.db.Begin(r.Context())
@@ -213,11 +225,12 @@ func (s *Server) handleCreateCheckoutSession(w http.ResponseWriter, r *http.Requ
 		}
 
 		_, err = tx.Exec(r.Context(), `
-			INSERT INTO deposit_addresses(
-				id, payment_intent_id, merchant_id, chain, address, encrypted_private_key, status, created_at
-			)
-			VALUES($1, $2, $3, $4, $5, $6, 'active', NOW())
-		`, addressID, intentID, reqAuth.MerchantID, strings.ToLower(req.Chain), wallet.Address, encryptedPK)
+				INSERT INTO deposit_addresses(
+					id, payment_intent_id, merchant_id, chain, address, encrypted_private_key,
+					wallet_type, factory_address, wallet_salt, init_code_hash, status, created_at
+				)
+				VALUES($1, $2, $3, $4, $5, $6, $7, NULLIF($8, ''), NULLIF($9, ''), NULLIF($10, ''), 'active', NOW())
+			`, addressID, intentID, reqAuth.MerchantID, strings.ToLower(req.Chain), wallet.Address, encryptedPK, walletType, wallet.FactoryAddress, wallet.WalletSalt, wallet.InitCodeHash)
 		if err != nil {
 			return 0, nil, err
 		}

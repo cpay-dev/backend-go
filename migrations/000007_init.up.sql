@@ -153,11 +153,20 @@ CREATE TABLE IF NOT EXISTS checkout.deposit_addresses (
     merchant_id ulid NOT NULL REFERENCES auth.merchants(id) ON DELETE CASCADE,
     chain TEXT NOT NULL,
     address TEXT NOT NULL,
-    encrypted_private_key TEXT NOT NULL,
+    encrypted_private_key TEXT,
+    wallet_type TEXT NOT NULL DEFAULT 'eoa',
+    factory_address TEXT,
+    wallet_salt TEXT,
+    init_code_hash TEXT,
     status TEXT NOT NULL DEFAULT 'active',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (chain, address),
-    CHECK (status IN ('active', 'swept', 'compromised'))
+    CHECK (status IN ('active', 'swept', 'compromised')),
+    CHECK (wallet_type IN ('eoa', 'create2')),
+    CHECK (
+        (wallet_type = 'eoa' AND encrypted_private_key IS NOT NULL)
+        OR (wallet_type = 'create2' AND encrypted_private_key IS NULL AND factory_address IS NOT NULL AND wallet_salt IS NOT NULL)
+    )
 );
 
 CREATE TABLE IF NOT EXISTS checkout.chain_transactions (

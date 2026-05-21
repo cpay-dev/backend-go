@@ -18,6 +18,8 @@ type fakeEVMClient struct {
 	callErr     error
 	sentTx      *types.Transaction
 	lastCall    ethereum.CallMsg
+	headerErr   error
+	tipErr      error
 }
 
 func (c *fakeEVMClient) PendingNonceAt(context.Context, common.Address) (uint64, error) {
@@ -26,6 +28,20 @@ func (c *fakeEVMClient) PendingNonceAt(context.Context, common.Address) (uint64,
 
 func (c *fakeEVMClient) SuggestGasPrice(context.Context) (*big.Int, error) {
 	return big.NewInt(1_000_000_000), nil
+}
+
+func (c *fakeEVMClient) SuggestGasTipCap(context.Context) (*big.Int, error) {
+	if c.tipErr != nil {
+		return nil, c.tipErr
+	}
+	return big.NewInt(2_000_000_000), nil
+}
+
+func (c *fakeEVMClient) HeaderByNumber(context.Context, *big.Int) (*types.Header, error) {
+	if c.headerErr != nil {
+		return nil, c.headerErr
+	}
+	return &types.Header{BaseFee: big.NewInt(10_000_000_000)}, nil
 }
 
 func (c *fakeEVMClient) EstimateGas(_ context.Context, msg ethereum.CallMsg) (uint64, error) {
@@ -144,5 +160,66 @@ func TestEVMPayoutExecutorFailsWhenGasIsMissing(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "insufficient funds") {
 		t.Fatalf("expected insufficient funds error, got %v", err)
+	}
+}
+
+func TestEVMPayoutExecutorSendsCreate2SweepFromHotWallet(t *testing.T) {
+	hotKey, err := crypto.GenerateKey()
+	if err != nil {
+		t.Fatalf("generate hot key: %v", err)
+	}
+	client := &fakeEVMClient{}
+	executor := &EVMPayoutExecutor{
+		clients:          map[string]evmRPCClient{"base": client},
+		hotWalletKey:     hotKey,
+		gasBufferPercent: 15,
+	}
+
+	_, err = executor.ExecutePayout(context.Background(), PayoutExecutionRequest{
+		Chain:             "base",
+		TokenAddress:      "0xA0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+		AmountRaw:         "12.34",
+		WalletType:        "create2",
+		FactoryAddress:    "0xde0B295669a9FD93d5F28D9Ec85E40f4cb697BAe",
+		WalletSalt:        "0x000000000000000000000000000000000000000000000000000000000000007b",
+		SettlementAddress: "0x90a546a5fb533d4f168846400656b663F12578d6",
+	})
+	if err != nil {
+		t.Fatalf("ExecutePayout returned error: %v", err)
+	}
+	if client.sentTx == nil {
+		t.Fatalf("expected transaction to be sent")
+	}
+	if got := client.sentTx.To(); got == nil || got.Hex() != "0xde0B295669a9FD93d5F28D9Ec85E40f4cb697BAe" {
+		t.Fatalf("unexpected tx recipient: %v", got)
+	}
+	if client.sentTx.Value().Sign() != 0 {
+		t.Fatalf("expected zero native value")
+	}
+	if client.sentTx.Gas() != 57500 {
+		t.Fatalf("expected gas buffer to produce 57500 gas, got %d", client.sentTx.Gas())
+	}
+	if got := client.lastCall.From; got != crypto.PubkeyToAddress(hotKey.PublicKey) {
+		t.Fatalf("expected estimate from hot wallet %s, got %s", crypto.PubkeyToAddress(hotKey.PublicKey), got)
+	}
+	if !strings.HasPrefix(common.Bytes2Hex(client.sentTx.Data()), "a477efd9") {
+		t.Fatalf("expected deployAndSweep calldata, got %x", client.sentTx.Data())
+	}
+}
+
+func TestEVMPayoutExecutorCreate2RequiresHotWallet(t *testing.T) {
+	client := &fakeEVMClient{}
+	executor := &EVMPayoutExecutor{clients: map[string]evmRPCClient{"base": client}}
+
+	_, err := executor.ExecutePayout(context.Background(), PayoutExecutionRequest{
+		Chain:             "base",
+		AmountRaw:         "1",
+		WalletType:        "create2",
+		FactoryAddress:    "0xde0B295669a9FD93d5F28D9Ec85E40f4cb697BAe",
+		WalletSalt:        "0x000000000000000000000000000000000000000000000000000000000000007b",
+		SettlementAddress: "0x90a546a5fb533d4f168846400656b663F12578d6",
+	})
+	if err == nil || !strings.Contains(err.Error(), "hot wallet private key") {
+		t.Fatalf("expected hot wallet error, got %v", err)
 	}
 }

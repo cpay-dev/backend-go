@@ -54,12 +54,21 @@ func buildPayoutExecutor(ctx context.Context, cfg config.Config, log zerolog.Log
 		log.Warn().Msg("payout-service running with mocked payouts")
 		return workers.MockPayoutExecutor{}, func() {}
 	case "production":
-		if err := config.ValidateChainRPCURLs(cfg.ChainRPCURLs); err != nil {
+		rpcURLs := cfg.EVMChainRPCURLs()
+		if err := config.ValidateChainRPCURLs(rpcURLs); err != nil {
 			log.Fatal().Err(err).Msg("invalid production payout config")
 		}
 		dialCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		defer cancel()
-		executor, err := workers.NewEVMPayoutExecutor(dialCtx, cfg.ChainRPCURLs)
+		if cfg.Environment == "production" {
+			if err := config.ValidateProductionCreate2PayoutConfig(rpcURLs, cfg.CheckoutWalletFactories, cfg.PayoutHotWalletKey); err != nil {
+				log.Fatal().Err(err).Msg("invalid production checkout wallet config")
+			}
+		}
+		executor, err := workers.NewEVMPayoutExecutor(dialCtx, rpcURLs, workers.EVMPayoutExecutorConfig{
+			HotWalletPrivateKey: cfg.PayoutHotWalletKey,
+			GasBufferPercent:    cfg.PayoutGasBufferPercent,
+		})
 		if err != nil {
 			log.Fatal().Err(err).Msg("payout executor init failed")
 		}

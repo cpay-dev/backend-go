@@ -257,19 +257,30 @@ func (s *Service) createSession(ctx context.Context, in createSessionInput) (*cp
 
 	requiredConf := s.cfg.ConfirmationForChain(in.Chain)
 	minAccept, maxAccept := payment.ComputeBounds(amount, s.cfg.DefaultTolerancePercent)
-	wallet, err := s.chain.GenerateDepositWallet(ctx, in.Chain)
-	if err != nil {
-		return nil, rpcx.E(codes.Internal, "internal_error", "failed to generate deposit wallet")
-	}
-	encryptedPK, err := cryptox.EncryptString(s.encryptKey, wallet.PrivateKeyHex)
-	if err != nil {
-		return nil, rpcx.E(codes.Internal, "internal_error", "failed to encrypt private key")
-	}
-
 	merchantID, _ := ids.Parse(merchantIDStr)
 	sessionID := ids.New()
 	intentID := ids.New()
 	addressID := ids.New()
+	wallet, err := s.chain.GenerateDepositWallet(ctx, in.Chain, intentID)
+	if err != nil {
+		return nil, rpcx.E(codes.Internal, "internal_error", "failed to generate deposit wallet")
+	}
+	walletType := strings.TrimSpace(wallet.WalletType)
+	if walletType == "" {
+		walletType = chain.WalletTypeEOA
+	}
+	var encryptedPK any
+	if walletType == chain.WalletTypeEOA {
+		if strings.TrimSpace(wallet.PrivateKeyHex) == "" {
+			return nil, rpcx.E(codes.Internal, "internal_error", "failed to generate deposit wallet")
+		}
+		encrypted, err := cryptox.EncryptString(s.encryptKey, wallet.PrivateKeyHex)
+		if err != nil {
+			return nil, rpcx.E(codes.Internal, "internal_error", "failed to encrypt private key")
+		}
+		encryptedPK = encrypted
+	}
+
 	clientSecret, err := newClientSecret()
 	if err != nil {
 		return nil, rpcx.E(codes.Internal, "internal_error", "failed to generate client secret")
@@ -320,11 +331,13 @@ func (s *Service) createSession(ctx context.Context, in createSessionInput) (*cp
 	}
 
 	_, err = tx.Exec(ctx, `
-		INSERT INTO checkout.deposit_addresses(
-			id, payment_intent_id, merchant_id, chain, address, encrypted_private_key, status, created_at
-		)
-		VALUES($1, $2, $3, $4, $5, $6, 'active', NOW())
-	`, addressID, intentID, merchantID, strings.ToLower(in.Chain), wallet.Address, encryptedPK)
+			INSERT INTO checkout.deposit_addresses(
+				id, payment_intent_id, merchant_id, chain, address, encrypted_private_key,
+				wallet_type, factory_address, wallet_salt, init_code_hash, status, created_at
+			)
+			VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'active', NOW())
+		`, addressID, intentID, merchantID, strings.ToLower(in.Chain), wallet.Address, encryptedPK, walletType,
+		nullIfEmpty(wallet.FactoryAddress), nullIfEmpty(wallet.WalletSalt), nullIfEmpty(wallet.InitCodeHash))
 	if err != nil {
 		return nil, rpcx.E(codes.Internal, "internal_error", "failed to create deposit address")
 	}

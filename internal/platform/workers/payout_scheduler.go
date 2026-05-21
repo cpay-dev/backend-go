@@ -38,6 +38,9 @@ type payoutItemWork struct {
 	AmountRaw           string
 	DepositAddress      string
 	EncryptedPrivateKey string
+	WalletType          string
+	FactoryAddress      string
+	WalletSalt          string
 	SettlementAddress   string
 }
 
@@ -180,11 +183,12 @@ func (w *PayoutScheduler) completeDuePayouts(ctx context.Context) {
 
 func (w *PayoutScheduler) processPayout(ctx context.Context, payout payoutWork) {
 	rows, err := w.DB.Query(ctx, `
-		SELECT pi.id::text, pi.payment_intent_id::text, i.merchant_id::text, i.chain, i.token_symbol,
-			COALESCE(i.token_address, ''), pi.amount::text, d.address, d.encrypted_private_key,
-			COALESCE(m.settlement_address, '')
-		FROM checkout.payout_items pi
-		JOIN checkout.payment_intents i ON i.id=pi.payment_intent_id
+			SELECT pi.id::text, pi.payment_intent_id::text, i.merchant_id::text, i.chain, i.token_symbol,
+				COALESCE(i.token_address, ''), pi.amount::text, d.address, COALESCE(d.encrypted_private_key, ''),
+				COALESCE(d.wallet_type, 'eoa'), COALESCE(d.factory_address, ''), COALESCE(d.wallet_salt, ''),
+				COALESCE(m.settlement_address, '')
+			FROM checkout.payout_items pi
+			JOIN checkout.payment_intents i ON i.id=pi.payment_intent_id
 		JOIN checkout.deposit_addresses d ON d.payment_intent_id=i.id
 		JOIN auth.merchants m ON m.id=i.merchant_id
 		WHERE pi.payout_id=$1
@@ -212,6 +216,9 @@ func (w *PayoutScheduler) processPayout(ctx context.Context, payout payoutWork) 
 			&item.AmountRaw,
 			&item.DepositAddress,
 			&item.EncryptedPrivateKey,
+			&item.WalletType,
+			&item.FactoryAddress,
+			&item.WalletSalt,
 			&item.SettlementAddress,
 		); err != nil {
 			hadFailure = true
@@ -225,7 +232,7 @@ func (w *PayoutScheduler) processPayout(ctx context.Context, payout payoutWork) 
 			continue
 		}
 		privateKey := ""
-		if !mockMode {
+		if !mockMode && strings.ToLower(strings.TrimSpace(item.WalletType)) != "create2" {
 			var err error
 			privateKey, err = cryptox.DecryptString(w.EncryptKey, item.EncryptedPrivateKey)
 			if err != nil {
@@ -252,6 +259,9 @@ func (w *PayoutScheduler) processPayout(ctx context.Context, payout payoutWork) 
 			AmountRaw:            item.AmountRaw,
 			DepositAddress:       item.DepositAddress,
 			DepositPrivateKeyHex: privateKey,
+			WalletType:           item.WalletType,
+			FactoryAddress:       item.FactoryAddress,
+			WalletSalt:           item.WalletSalt,
 			SettlementAddress:    item.SettlementAddress,
 		})
 		if err != nil {

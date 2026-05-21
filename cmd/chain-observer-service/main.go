@@ -55,7 +55,7 @@ func main() {
 	observer := workers.ChainObserver{
 		DB:             pool,
 		CheckoutClient: checkoutClient,
-		ChainRPCURLs:   cfg.ChainRPCURLs,
+		ChainRPCURLs:   cfg.EVMChainRPCURLs(),
 		Log:            log,
 		Interval:       cfg.WorkerInterval,
 		Source:         cfg.ServiceName,

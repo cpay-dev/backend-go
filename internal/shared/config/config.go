@@ -43,6 +43,9 @@ type Config struct {
 	ChainConfirmations      map[string]int
 	ChainRPCURLs            map[string]string
 	PayoutMode              string
+	PayoutHotWalletKey      string
+	PayoutGasBufferPercent  float64
+	CheckoutWalletFactories map[string]string
 
 	OutboxPollInterval time.Duration
 	WorkerInterval     time.Duration
@@ -73,6 +76,30 @@ var defaultChainConfirmations = map[string]int{
 	"optimism":         600,
 	"solana":           32,
 	"tron":             21,
+}
+
+var defaultNonEVMChainRPCURLs = map[string]string{
+	"solana": "https://api.mainnet.solana.com",
+	"ton":    "https://toncenter.com/api/v2",
+	"tron":   "https://api.trongrid.io",
+}
+
+var evmChainRPCNames = map[string]struct{}{
+	"ethereum":         {},
+	"ethereum mainnet": {},
+	"mainnet":          {},
+	"polygon":          {},
+	"arbitrum":         {},
+	"arbitrum one":     {},
+	"base":             {},
+	"hyperevm":         {},
+	"hyper evm":        {},
+	"hyperliquid":      {},
+	"hyperliquid evm":  {},
+	"bnb":              {},
+	"bsc":              {},
+	"bnb smart chain":  {},
+	"optimism":         {},
 }
 
 func Load(serviceName string) Config {
@@ -110,6 +137,9 @@ func Load(serviceName string) Config {
 		ChainConfirmations:      parseConfirmations(getEnv("CHAIN_CONFIRMATIONS", "")),
 		ChainRPCURLs:            parseChainRPCURLs(getEnv("CHAIN_RPC_URLS", "")),
 		PayoutMode:              strings.ToLower(strings.TrimSpace(getEnv("PAYOUT_MODE", "production"))),
+		PayoutHotWalletKey:      getEnv("PAYOUT_HOT_WALLET_PRIVATE_KEY", ""),
+		PayoutGasBufferPercent:  getFloat("PAYOUT_GAS_BUFFER_PERCENT", 15),
+		CheckoutWalletFactories: parseAddressMap(getEnv("CHECKOUT_WALLET_FACTORY_ADDRESSES", "")),
 
 		OutboxPollInterval: getDuration("OUTBOX_POLL_INTERVAL", 2*time.Second),
 		WorkerInterval:     getDuration("WORKER_INTERVAL", 10*time.Second),
@@ -148,7 +178,10 @@ func parseConfirmations(raw string) map[string]int {
 }
 
 func parseChainRPCURLs(raw string) map[string]string {
-	out := map[string]string{}
+	out := make(map[string]string, len(defaultNonEVMChainRPCURLs))
+	for chainName, rpcURL := range defaultNonEVMChainRPCURLs {
+		out[chainName] = rpcURL
+	}
 	for _, item := range strings.Split(raw, ",") {
 		item = strings.TrimSpace(item)
 		if item == "" {
@@ -168,6 +201,43 @@ func parseChainRPCURLs(raw string) map[string]string {
 	return out
 }
 
+func (c Config) EVMChainRPCURLs() map[string]string {
+	out := map[string]string{}
+	for chainName, rpcURL := range c.ChainRPCURLs {
+		chainName = strings.ToLower(strings.TrimSpace(chainName))
+		if _, ok := evmChainRPCNames[chainName]; !ok {
+			continue
+		}
+		out[chainName] = rpcURL
+	}
+	return out
+}
+
+func parseAddressMap(raw string) map[string]string {
+	out := map[string]string{}
+	for _, item := range strings.Split(raw, ",") {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		parts := strings.SplitN(item, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		chain := strings.ToLower(strings.TrimSpace(parts[0]))
+		address := strings.TrimSpace(parts[1])
+		if chain == "" || address == "" {
+			continue
+		}
+		out[chain] = address
+	}
+	return out
+}
+
+func (c Config) CheckoutWalletFactoryForChain(chain string) string {
+	return c.CheckoutWalletFactories[strings.ToLower(strings.TrimSpace(chain))]
+}
+
 func ValidateChainRPCURLs(urls map[string]string) error {
 	if len(urls) == 0 {
 		return fmt.Errorf("CHAIN_RPC_URLS is required in production payout mode")
@@ -182,6 +252,47 @@ func ValidateChainRPCURLs(urls map[string]string) error {
 		}
 	}
 	return nil
+}
+
+func ValidateCheckoutWalletFactories(factories map[string]string) error {
+	for chainName, address := range factories {
+		if !isHexAddress(address) {
+			return fmt.Errorf("CHECKOUT_WALLET_FACTORY_ADDRESSES has invalid address for %s", chainName)
+		}
+	}
+	return nil
+}
+
+func ValidateProductionCreate2PayoutConfig(rpcURLs, factories map[string]string, hotWalletKey string) error {
+	if len(factories) == 0 {
+		return fmt.Errorf("CHECKOUT_WALLET_FACTORY_ADDRESSES is required in production")
+	}
+	if strings.TrimSpace(hotWalletKey) == "" {
+		return fmt.Errorf("PAYOUT_HOT_WALLET_PRIVATE_KEY is required in production")
+	}
+	if err := ValidateCheckoutWalletFactories(factories); err != nil {
+		return err
+	}
+	for chainName := range rpcURLs {
+		if _, ok := factories[strings.ToLower(strings.TrimSpace(chainName))]; !ok {
+			return fmt.Errorf("CHECKOUT_WALLET_FACTORY_ADDRESSES is missing %s", chainName)
+		}
+	}
+	return nil
+}
+
+func isHexAddress(address string) bool {
+	address = strings.TrimSpace(address)
+	if len(address) != 42 || !strings.HasPrefix(address, "0x") {
+		return false
+	}
+	for _, r := range address[2:] {
+		if (r >= '0' && r <= '9') || (r >= 'a' && r <= 'f') || (r >= 'A' && r <= 'F') {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func getEnv(key, def string) string {
@@ -260,6 +371,17 @@ func (c Config) Validate() error {
 	}
 	if c.PayoutMode != "production" && c.PayoutMode != "mock" {
 		return fmt.Errorf("PAYOUT_MODE must be production or mock")
+	}
+	if c.PayoutGasBufferPercent < 0 {
+		return fmt.Errorf("PAYOUT_GAS_BUFFER_PERCENT must be non-negative")
+	}
+	if err := ValidateCheckoutWalletFactories(c.CheckoutWalletFactories); err != nil {
+		return err
+	}
+	if c.Environment == "production" && c.PayoutMode == "production" {
+		if err := ValidateProductionCreate2PayoutConfig(c.EVMChainRPCURLs(), c.CheckoutWalletFactories, c.PayoutHotWalletKey); err != nil {
+			return err
+		}
 	}
 	return nil
 }

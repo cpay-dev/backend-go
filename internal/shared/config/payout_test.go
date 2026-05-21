@@ -10,6 +10,33 @@ func TestParseChainRPCURLs(t *testing.T) {
 	if got["polygon"] != "http://polygon.example" {
 		t.Fatalf("unexpected polygon rpc: %q", got["polygon"])
 	}
+	if got["tron"] != "https://api.trongrid.io" {
+		t.Fatalf("unexpected default tron rpc: %q", got["tron"])
+	}
+	if got["ton"] != "https://toncenter.com/api/v2" {
+		t.Fatalf("unexpected default ton rpc: %q", got["ton"])
+	}
+	if got["solana"] != "https://api.mainnet.solana.com" {
+		t.Fatalf("unexpected default solana rpc: %q", got["solana"])
+	}
+}
+
+func TestEVMChainRPCURLsExcludesDefaultNonEVMURLs(t *testing.T) {
+	cfg := Config{ChainRPCURLs: parseChainRPCURLs("base=https://base.example,tron=https://tron.example")}
+
+	got := cfg.EVMChainRPCURLs()
+	if got["base"] != "https://base.example" {
+		t.Fatalf("expected base rpc, got %q", got["base"])
+	}
+	if _, ok := got["tron"]; ok {
+		t.Fatalf("expected tron rpc to be excluded from evm rpc map")
+	}
+	if _, ok := got["ton"]; ok {
+		t.Fatalf("expected ton rpc to be excluded from evm rpc map")
+	}
+	if _, ok := got["solana"]; ok {
+		t.Fatalf("expected solana rpc to be excluded from evm rpc map")
+	}
 }
 
 func TestValidateChainRPCURLsRequiresURLs(t *testing.T) {
@@ -21,6 +48,39 @@ func TestValidateChainRPCURLsRequiresURLs(t *testing.T) {
 func TestValidateChainRPCURLsRejectsInvalidURL(t *testing.T) {
 	if err := ValidateChainRPCURLs(map[string]string{"base": "not-a-url"}); err == nil {
 		t.Fatalf("expected invalid url error")
+	}
+}
+
+func TestParseCheckoutWalletFactories(t *testing.T) {
+	got := parseAddressMap("base=0xde0B295669a9FD93d5F28D9Ec85E40f4cb697BAe,hyperevm=0x90a546a5fb533d4f168846400656b663F12578d6")
+	if got["base"] != "0xde0B295669a9FD93d5F28D9Ec85E40f4cb697BAe" {
+		t.Fatalf("unexpected base factory: %q", got["base"])
+	}
+	if got["hyperevm"] != "0x90a546a5fb533d4f168846400656b663F12578d6" {
+		t.Fatalf("unexpected hyperevm factory: %q", got["hyperevm"])
+	}
+}
+
+func TestValidateCheckoutWalletFactoriesRejectsInvalidAddress(t *testing.T) {
+	err := ValidateCheckoutWalletFactories(map[string]string{"base": "not-a-wallet"})
+	if err == nil {
+		t.Fatalf("expected invalid factory error")
+	}
+}
+
+func TestValidateProductionCreate2PayoutConfigRequiresHotWalletAndFactories(t *testing.T) {
+	rpcURLs := map[string]string{"base": "https://base.example"}
+	err := ValidateProductionCreate2PayoutConfig(rpcURLs, nil, "")
+	if err == nil {
+		t.Fatalf("expected missing factories error")
+	}
+	err = ValidateProductionCreate2PayoutConfig(rpcURLs, map[string]string{"base": "0xde0B295669a9FD93d5F28D9Ec85E40f4cb697BAe"}, "")
+	if err == nil {
+		t.Fatalf("expected missing hot wallet key error")
+	}
+	err = ValidateProductionCreate2PayoutConfig(rpcURLs, map[string]string{"polygon": "0xde0B295669a9FD93d5F28D9Ec85E40f4cb697BAe"}, "0xabc")
+	if err == nil {
+		t.Fatalf("expected missing base factory error")
 	}
 }
 

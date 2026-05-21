@@ -42,7 +42,8 @@ func main() {
 		minioClient = m
 	}
 
-	svc := checkoutsvc.New(cfg, log, pool, chain.NewEVMAdapter(cfg.ChainConfirmations), cryptox.NormalizeKey(cfg.EncryptionKey), minioClient)
+	chainAdapter := chain.NewEVMAdapterWithCreate2(cfg.ChainConfirmations, cfg.EVMChainRPCURLs(), cfg.CheckoutWalletFactories)
+	svc := checkoutsvc.New(cfg, log, pool, chainAdapter, cryptox.NormalizeKey(cfg.EncryptionKey), minioClient)
 	lis, err := net.Listen("tcp", cfg.GRPCAddr)
 	if err != nil {
 		log.Fatal().Err(err).Str("addr", cfg.GRPCAddr).Msg("grpc listen failed")
