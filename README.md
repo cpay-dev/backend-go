@@ -84,7 +84,7 @@ External API is REST on `api-gateway`; internal service-to-service communication
 - `payout-service` schedules/completes payouts and marks intents settled.
 - `subscription-service` processes due cycles against prepaid vault balances.
 
-Payouts run in production mode by default. Configure `CHAIN_RPC_URLS` as a comma-separated map such as `base=https://...` and set each merchant's `settlement_address` via `/v1/merchant/settings`. For CREATE2 checkout wallets, deploy `contracts/CheckoutWalletFactory.sol` per EVM chain and configure `CHECKOUT_WALLET_FACTORY_ADDRESSES`, `PAYOUT_HOT_WALLET_PRIVATE_KEY`, and optional `PAYOUT_GAS_BUFFER_PERCENT`. Use `PAYOUT_MODE=mock` only for local/demo runs that should preserve mocked sweep hashes.
+Payouts run in production mode by default. Chainlist-sourced public RPC defaults are built in for Ethereum, Base, and HyperEVM; configure `CHAIN_RPC_URLS` as a comma-separated map such as `base=https://...` to override or add chain URLs. Set each merchant's `settlement_address` via `/v1/merchant/settings`. For CREATE2 checkout wallets, deploy `contracts/CheckoutWalletFactory.sol` per EVM chain and configure `CHECKOUT_WALLET_FACTORY_ADDRESSES`, `PAYOUT_HOT_WALLET_PRIVATE_KEY`, and optional `PAYOUT_GAS_BUFFER_PERCENT`. Use `PAYOUT_MODE=mock` only for local/demo runs that should preserve mocked sweep hashes.
 
 ## Local run
 

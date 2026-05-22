@@ -6,6 +6,7 @@ import (
 	"math"
 	"math/big"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cpay-dev/cpay/internal/domain/payment"
@@ -40,6 +41,40 @@ func (w *ChainObserver) Run(ctx context.Context) {
 	}
 	w.openRPCClients(ctx)
 	defer w.closeRPCClients()
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		w.runRecordedTransactionLoop(ctx)
+	}()
+	go func() {
+		defer wg.Done()
+		w.runDepositObserverLoop(ctx)
+	}()
+	wg.Wait()
+}
+
+func (w *ChainObserver) runRecordedTransactionLoop(ctx context.Context) {
+	interval := w.Interval
+	if interval > 5*time.Second {
+		interval = 5 * time.Second
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	w.updateRecordedTransactions(ctx)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			w.updateRecordedTransactions(ctx)
+		}
+	}
+}
+
+func (w *ChainObserver) runDepositObserverLoop(ctx context.Context) {
 	ticker := time.NewTicker(w.Interval)
 	defer ticker.Stop()
 
@@ -92,6 +127,129 @@ type pendingDepositIntent struct {
 	ExpectedAmountRaw     string
 	TolerancePercentRaw   string
 	RequiredConfirmations int
+}
+
+type recordedChainTransaction struct {
+	SessionID             string
+	MerchantID            string
+	PaymentIntentID       string
+	Chain                 string
+	TxHash                string
+	AmountRaw             string
+	FromAddress           string
+	ToAddress             string
+	TokenSymbol           string
+	RequiredConfirmations int
+}
+
+func (w *ChainObserver) updateRecordedTransactions(ctx context.Context) {
+	if w.CheckoutClient == nil || len(w.clients) == 0 {
+		return
+	}
+	rows, err := w.DB.Query(ctx, `
+		SELECT c.id::text, i.merchant_id::text, i.id::text, ct.chain, ct.tx_hash, ct.amount::text,
+			COALESCE(ct.from_address, ''), COALESCE(ct.to_address, ''), ct.token_symbol,
+			i.required_confirmations
+		FROM checkout.chain_transactions ct
+		JOIN checkout.payment_intents i ON i.id=ct.payment_intent_id
+		JOIN checkout.checkout_sessions c ON c.id=i.checkout_session_id
+		WHERE i.status IN ('created', 'awaiting_funds', 'partial')
+			AND ct.status='detected'
+			AND ct.confirmations < i.required_confirmations
+			AND i.created_at > NOW() - INTERVAL '36 hours'
+		ORDER BY ct.observed_at ASC
+		LIMIT 100
+	`)
+	if err != nil {
+		w.Log.Error().Err(err).Msg("chain observer: recorded transaction query failed")
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var item recordedChainTransaction
+		if err := rows.Scan(
+			&item.SessionID, &item.MerchantID, &item.PaymentIntentID, &item.Chain, &item.TxHash, &item.AmountRaw,
+			&item.FromAddress, &item.ToAddress, &item.TokenSymbol, &item.RequiredConfirmations,
+		); err != nil {
+			continue
+		}
+		w.updateRecordedTransaction(ctx, item)
+	}
+	if err := rows.Err(); err != nil {
+		w.Log.Error().Err(err).Msg("chain observer: recorded transaction rows failed")
+	}
+}
+
+func (w *ChainObserver) updateRecordedTransaction(ctx context.Context, item recordedChainTransaction) {
+	client := w.clientForChain(item.Chain)
+	if client == nil || !isHexHash(item.TxHash) {
+		return
+	}
+	receipt, err := client.TransactionReceipt(ctx, common.HexToHash(item.TxHash))
+	if err != nil {
+		w.Log.Warn().Err(err).Str("chain", item.Chain).Str("tx_hash", item.TxHash).Msg("chain observer: receipt lookup failed")
+		return
+	}
+	if receipt == nil || receipt.BlockNumber == nil {
+		return
+	}
+	if receipt.Status != types.ReceiptStatusSuccessful {
+		w.Log.Warn().Str("chain", item.Chain).Str("tx_hash", item.TxHash).Msg("chain observer: recorded transaction failed on chain")
+		return
+	}
+	latest, err := client.BlockNumber(ctx)
+	if err != nil {
+		w.Log.Warn().Err(err).Str("chain", item.Chain).Msg("chain observer: block number failed")
+		return
+	}
+	receiptBlock := receipt.BlockNumber.Uint64()
+	if latest < receiptBlock {
+		return
+	}
+	confirmations := int(latest - receiptBlock + 1)
+	w.Log.Info().
+		Str("session_id", item.SessionID).
+		Str("payment_intent_id", item.PaymentIntentID).
+		Str("chain", item.Chain).
+		Str("tx_hash", item.TxHash).
+		Int("confirmations", confirmations).
+		Int("required_confirmations", item.RequiredConfirmations).
+		Uint64("receipt_block", receiptBlock).
+		Uint64("latest_block", latest).
+		Msg("chain observer: recorded transaction observed")
+	rawPayload, _ := json.Marshal(map[string]any{
+		"source": "chain_observer_receipt",
+	})
+	resp, err := w.CheckoutClient.ConfirmCheckoutSession(ctx, &cpayv1.ConfirmCheckoutSessionRequest{
+		MerchantId:     item.MerchantID,
+		SessionId:      item.SessionID,
+		TxHash:         item.TxHash,
+		ReceivedAmount: parseFloat(item.AmountRaw),
+		Confirmations:  int32(confirmations),
+		HasBlockNumber: true,
+		BlockNumber:    int64(receiptBlock),
+		FromAddress:    item.FromAddress,
+		ToAddress:      item.ToAddress,
+		RawPayloadJson: string(rawPayload),
+	})
+	if err != nil {
+		w.Log.Warn().Err(err).Str("session_id", item.SessionID).Str("tx_hash", item.TxHash).Msg("chain observer: recorded transaction confirm failed")
+		return
+	}
+	event := w.Log.Info().
+		Str("session_id", item.SessionID).
+		Str("payment_intent_id", item.PaymentIntentID).
+		Str("chain", item.Chain).
+		Str("tx_hash", item.TxHash).
+		Str("payment_status", resp.GetStatus()).
+		Int("confirmations", int(resp.GetConfirmations())).
+		Int("required_confirmations", int(resp.GetRequiredConfirmations()))
+	if confirmations >= item.RequiredConfirmations {
+		event.Msg("chain observer: recorded transaction reached required confirmations; removed from future polling")
+	} else {
+		event.Msg("chain observer: recorded transaction confirmations updated")
+	}
 }
 
 func (w *ChainObserver) observeDeposits(ctx context.Context) {
@@ -337,6 +495,19 @@ func (w *ChainObserver) clientForChain(chainName string) *ethclient.Client {
 
 func erc20TransferTopic() common.Hash {
 	return crypto.Keccak256Hash([]byte("Transfer(address,address,uint256)"))
+}
+
+func isHexHash(value string) bool {
+	value = strings.TrimSpace(value)
+	if len(value) != 66 || !strings.HasPrefix(value, "0x") {
+		return false
+	}
+	for _, c := range value[2:] {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') && (c < 'A' || c > 'F') {
+			return false
+		}
+	}
+	return true
 }
 
 func baseUnitsToFloat(value *big.Int, decimals int) float64 {

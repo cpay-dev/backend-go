@@ -78,10 +78,13 @@ var defaultChainConfirmations = map[string]int{
 	"tron":             21,
 }
 
-var defaultNonEVMChainRPCURLs = map[string]string{
-	"solana": "https://api.mainnet.solana.com",
-	"ton":    "https://toncenter.com/api/v2",
-	"tron":   "https://api.trongrid.io",
+var defaultChainRPCURLs = map[string]string{
+	"ethereum": "https://ethereum-rpc.publicnode.com",
+	"base":     "https://base-rpc.publicnode.com",
+	"hyperevm": "https://rpc.hyperliquid.xyz/evm",
+	"solana":   "https://api.mainnet.solana.com",
+	"ton":      "https://toncenter.com/api/v2",
+	"tron":     "https://api.trongrid.io",
 }
 
 var evmChainRPCNames = map[string]struct{}{
@@ -178,8 +181,8 @@ func parseConfirmations(raw string) map[string]int {
 }
 
 func parseChainRPCURLs(raw string) map[string]string {
-	out := make(map[string]string, len(defaultNonEVMChainRPCURLs))
-	for chainName, rpcURL := range defaultNonEVMChainRPCURLs {
+	out := make(map[string]string, len(defaultChainRPCURLs))
+	for chainName, rpcURL := range defaultChainRPCURLs {
 		out[chainName] = rpcURL
 	}
 	for _, item := range strings.Split(raw, ",") {

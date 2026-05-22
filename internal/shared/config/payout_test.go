@@ -4,8 +4,14 @@ import "testing"
 
 func TestParseChainRPCURLs(t *testing.T) {
 	got := parseChainRPCURLs("base=https://base.example, polygon=http://polygon.example")
+	if got["ethereum"] != "https://ethereum-rpc.publicnode.com" {
+		t.Fatalf("unexpected default ethereum rpc: %q", got["ethereum"])
+	}
 	if got["base"] != "https://base.example" {
 		t.Fatalf("unexpected base rpc: %q", got["base"])
+	}
+	if got["hyperevm"] != "https://rpc.hyperliquid.xyz/evm" {
+		t.Fatalf("unexpected default hyperevm rpc: %q", got["hyperevm"])
 	}
 	if got["polygon"] != "http://polygon.example" {
 		t.Fatalf("unexpected polygon rpc: %q", got["polygon"])
@@ -21,12 +27,18 @@ func TestParseChainRPCURLs(t *testing.T) {
 	}
 }
 
-func TestEVMChainRPCURLsExcludesDefaultNonEVMURLs(t *testing.T) {
+func TestEVMChainRPCURLsIncludesDefaultsAndEnvOverrides(t *testing.T) {
 	cfg := Config{ChainRPCURLs: parseChainRPCURLs("base=https://base.example,tron=https://tron.example")}
 
 	got := cfg.EVMChainRPCURLs()
+	if got["ethereum"] != "https://ethereum-rpc.publicnode.com" {
+		t.Fatalf("expected ethereum default rpc, got %q", got["ethereum"])
+	}
 	if got["base"] != "https://base.example" {
 		t.Fatalf("expected base rpc, got %q", got["base"])
+	}
+	if got["hyperevm"] != "https://rpc.hyperliquid.xyz/evm" {
+		t.Fatalf("expected hyperevm default rpc, got %q", got["hyperevm"])
 	}
 	if _, ok := got["tron"]; ok {
 		t.Fatalf("expected tron rpc to be excluded from evm rpc map")
@@ -36,6 +48,22 @@ func TestEVMChainRPCURLsExcludesDefaultNonEVMURLs(t *testing.T) {
 	}
 	if _, ok := got["solana"]; ok {
 		t.Fatalf("expected solana rpc to be excluded from evm rpc map")
+	}
+}
+
+func TestLoadUsesDefaultRPCURLsWhenEnvIsEmpty(t *testing.T) {
+	t.Setenv("CHAIN_RPC_URLS", "")
+
+	cfg := Load("test")
+	got := cfg.EVMChainRPCURLs()
+	if got["ethereum"] != "https://ethereum-rpc.publicnode.com" {
+		t.Fatalf("expected ethereum default rpc, got %q", got["ethereum"])
+	}
+	if got["base"] != "https://base-rpc.publicnode.com" {
+		t.Fatalf("expected base default rpc, got %q", got["base"])
+	}
+	if got["hyperevm"] != "https://rpc.hyperliquid.xyz/evm" {
+		t.Fatalf("expected hyperevm default rpc, got %q", got["hyperevm"])
 	}
 }
 

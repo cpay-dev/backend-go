@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	cpayv1 "github.com/cpay-dev/cpay/internal/gen/cpay/v1"
@@ -74,7 +75,7 @@ func TestCreatePublicCheckoutSessionHandlerMapsRequest(t *testing.T) {
 				Currency:                "USD",
 				Chain:                   "polygon",
 				TokenSymbol:             "USDC",
-				DepositAddress:          "0xabc",
+				DepositAddress:          "0x1111111111111111111111111111111111111111",
 				TolerancePercent:        0.25,
 				MinAcceptableAmount:     10.47375,
 				MaxAcceptableAmount:     10.52625,
@@ -135,6 +136,20 @@ func TestCreatePublicCheckoutSessionHandlerMapsRequest(t *testing.T) {
 	}
 	if payload["client_secret"] != "secret_test" {
 		t.Fatalf("expected client_secret secret_test, got %#v", payload["client_secret"])
+	}
+	if payload["token_decimals"] != float64(6) {
+		t.Fatalf("expected token_decimals 6, got %#v", payload["token_decimals"])
+	}
+	walletTx, ok := payload["browser_wallet_transaction"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected browser_wallet_transaction object, got %#v", payload["browser_wallet_transaction"])
+	}
+	if walletTx["chain_id"] != "0x89" || walletTx["to"] != "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359" || walletTx["value"] != "0x0" {
+		t.Fatalf("unexpected browser_wallet_transaction: %#v", walletTx)
+	}
+	data, ok := walletTx["data"].(string)
+	if !ok || !strings.HasPrefix(data, "0xa9059cbb") || !strings.Contains(data, "1111111111111111111111111111111111111111") {
+		t.Fatalf("unexpected browser wallet transaction data: %#v", walletTx["data"])
 	}
 }
 

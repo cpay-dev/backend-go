@@ -3,14 +3,18 @@ package gateway
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"math/big"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
 	cpayv1 "github.com/cpay-dev/cpay/internal/gen/cpay/v1"
+	"github.com/cpay-dev/cpay/internal/shared/chain"
 	"github.com/cpay-dev/cpay/internal/shared/httpx"
 	"github.com/cpay-dev/cpay/internal/shared/middleware"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
 )
@@ -143,7 +147,7 @@ func (s *Server) handleCreatePublicCheckoutSession(w http.ResponseWriter, r *htt
 }
 
 func checkoutSessionCreateToResponse(resp *cpayv1.CreateCheckoutSessionResponse) map[string]any {
-	return map[string]any{
+	payload := map[string]any{
 		"id":                    resp.GetId(),
 		"payment_intent_id":     resp.GetPaymentIntentId(),
 		"payment_link_code":     resp.GetPaymentLinkCode(),
@@ -162,6 +166,131 @@ func checkoutSessionCreateToResponse(resp *cpayv1.CreateCheckoutSessionResponse)
 			"redirect_url": emptyToNil(resp.GetAfterPaymentRedirectUrl()),
 		},
 	}
+	if walletTx, decimals, ok := browserWalletTransaction(resp); ok {
+		payload["browser_wallet_transaction"] = walletTx
+		payload["token_decimals"] = decimals
+	}
+	return payload
+}
+
+func browserWalletTransaction(resp *cpayv1.CreateCheckoutSessionResponse) (map[string]any, int, bool) {
+	chainID, ok := evmChainID(resp.GetChain())
+	if !ok || !common.IsHexAddress(resp.GetDepositAddress()) {
+		return nil, 0, false
+	}
+	if decimals, ok := nativeTokenDecimals(resp.GetChain(), resp.GetTokenSymbol()); ok {
+		value, err := decimalToBaseUnitHex(strconv.FormatFloat(resp.GetAmount(), 'f', -1, 64), decimals)
+		if err != nil {
+			return nil, 0, false
+		}
+		return map[string]any{
+			"chain_id": chainID,
+			"to":       common.HexToAddress(resp.GetDepositAddress()).Hex(),
+			"value":    value,
+			"data":     "0x",
+		}, decimals, true
+	}
+
+	contract, ok := chain.KnownEVMTokenContract(resp.GetChain(), resp.GetTokenSymbol())
+	if !ok || !common.IsHexAddress(contract.Address) {
+		return nil, 0, false
+	}
+	amount, err := decimalToBaseUnits(strconv.FormatFloat(resp.GetAmount(), 'f', -1, 64), contract.Decimals)
+	if err != nil {
+		return nil, 0, false
+	}
+	return map[string]any{
+		"chain_id": chainID,
+		"to":       common.HexToAddress(contract.Address).Hex(),
+		"value":    "0x0",
+		"data":     erc20TransferData(resp.GetDepositAddress(), amount),
+	}, contract.Decimals, true
+}
+
+func evmChainID(chainName string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(chainName)) {
+	case "ethereum", "ethereum mainnet":
+		return "0x1", true
+	case "optimism":
+		return "0xa", true
+	case "bsc", "bnb smart chain":
+		return "0x38", true
+	case "polygon":
+		return "0x89", true
+	case "arbitrum", "arbitrum one":
+		return "0xa4b1", true
+	case "base":
+		return "0x2105", true
+	case "hyperevm", "hyper evm":
+		return "0x3e7", true
+	default:
+		return "", false
+	}
+}
+
+func nativeTokenDecimals(chainName, symbol string) (int, bool) {
+	chainName = strings.ToLower(strings.TrimSpace(chainName))
+	symbol = strings.ToUpper(strings.TrimSpace(symbol))
+	switch chainName {
+	case "ethereum", "ethereum mainnet", "optimism", "arbitrum", "arbitrum one", "base", "hyperevm", "hyper evm":
+		return 18, symbol == "ETH" || symbol == "HYPE"
+	case "bsc", "bnb smart chain":
+		return 18, symbol == "BNB"
+	case "polygon":
+		return 18, symbol == "MATIC" || symbol == "POL"
+	default:
+		return 0, false
+	}
+}
+
+func erc20TransferData(to string, amount *big.Int) string {
+	address := common.HexToAddress(to)
+	return "0xa9059cbb" + strings.Repeat("0", 24) + strings.TrimPrefix(strings.ToLower(address.Hex()), "0x") + fmt.Sprintf("%064x", amount)
+}
+
+func decimalToBaseUnitHex(raw string, decimals int) (string, error) {
+	amount, err := decimalToBaseUnits(raw, decimals)
+	if err != nil {
+		return "", err
+	}
+	return "0x" + amount.Text(16), nil
+}
+
+func decimalToBaseUnits(raw string, decimals int) (*big.Int, error) {
+	if decimals < 0 {
+		return nil, errors.New("decimals must be non-negative")
+	}
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, errors.New("amount is required")
+	}
+	parts := strings.Split(raw, ".")
+	if len(parts) > 2 {
+		return nil, errors.New("amount is invalid")
+	}
+	whole := strings.TrimSpace(parts[0])
+	frac := ""
+	if len(parts) == 2 {
+		frac = strings.TrimSpace(parts[1])
+	}
+	if strings.HasPrefix(whole, "+") {
+		whole = strings.TrimPrefix(whole, "+")
+	}
+	if whole == "" {
+		whole = "0"
+	}
+	if strings.HasPrefix(whole, "-") || len(frac) > decimals {
+		return nil, errors.New("amount is invalid")
+	}
+	if frac != "" && strings.ContainsAny(frac, "+-") {
+		return nil, errors.New("amount is invalid")
+	}
+	frac += strings.Repeat("0", decimals-len(frac))
+	value := new(big.Int)
+	if _, ok := value.SetString(whole+frac, 10); !ok {
+		return nil, errors.New("amount is invalid")
+	}
+	return value, nil
 }
 
 func (s *Server) handleGetCheckoutSession(w http.ResponseWriter, r *http.Request) {
