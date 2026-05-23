@@ -138,7 +138,6 @@ type recordedChainTransaction struct {
 	AmountRaw             string
 	FromAddress           string
 	ToAddress             string
-	TokenSymbol           string
 	RequiredConfirmations int
 }
 
@@ -148,8 +147,7 @@ func (w *ChainObserver) updateRecordedTransactions(ctx context.Context) {
 	}
 	rows, err := w.DB.Query(ctx, `
 		SELECT c.id::text, i.merchant_id::text, i.id::text, ct.chain, ct.tx_hash, ct.amount::text,
-			COALESCE(ct.from_address, ''), COALESCE(ct.to_address, ''), ct.token_symbol,
-			i.required_confirmations
+			COALESCE(ct.from_address, ''), COALESCE(ct.to_address, ''), i.required_confirmations
 		FROM checkout.chain_transactions ct
 		JOIN checkout.payment_intents i ON i.id=ct.payment_intent_id
 		JOIN checkout.checkout_sessions c ON c.id=i.checkout_session_id
@@ -166,22 +164,23 @@ func (w *ChainObserver) updateRecordedTransactions(ctx context.Context) {
 	}
 	defer rows.Close()
 
+	latestBlocks := make(map[string]uint64)
 	for rows.Next() {
 		var item recordedChainTransaction
 		if err := rows.Scan(
 			&item.SessionID, &item.MerchantID, &item.PaymentIntentID, &item.Chain, &item.TxHash, &item.AmountRaw,
-			&item.FromAddress, &item.ToAddress, &item.TokenSymbol, &item.RequiredConfirmations,
+			&item.FromAddress, &item.ToAddress, &item.RequiredConfirmations,
 		); err != nil {
 			continue
 		}
-		w.updateRecordedTransaction(ctx, item)
+		w.updateRecordedTransaction(ctx, item, latestBlocks)
 	}
 	if err := rows.Err(); err != nil {
 		w.Log.Error().Err(err).Msg("chain observer: recorded transaction rows failed")
 	}
 }
 
-func (w *ChainObserver) updateRecordedTransaction(ctx context.Context, item recordedChainTransaction) {
+func (w *ChainObserver) updateRecordedTransaction(ctx context.Context, item recordedChainTransaction, latestBlocks map[string]uint64) {
 	client := w.clientForChain(item.Chain)
 	if client == nil || !isHexHash(item.TxHash) {
 		return
@@ -198,29 +197,22 @@ func (w *ChainObserver) updateRecordedTransaction(ctx context.Context, item reco
 		w.Log.Warn().Str("chain", item.Chain).Str("tx_hash", item.TxHash).Msg("chain observer: recorded transaction failed on chain")
 		return
 	}
-	latest, err := client.BlockNumber(ctx)
-	if err != nil {
-		w.Log.Warn().Err(err).Str("chain", item.Chain).Msg("chain observer: block number failed")
-		return
+	key := strings.ToLower(strings.TrimSpace(item.Chain))
+	latest, ok := latestBlocks[key]
+	if !ok {
+		var err error
+		latest, err = client.BlockNumber(ctx)
+		if err != nil {
+			w.Log.Warn().Err(err).Str("chain", item.Chain).Msg("chain observer: block number failed")
+			return
+		}
+		latestBlocks[key] = latest
 	}
 	receiptBlock := receipt.BlockNumber.Uint64()
 	if latest < receiptBlock {
 		return
 	}
 	confirmations := int(latest - receiptBlock + 1)
-	w.Log.Info().
-		Str("session_id", item.SessionID).
-		Str("payment_intent_id", item.PaymentIntentID).
-		Str("chain", item.Chain).
-		Str("tx_hash", item.TxHash).
-		Int("confirmations", confirmations).
-		Int("required_confirmations", item.RequiredConfirmations).
-		Uint64("receipt_block", receiptBlock).
-		Uint64("latest_block", latest).
-		Msg("chain observer: recorded transaction observed")
-	rawPayload, _ := json.Marshal(map[string]any{
-		"source": "chain_observer_receipt",
-	})
 	resp, err := w.CheckoutClient.ConfirmCheckoutSession(ctx, &cpayv1.ConfirmCheckoutSessionRequest{
 		MerchantId:     item.MerchantID,
 		SessionId:      item.SessionID,
@@ -231,7 +223,7 @@ func (w *ChainObserver) updateRecordedTransaction(ctx context.Context, item reco
 		BlockNumber:    int64(receiptBlock),
 		FromAddress:    item.FromAddress,
 		ToAddress:      item.ToAddress,
-		RawPayloadJson: string(rawPayload),
+		RawPayloadJson: `{"source":"chain_observer_receipt"}`,
 	})
 	if err != nil {
 		w.Log.Warn().Err(err).Str("session_id", item.SessionID).Str("tx_hash", item.TxHash).Msg("chain observer: recorded transaction confirm failed")
@@ -244,7 +236,9 @@ func (w *ChainObserver) updateRecordedTransaction(ctx context.Context, item reco
 		Str("tx_hash", item.TxHash).
 		Str("payment_status", resp.GetStatus()).
 		Int("confirmations", int(resp.GetConfirmations())).
-		Int("required_confirmations", int(resp.GetRequiredConfirmations()))
+		Int("required_confirmations", int(resp.GetRequiredConfirmations())).
+		Uint64("receipt_block", receiptBlock).
+		Uint64("latest_block", latest)
 	if confirmations >= item.RequiredConfirmations {
 		event.Msg("chain observer: recorded transaction reached required confirmations; removed from future polling")
 	} else {
