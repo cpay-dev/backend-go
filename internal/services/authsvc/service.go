@@ -2,6 +2,7 @@ package authsvc
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -95,7 +96,8 @@ func (s *Service) Login(ctx context.Context, req *cpayv1.LoginRequest) (*cpayv1.
 		return nil, rpcx.E(codes.InvalidArgument, "invalid_request", "email and password are required")
 	}
 
-	var userID, merchantID, role, passHash string
+	var userID, merchantID, role string
+	var passHash sql.NullString
 	err := s.db.QueryRow(ctx, `
 		SELECT id::text, merchant_id::text, role, password_hash
 		FROM auth.users
@@ -109,7 +111,10 @@ func (s *Service) Login(ctx context.Context, req *cpayv1.LoginRequest) (*cpayv1.
 		return nil, rpcx.E(codes.Internal, "internal_error", "login lookup failed")
 	}
 
-	if err = bcrypt.CompareHashAndPassword([]byte(passHash), []byte(password)); err != nil {
+	if !passHash.Valid || passHash.String == "" {
+		return nil, rpcx.E(codes.Unauthenticated, "invalid_credentials", "password sign-in is not enabled for this account")
+	}
+	if err = bcrypt.CompareHashAndPassword([]byte(passHash.String), []byte(password)); err != nil {
 		return nil, rpcx.E(codes.Unauthenticated, "invalid_credentials", "invalid credentials")
 	}
 
@@ -129,7 +134,7 @@ func (s *Service) Login(ctx context.Context, req *cpayv1.LoginRequest) (*cpayv1.
 			TokenType:    "Bearer",
 			ExpiresIn:    int32(s.cfg.JWTAccessTTL.Seconds()),
 		},
-		User: &cpayv1.UserInfo{Id: userID, MerchantId: merchantID, Role: role},
+		User: &cpayv1.UserInfo{Id: userID, MerchantId: merchantID, Role: role, Email: email},
 	}, nil
 }
 

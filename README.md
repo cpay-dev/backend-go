@@ -41,7 +41,22 @@ External API is REST on `api-gateway`; internal service-to-service communication
 
 - Auth
   - `POST /v1/auth/login`
+  - `POST /v1/auth/signup`
   - `POST /v1/auth/refresh`
+  - `POST /v1/auth/google/start`
+  - `POST /v1/auth/google/consume`
+  - `POST /v1/auth/wallet/challenge`
+  - `POST /v1/auth/wallet/verify`
+  - `POST /v1/auth/passkeys/login/options`
+  - `POST /v1/auth/passkeys/login/verify`
+  - `POST /v1/auth/passkeys/register/options`
+  - `POST /v1/auth/passkeys/register/verify`
+- Profile security
+  - `GET /v1/profile/security`
+  - `POST /v1/profile/security/google/consume`
+  - `POST /v1/profile/security/wallet/verify`
+  - `DELETE /v1/profile/security/identities/{id}`
+  - `DELETE /v1/profile/security/passkeys/{id}`
 - API keys
   - `POST /v1/api_keys`
   - `GET /v1/api_keys`
@@ -113,6 +128,14 @@ You can change them using env vars:
 - `BOOTSTRAP_ADMIN_EMAIL`
 - `BOOTSTRAP_ADMIN_PASSWORD`
 - `BOOTSTRAP_MERCHANT_NAME`
+
+Google OAuth and passkeys use:
+- `PUBLIC_WEB_ORIGIN`
+- `WEBAUTHN_RP_ID`
+- `WEBAUTHN_RP_NAME`
+- `GOOGLE_CLIENT_ID`
+- `GOOGLE_CLIENT_SECRET`
+- `GOOGLE_REDIRECT_URI`
 
 ## Dev commands
 

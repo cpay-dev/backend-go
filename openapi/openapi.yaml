@@ -21,6 +21,114 @@ paths:
       responses:
         '200':
           description: Success
+  /v1/auth/signup:
+    post:
+      summary: Create merchant account
+      responses:
+        '201':
+          description: Created
+  /v1/auth/google/start:
+    post:
+      summary: Start Google OAuth sign-in
+      responses:
+        '200':
+          description: Authorization URL
+  /v1/auth/google/consume:
+    post:
+      summary: Complete Google OAuth sign-in or onboarding
+      responses:
+        '200':
+          description: Tokens or onboarding requirement
+  /v1/auth/wallet/challenge:
+    post:
+      summary: Create wallet sign-in message
+      responses:
+        '200':
+          description: Challenge message
+  /v1/auth/wallet/verify:
+    post:
+      summary: Verify wallet signature
+      responses:
+        '200':
+          description: Tokens or onboarding requirement
+  /v1/auth/passkeys/login/options:
+    post:
+      summary: Create passkey login options
+      responses:
+        '200':
+          description: WebAuthn request options
+  /v1/auth/passkeys/login/verify:
+    post:
+      summary: Verify passkey login
+      responses:
+        '200':
+          description: Tokens
+  /v1/auth/passkeys/register/options:
+    post:
+      summary: Create passkey registration options
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: WebAuthn creation options
+  /v1/auth/passkeys/register/verify:
+    post:
+      summary: Verify passkey registration
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Profile security methods
+  /v1/profile/security:
+    get:
+      summary: List linked sign-in methods
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Profile security methods
+  /v1/profile/security/google/consume:
+    post:
+      summary: Link Google identity to signed-in user
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Profile security methods
+  /v1/profile/security/wallet/verify:
+    post:
+      summary: Link wallet identity to signed-in user
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Profile security methods
+  /v1/profile/security/identities/{id}:
+    delete:
+      summary: Remove linked Google or wallet identity
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Deleted
+  /v1/profile/security/passkeys/{id}:
+    delete:
+      summary: Remove passkey
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Deleted
   /v1/merchant/settings:
     get:
       summary: Get merchant payout settings

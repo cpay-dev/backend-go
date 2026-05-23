@@ -19,14 +19,28 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	AuthService_Login_FullMethodName                  = "/cpay.v1.AuthService/Login"
-	AuthService_Refresh_FullMethodName                = "/cpay.v1.AuthService/Refresh"
-	AuthService_CreateApiKey_FullMethodName           = "/cpay.v1.AuthService/CreateApiKey"
-	AuthService_ListApiKeys_FullMethodName            = "/cpay.v1.AuthService/ListApiKeys"
-	AuthService_RevokeApiKey_FullMethodName           = "/cpay.v1.AuthService/RevokeApiKey"
-	AuthService_GetMerchantSettings_FullMethodName    = "/cpay.v1.AuthService/GetMerchantSettings"
-	AuthService_UpdateMerchantSettings_FullMethodName = "/cpay.v1.AuthService/UpdateMerchantSettings"
-	AuthService_ValidateCredential_FullMethodName     = "/cpay.v1.AuthService/ValidateCredential"
+	AuthService_Login_FullMethodName                     = "/cpay.v1.AuthService/Login"
+	AuthService_Signup_FullMethodName                    = "/cpay.v1.AuthService/Signup"
+	AuthService_Refresh_FullMethodName                   = "/cpay.v1.AuthService/Refresh"
+	AuthService_GoogleStart_FullMethodName               = "/cpay.v1.AuthService/GoogleStart"
+	AuthService_GoogleConsume_FullMethodName             = "/cpay.v1.AuthService/GoogleConsume"
+	AuthService_WalletChallenge_FullMethodName           = "/cpay.v1.AuthService/WalletChallenge"
+	AuthService_WalletVerify_FullMethodName              = "/cpay.v1.AuthService/WalletVerify"
+	AuthService_BeginPasskeyRegistration_FullMethodName  = "/cpay.v1.AuthService/BeginPasskeyRegistration"
+	AuthService_FinishPasskeyRegistration_FullMethodName = "/cpay.v1.AuthService/FinishPasskeyRegistration"
+	AuthService_BeginPasskeyLogin_FullMethodName         = "/cpay.v1.AuthService/BeginPasskeyLogin"
+	AuthService_FinishPasskeyLogin_FullMethodName        = "/cpay.v1.AuthService/FinishPasskeyLogin"
+	AuthService_GetProfileSecurity_FullMethodName        = "/cpay.v1.AuthService/GetProfileSecurity"
+	AuthService_LinkGoogle_FullMethodName                = "/cpay.v1.AuthService/LinkGoogle"
+	AuthService_LinkWallet_FullMethodName                = "/cpay.v1.AuthService/LinkWallet"
+	AuthService_DeleteIdentity_FullMethodName            = "/cpay.v1.AuthService/DeleteIdentity"
+	AuthService_DeletePasskey_FullMethodName             = "/cpay.v1.AuthService/DeletePasskey"
+	AuthService_CreateApiKey_FullMethodName              = "/cpay.v1.AuthService/CreateApiKey"
+	AuthService_ListApiKeys_FullMethodName               = "/cpay.v1.AuthService/ListApiKeys"
+	AuthService_RevokeApiKey_FullMethodName              = "/cpay.v1.AuthService/RevokeApiKey"
+	AuthService_GetMerchantSettings_FullMethodName       = "/cpay.v1.AuthService/GetMerchantSettings"
+	AuthService_UpdateMerchantSettings_FullMethodName    = "/cpay.v1.AuthService/UpdateMerchantSettings"
+	AuthService_ValidateCredential_FullMethodName        = "/cpay.v1.AuthService/ValidateCredential"
 )
 
 // AuthServiceClient is the client API for AuthService service.
@@ -34,7 +48,21 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type AuthServiceClient interface {
 	Login(ctx context.Context, in *LoginRequest, opts ...grpc.CallOption) (*LoginResponse, error)
+	Signup(ctx context.Context, in *SignupRequest, opts ...grpc.CallOption) (*AuthExchangeResponse, error)
 	Refresh(ctx context.Context, in *RefreshRequest, opts ...grpc.CallOption) (*RefreshResponse, error)
+	GoogleStart(ctx context.Context, in *GoogleStartRequest, opts ...grpc.CallOption) (*GoogleStartResponse, error)
+	GoogleConsume(ctx context.Context, in *GoogleConsumeRequest, opts ...grpc.CallOption) (*AuthExchangeResponse, error)
+	WalletChallenge(ctx context.Context, in *WalletChallengeRequest, opts ...grpc.CallOption) (*WalletChallengeResponse, error)
+	WalletVerify(ctx context.Context, in *WalletVerifyRequest, opts ...grpc.CallOption) (*AuthExchangeResponse, error)
+	BeginPasskeyRegistration(ctx context.Context, in *PasskeyOptionsRequest, opts ...grpc.CallOption) (*PasskeyOptionsResponse, error)
+	FinishPasskeyRegistration(ctx context.Context, in *PasskeyVerifyRequest, opts ...grpc.CallOption) (*ProfileSecurityResponse, error)
+	BeginPasskeyLogin(ctx context.Context, in *PasskeyOptionsRequest, opts ...grpc.CallOption) (*PasskeyOptionsResponse, error)
+	FinishPasskeyLogin(ctx context.Context, in *PasskeyVerifyRequest, opts ...grpc.CallOption) (*AuthExchangeResponse, error)
+	GetProfileSecurity(ctx context.Context, in *ProfileSecurityRequest, opts ...grpc.CallOption) (*ProfileSecurityResponse, error)
+	LinkGoogle(ctx context.Context, in *LinkGoogleRequest, opts ...grpc.CallOption) (*ProfileSecurityResponse, error)
+	LinkWallet(ctx context.Context, in *LinkWalletRequest, opts ...grpc.CallOption) (*ProfileSecurityResponse, error)
+	DeleteIdentity(ctx context.Context, in *DeleteIdentityRequest, opts ...grpc.CallOption) (*DeleteAuthMethodResponse, error)
+	DeletePasskey(ctx context.Context, in *DeletePasskeyRequest, opts ...grpc.CallOption) (*DeleteAuthMethodResponse, error)
 	CreateApiKey(ctx context.Context, in *CreateApiKeyRequest, opts ...grpc.CallOption) (*CreateApiKeyResponse, error)
 	ListApiKeys(ctx context.Context, in *ListApiKeysRequest, opts ...grpc.CallOption) (*ListApiKeysResponse, error)
 	RevokeApiKey(ctx context.Context, in *RevokeApiKeyRequest, opts ...grpc.CallOption) (*RevokeApiKeyResponse, error)
@@ -61,10 +89,150 @@ func (c *authServiceClient) Login(ctx context.Context, in *LoginRequest, opts ..
 	return out, nil
 }
 
+func (c *authServiceClient) Signup(ctx context.Context, in *SignupRequest, opts ...grpc.CallOption) (*AuthExchangeResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AuthExchangeResponse)
+	err := c.cc.Invoke(ctx, AuthService_Signup_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *authServiceClient) Refresh(ctx context.Context, in *RefreshRequest, opts ...grpc.CallOption) (*RefreshResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(RefreshResponse)
 	err := c.cc.Invoke(ctx, AuthService_Refresh_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *authServiceClient) GoogleStart(ctx context.Context, in *GoogleStartRequest, opts ...grpc.CallOption) (*GoogleStartResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GoogleStartResponse)
+	err := c.cc.Invoke(ctx, AuthService_GoogleStart_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *authServiceClient) GoogleConsume(ctx context.Context, in *GoogleConsumeRequest, opts ...grpc.CallOption) (*AuthExchangeResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AuthExchangeResponse)
+	err := c.cc.Invoke(ctx, AuthService_GoogleConsume_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *authServiceClient) WalletChallenge(ctx context.Context, in *WalletChallengeRequest, opts ...grpc.CallOption) (*WalletChallengeResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(WalletChallengeResponse)
+	err := c.cc.Invoke(ctx, AuthService_WalletChallenge_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *authServiceClient) WalletVerify(ctx context.Context, in *WalletVerifyRequest, opts ...grpc.CallOption) (*AuthExchangeResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AuthExchangeResponse)
+	err := c.cc.Invoke(ctx, AuthService_WalletVerify_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *authServiceClient) BeginPasskeyRegistration(ctx context.Context, in *PasskeyOptionsRequest, opts ...grpc.CallOption) (*PasskeyOptionsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PasskeyOptionsResponse)
+	err := c.cc.Invoke(ctx, AuthService_BeginPasskeyRegistration_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *authServiceClient) FinishPasskeyRegistration(ctx context.Context, in *PasskeyVerifyRequest, opts ...grpc.CallOption) (*ProfileSecurityResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ProfileSecurityResponse)
+	err := c.cc.Invoke(ctx, AuthService_FinishPasskeyRegistration_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *authServiceClient) BeginPasskeyLogin(ctx context.Context, in *PasskeyOptionsRequest, opts ...grpc.CallOption) (*PasskeyOptionsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PasskeyOptionsResponse)
+	err := c.cc.Invoke(ctx, AuthService_BeginPasskeyLogin_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *authServiceClient) FinishPasskeyLogin(ctx context.Context, in *PasskeyVerifyRequest, opts ...grpc.CallOption) (*AuthExchangeResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AuthExchangeResponse)
+	err := c.cc.Invoke(ctx, AuthService_FinishPasskeyLogin_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *authServiceClient) GetProfileSecurity(ctx context.Context, in *ProfileSecurityRequest, opts ...grpc.CallOption) (*ProfileSecurityResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ProfileSecurityResponse)
+	err := c.cc.Invoke(ctx, AuthService_GetProfileSecurity_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *authServiceClient) LinkGoogle(ctx context.Context, in *LinkGoogleRequest, opts ...grpc.CallOption) (*ProfileSecurityResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ProfileSecurityResponse)
+	err := c.cc.Invoke(ctx, AuthService_LinkGoogle_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *authServiceClient) LinkWallet(ctx context.Context, in *LinkWalletRequest, opts ...grpc.CallOption) (*ProfileSecurityResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ProfileSecurityResponse)
+	err := c.cc.Invoke(ctx, AuthService_LinkWallet_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *authServiceClient) DeleteIdentity(ctx context.Context, in *DeleteIdentityRequest, opts ...grpc.CallOption) (*DeleteAuthMethodResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DeleteAuthMethodResponse)
+	err := c.cc.Invoke(ctx, AuthService_DeleteIdentity_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *authServiceClient) DeletePasskey(ctx context.Context, in *DeletePasskeyRequest, opts ...grpc.CallOption) (*DeleteAuthMethodResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DeleteAuthMethodResponse)
+	err := c.cc.Invoke(ctx, AuthService_DeletePasskey_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -136,7 +304,21 @@ func (c *authServiceClient) ValidateCredential(ctx context.Context, in *Validate
 // for forward compatibility.
 type AuthServiceServer interface {
 	Login(context.Context, *LoginRequest) (*LoginResponse, error)
+	Signup(context.Context, *SignupRequest) (*AuthExchangeResponse, error)
 	Refresh(context.Context, *RefreshRequest) (*RefreshResponse, error)
+	GoogleStart(context.Context, *GoogleStartRequest) (*GoogleStartResponse, error)
+	GoogleConsume(context.Context, *GoogleConsumeRequest) (*AuthExchangeResponse, error)
+	WalletChallenge(context.Context, *WalletChallengeRequest) (*WalletChallengeResponse, error)
+	WalletVerify(context.Context, *WalletVerifyRequest) (*AuthExchangeResponse, error)
+	BeginPasskeyRegistration(context.Context, *PasskeyOptionsRequest) (*PasskeyOptionsResponse, error)
+	FinishPasskeyRegistration(context.Context, *PasskeyVerifyRequest) (*ProfileSecurityResponse, error)
+	BeginPasskeyLogin(context.Context, *PasskeyOptionsRequest) (*PasskeyOptionsResponse, error)
+	FinishPasskeyLogin(context.Context, *PasskeyVerifyRequest) (*AuthExchangeResponse, error)
+	GetProfileSecurity(context.Context, *ProfileSecurityRequest) (*ProfileSecurityResponse, error)
+	LinkGoogle(context.Context, *LinkGoogleRequest) (*ProfileSecurityResponse, error)
+	LinkWallet(context.Context, *LinkWalletRequest) (*ProfileSecurityResponse, error)
+	DeleteIdentity(context.Context, *DeleteIdentityRequest) (*DeleteAuthMethodResponse, error)
+	DeletePasskey(context.Context, *DeletePasskeyRequest) (*DeleteAuthMethodResponse, error)
 	CreateApiKey(context.Context, *CreateApiKeyRequest) (*CreateApiKeyResponse, error)
 	ListApiKeys(context.Context, *ListApiKeysRequest) (*ListApiKeysResponse, error)
 	RevokeApiKey(context.Context, *RevokeApiKeyRequest) (*RevokeApiKeyResponse, error)
@@ -156,8 +338,50 @@ type UnimplementedAuthServiceServer struct{}
 func (UnimplementedAuthServiceServer) Login(context.Context, *LoginRequest) (*LoginResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Login not implemented")
 }
+func (UnimplementedAuthServiceServer) Signup(context.Context, *SignupRequest) (*AuthExchangeResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Signup not implemented")
+}
 func (UnimplementedAuthServiceServer) Refresh(context.Context, *RefreshRequest) (*RefreshResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Refresh not implemented")
+}
+func (UnimplementedAuthServiceServer) GoogleStart(context.Context, *GoogleStartRequest) (*GoogleStartResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GoogleStart not implemented")
+}
+func (UnimplementedAuthServiceServer) GoogleConsume(context.Context, *GoogleConsumeRequest) (*AuthExchangeResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GoogleConsume not implemented")
+}
+func (UnimplementedAuthServiceServer) WalletChallenge(context.Context, *WalletChallengeRequest) (*WalletChallengeResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method WalletChallenge not implemented")
+}
+func (UnimplementedAuthServiceServer) WalletVerify(context.Context, *WalletVerifyRequest) (*AuthExchangeResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method WalletVerify not implemented")
+}
+func (UnimplementedAuthServiceServer) BeginPasskeyRegistration(context.Context, *PasskeyOptionsRequest) (*PasskeyOptionsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method BeginPasskeyRegistration not implemented")
+}
+func (UnimplementedAuthServiceServer) FinishPasskeyRegistration(context.Context, *PasskeyVerifyRequest) (*ProfileSecurityResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method FinishPasskeyRegistration not implemented")
+}
+func (UnimplementedAuthServiceServer) BeginPasskeyLogin(context.Context, *PasskeyOptionsRequest) (*PasskeyOptionsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method BeginPasskeyLogin not implemented")
+}
+func (UnimplementedAuthServiceServer) FinishPasskeyLogin(context.Context, *PasskeyVerifyRequest) (*AuthExchangeResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method FinishPasskeyLogin not implemented")
+}
+func (UnimplementedAuthServiceServer) GetProfileSecurity(context.Context, *ProfileSecurityRequest) (*ProfileSecurityResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetProfileSecurity not implemented")
+}
+func (UnimplementedAuthServiceServer) LinkGoogle(context.Context, *LinkGoogleRequest) (*ProfileSecurityResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method LinkGoogle not implemented")
+}
+func (UnimplementedAuthServiceServer) LinkWallet(context.Context, *LinkWalletRequest) (*ProfileSecurityResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method LinkWallet not implemented")
+}
+func (UnimplementedAuthServiceServer) DeleteIdentity(context.Context, *DeleteIdentityRequest) (*DeleteAuthMethodResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DeleteIdentity not implemented")
+}
+func (UnimplementedAuthServiceServer) DeletePasskey(context.Context, *DeletePasskeyRequest) (*DeleteAuthMethodResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DeletePasskey not implemented")
 }
 func (UnimplementedAuthServiceServer) CreateApiKey(context.Context, *CreateApiKeyRequest) (*CreateApiKeyResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CreateApiKey not implemented")
@@ -216,6 +440,24 @@ func _AuthService_Login_Handler(srv interface{}, ctx context.Context, dec func(i
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AuthService_Signup_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SignupRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AuthServiceServer).Signup(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AuthService_Signup_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthServiceServer).Signup(ctx, req.(*SignupRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _AuthService_Refresh_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(RefreshRequest)
 	if err := dec(in); err != nil {
@@ -230,6 +472,240 @@ func _AuthService_Refresh_Handler(srv interface{}, ctx context.Context, dec func
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(AuthServiceServer).Refresh(ctx, req.(*RefreshRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AuthService_GoogleStart_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GoogleStartRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AuthServiceServer).GoogleStart(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AuthService_GoogleStart_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthServiceServer).GoogleStart(ctx, req.(*GoogleStartRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AuthService_GoogleConsume_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GoogleConsumeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AuthServiceServer).GoogleConsume(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AuthService_GoogleConsume_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthServiceServer).GoogleConsume(ctx, req.(*GoogleConsumeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AuthService_WalletChallenge_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(WalletChallengeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AuthServiceServer).WalletChallenge(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AuthService_WalletChallenge_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthServiceServer).WalletChallenge(ctx, req.(*WalletChallengeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AuthService_WalletVerify_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(WalletVerifyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AuthServiceServer).WalletVerify(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AuthService_WalletVerify_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthServiceServer).WalletVerify(ctx, req.(*WalletVerifyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AuthService_BeginPasskeyRegistration_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PasskeyOptionsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AuthServiceServer).BeginPasskeyRegistration(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AuthService_BeginPasskeyRegistration_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthServiceServer).BeginPasskeyRegistration(ctx, req.(*PasskeyOptionsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AuthService_FinishPasskeyRegistration_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PasskeyVerifyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AuthServiceServer).FinishPasskeyRegistration(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AuthService_FinishPasskeyRegistration_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthServiceServer).FinishPasskeyRegistration(ctx, req.(*PasskeyVerifyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AuthService_BeginPasskeyLogin_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PasskeyOptionsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AuthServiceServer).BeginPasskeyLogin(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AuthService_BeginPasskeyLogin_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthServiceServer).BeginPasskeyLogin(ctx, req.(*PasskeyOptionsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AuthService_FinishPasskeyLogin_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PasskeyVerifyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AuthServiceServer).FinishPasskeyLogin(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AuthService_FinishPasskeyLogin_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthServiceServer).FinishPasskeyLogin(ctx, req.(*PasskeyVerifyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AuthService_GetProfileSecurity_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ProfileSecurityRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AuthServiceServer).GetProfileSecurity(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AuthService_GetProfileSecurity_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthServiceServer).GetProfileSecurity(ctx, req.(*ProfileSecurityRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AuthService_LinkGoogle_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(LinkGoogleRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AuthServiceServer).LinkGoogle(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AuthService_LinkGoogle_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthServiceServer).LinkGoogle(ctx, req.(*LinkGoogleRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AuthService_LinkWallet_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(LinkWalletRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AuthServiceServer).LinkWallet(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AuthService_LinkWallet_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthServiceServer).LinkWallet(ctx, req.(*LinkWalletRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AuthService_DeleteIdentity_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteIdentityRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AuthServiceServer).DeleteIdentity(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AuthService_DeleteIdentity_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthServiceServer).DeleteIdentity(ctx, req.(*DeleteIdentityRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AuthService_DeletePasskey_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeletePasskeyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AuthServiceServer).DeletePasskey(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AuthService_DeletePasskey_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthServiceServer).DeletePasskey(ctx, req.(*DeletePasskeyRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -354,8 +830,64 @@ var AuthService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _AuthService_Login_Handler,
 		},
 		{
+			MethodName: "Signup",
+			Handler:    _AuthService_Signup_Handler,
+		},
+		{
 			MethodName: "Refresh",
 			Handler:    _AuthService_Refresh_Handler,
+		},
+		{
+			MethodName: "GoogleStart",
+			Handler:    _AuthService_GoogleStart_Handler,
+		},
+		{
+			MethodName: "GoogleConsume",
+			Handler:    _AuthService_GoogleConsume_Handler,
+		},
+		{
+			MethodName: "WalletChallenge",
+			Handler:    _AuthService_WalletChallenge_Handler,
+		},
+		{
+			MethodName: "WalletVerify",
+			Handler:    _AuthService_WalletVerify_Handler,
+		},
+		{
+			MethodName: "BeginPasskeyRegistration",
+			Handler:    _AuthService_BeginPasskeyRegistration_Handler,
+		},
+		{
+			MethodName: "FinishPasskeyRegistration",
+			Handler:    _AuthService_FinishPasskeyRegistration_Handler,
+		},
+		{
+			MethodName: "BeginPasskeyLogin",
+			Handler:    _AuthService_BeginPasskeyLogin_Handler,
+		},
+		{
+			MethodName: "FinishPasskeyLogin",
+			Handler:    _AuthService_FinishPasskeyLogin_Handler,
+		},
+		{
+			MethodName: "GetProfileSecurity",
+			Handler:    _AuthService_GetProfileSecurity_Handler,
+		},
+		{
+			MethodName: "LinkGoogle",
+			Handler:    _AuthService_LinkGoogle_Handler,
+		},
+		{
+			MethodName: "LinkWallet",
+			Handler:    _AuthService_LinkWallet_Handler,
+		},
+		{
+			MethodName: "DeleteIdentity",
+			Handler:    _AuthService_DeleteIdentity_Handler,
+		},
+		{
+			MethodName: "DeletePasskey",
+			Handler:    _AuthService_DeletePasskey_Handler,
 		},
 		{
 			MethodName: "CreateApiKey",

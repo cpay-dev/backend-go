@@ -23,6 +23,7 @@ message UserInfo {
   string id = 1;
   string merchant_id = 2;
   string role = 3;
+  string email = 4;
 }
 
 message MerchantSettings {
@@ -38,6 +39,26 @@ message LoginRequest {
 message LoginResponse {
   TokenPair tokens = 1;
   UserInfo user = 2;
+}
+
+message SignupRequest {
+  string merchant_name = 1;
+  string shop_name = 2;
+  string shop_url = 3;
+  string shop_description = 4;
+  string contact_name = 5;
+  string email = 6;
+  string password = 7;
+  string onboarding_token = 8;
+}
+
+message AuthExchangeResponse {
+  TokenPair tokens = 1;
+  UserInfo user = 2;
+  bool onboarding_required = 3;
+  string onboarding_token = 4;
+  string email = 5;
+  string provider = 6;
 }
 
 message RefreshRequest {
@@ -104,6 +125,116 @@ message UpdateMerchantSettingsResponse {
   MerchantSettings settings = 1;
 }
 
+message GoogleStartRequest {
+  string redirect_uri = 1;
+}
+
+message GoogleStartResponse {
+  string authorization_url = 1;
+  string state = 2;
+}
+
+message GoogleConsumeRequest {
+  string code = 1;
+  string state = 2;
+  string redirect_uri = 3;
+}
+
+message WalletChallengeRequest {
+  string address = 1;
+  string chain_id = 2;
+}
+
+message WalletChallengeResponse {
+  string challenge_id = 1;
+  string message = 2;
+}
+
+message WalletVerifyRequest {
+  string challenge_id = 1;
+  string address = 2;
+  string chain_id = 3;
+  string message = 4;
+  string signature = 5;
+}
+
+message PasskeyOptionsRequest {
+  string email = 1;
+  string user_id = 2;
+}
+
+message PasskeyOptionsResponse {
+  string challenge_id = 1;
+  string public_key_json = 2;
+}
+
+message PasskeyVerifyRequest {
+  string challenge_id = 1;
+  string credential_json = 2;
+}
+
+message Identity {
+  string id = 1;
+  string provider = 2;
+  string provider_subject = 3;
+  string email = 4;
+  string display_name = 5;
+  string created_at = 6;
+}
+
+message PasskeyCredentialInfo {
+  string id = 1;
+  string credential_id = 2;
+  string name = 3;
+  string created_at = 4;
+  string last_used_at = 5;
+}
+
+message ProfileSecurityRequest {
+  string user_id = 1;
+  string merchant_id = 2;
+}
+
+message ProfileSecurityResponse {
+  repeated Identity identities = 1;
+  repeated PasskeyCredentialInfo passkeys = 2;
+}
+
+message DeleteIdentityRequest {
+  string user_id = 1;
+  string merchant_id = 2;
+  string id = 3;
+}
+
+message DeletePasskeyRequest {
+  string user_id = 1;
+  string merchant_id = 2;
+  string id = 3;
+}
+
+message DeleteAuthMethodResponse {
+  string id = 1;
+  bool deleted = 2;
+}
+
+message LinkGoogleRequest {
+  string user_id = 1;
+  string merchant_id = 2;
+  string code = 3;
+  string state = 4;
+  string redirect_uri = 5;
+}
+
+message LinkWalletRequest {
+  string user_id = 1;
+  string merchant_id = 2;
+  string challenge_id = 3;
+  string address = 4;
+  string chain_id = 5;
+  string message = 6;
+  string signature = 7;
+}
+
 message ValidateCredentialRequest {
   string authorization = 1;
   string api_key = 2;
@@ -115,7 +246,21 @@ message ValidateCredentialResponse {
 
 service AuthService {
   rpc Login(LoginRequest) returns (LoginResponse);
+  rpc Signup(SignupRequest) returns (AuthExchangeResponse);
   rpc Refresh(RefreshRequest) returns (RefreshResponse);
+  rpc GoogleStart(GoogleStartRequest) returns (GoogleStartResponse);
+  rpc GoogleConsume(GoogleConsumeRequest) returns (AuthExchangeResponse);
+  rpc WalletChallenge(WalletChallengeRequest) returns (WalletChallengeResponse);
+  rpc WalletVerify(WalletVerifyRequest) returns (AuthExchangeResponse);
+  rpc BeginPasskeyRegistration(PasskeyOptionsRequest) returns (PasskeyOptionsResponse);
+  rpc FinishPasskeyRegistration(PasskeyVerifyRequest) returns (ProfileSecurityResponse);
+  rpc BeginPasskeyLogin(PasskeyOptionsRequest) returns (PasskeyOptionsResponse);
+  rpc FinishPasskeyLogin(PasskeyVerifyRequest) returns (AuthExchangeResponse);
+  rpc GetProfileSecurity(ProfileSecurityRequest) returns (ProfileSecurityResponse);
+  rpc LinkGoogle(LinkGoogleRequest) returns (ProfileSecurityResponse);
+  rpc LinkWallet(LinkWalletRequest) returns (ProfileSecurityResponse);
+  rpc DeleteIdentity(DeleteIdentityRequest) returns (DeleteAuthMethodResponse);
+  rpc DeletePasskey(DeletePasskeyRequest) returns (DeleteAuthMethodResponse);
   rpc CreateApiKey(CreateApiKeyRequest) returns (CreateApiKeyResponse);
   rpc ListApiKeys(ListApiKeysRequest) returns (ListApiKeysResponse);
   rpc RevokeApiKey(RevokeApiKeyRequest) returns (RevokeApiKeyResponse);

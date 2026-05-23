@@ -88,6 +88,13 @@ func (s *Server) Router() http.Handler {
 	r.Route("/v1", func(r chi.Router) {
 		r.Post("/auth/login", s.handleLogin)
 		r.Post("/auth/refresh", s.handleRefresh)
+		r.Post("/auth/signup", s.handleSignup)
+		r.Post("/auth/google/start", s.handleGoogleStart)
+		r.Post("/auth/google/consume", s.handleGoogleConsume)
+		r.Post("/auth/wallet/challenge", s.handleWalletChallenge)
+		r.Post("/auth/wallet/verify", s.handleWalletVerify)
+		r.Post("/auth/passkeys/login/options", s.handleBeginPasskeyLogin)
+		r.Post("/auth/passkeys/login/verify", s.handleFinishPasskeyLogin)
 
 		r.Get("/public/payment_links/{code}", s.handleGetPublicPaymentLink)
 		r.Get("/public/products/{id}", s.handleGetPublicProduct)
@@ -102,6 +109,13 @@ func (s *Server) Router() http.Handler {
 			r.Use(s.authn)
 
 			r.Get("/me", s.handleMe)
+			r.Get("/profile/security", s.handleGetProfileSecurity)
+			r.Post("/profile/security/google/consume", s.handleLinkGoogle)
+			r.Post("/profile/security/wallet/verify", s.handleLinkWallet)
+			r.Delete("/profile/security/identities/{id}", s.handleDeleteIdentity)
+			r.Delete("/profile/security/passkeys/{id}", s.handleDeletePasskey)
+			r.Post("/auth/passkeys/register/options", s.handleBeginPasskeyRegistration)
+			r.Post("/auth/passkeys/register/verify", s.handleFinishPasskeyRegistration)
 			r.Get("/merchant/settings", s.handleGetMerchantSettings)
 			r.Patch("/merchant/settings", s.handleUpdateMerchantSettings)
 

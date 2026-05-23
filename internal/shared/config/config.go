@@ -21,6 +21,13 @@ type Config struct {
 	JWTAccessTTL  time.Duration
 	JWTRefreshTTL time.Duration
 
+	PublicWebOrigin    string
+	WebAuthnRPID       string
+	WebAuthnRPName     string
+	GoogleClientID     string
+	GoogleClientSecret string
+	GoogleRedirectURI  string
+
 	EncryptionKey string
 
 	MinIOEndpoint  string
@@ -117,6 +124,13 @@ func Load(serviceName string) Config {
 		JWTSecret:     getEnv("JWT_SECRET", "cpay-dev-jwt-secret"),
 		JWTAccessTTL:  getDuration("JWT_ACCESS_TTL", 15*time.Minute),
 		JWTRefreshTTL: getDuration("JWT_REFRESH_TTL", 24*time.Hour*30),
+
+		PublicWebOrigin:    strings.TrimRight(getEnv("PUBLIC_WEB_ORIGIN", "http://localhost:3000"), "/"),
+		WebAuthnRPID:       getEnv("WEBAUTHN_RP_ID", "localhost"),
+		WebAuthnRPName:     getEnv("WEBAUTHN_RP_NAME", "cpay.dev"),
+		GoogleClientID:     getEnv("GOOGLE_CLIENT_ID", ""),
+		GoogleClientSecret: getEnv("GOOGLE_CLIENT_SECRET", ""),
+		GoogleRedirectURI:  getEnv("GOOGLE_REDIRECT_URI", "http://localhost:3000/oauth/consume"),
 
 		EncryptionKey: getEnv("KEY_ENCRYPTION_KEY", "cpay-dev-master-key-change-me"),
 
