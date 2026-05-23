@@ -34,13 +34,12 @@ type createProductRequest struct {
 }
 
 type updateProductRequest struct {
-	Name            *string                   `json:"name,omitempty"`
-	Description     *string                   `json:"description,omitempty"`
-	ImageURL        *string                   `json:"image_url,omitempty"`
-	DefaultCurrency *string                   `json:"default_currency,omitempty"`
-	DefaultAmount   *float64                  `json:"default_amount,omitempty"`
-	AllowedTokens   []paymentLinkAllowedToken `json:"allowed_tokens,omitempty"`
-	Metadata        *map[string]any           `json:"metadata,omitempty"`
+	Name            *string         `json:"name,omitempty"`
+	Description     *string         `json:"description,omitempty"`
+	ImageURL        *string         `json:"image_url,omitempty"`
+	DefaultCurrency *string         `json:"default_currency,omitempty"`
+	DefaultAmount   *float64        `json:"default_amount,omitempty"`
+	Metadata        *map[string]any `json:"metadata,omitempty"`
 }
 
 func (s *Server) handleCreateProduct(w http.ResponseWriter, r *http.Request) {
@@ -87,10 +86,9 @@ func (s *Server) handleCreateProduct(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return 0, nil, rpcx.E(codes.Internal, "internal_error", "failed to create product")
 		}
-		if err := s.createDefaultPaymentLinkForProduct(r.Context(), reqAuth.MerchantID, productID, name, description, imageURL, currency, defaultAmount, metadataJSON, req.AllowedTokens); err != nil {
-			return 0, nil, rpcx.E(codes.Internal, "internal_error", "failed to create product payment link")
+		if err := s.createProductCheckoutLink(r.Context(), reqAuth.MerchantID, productID, name, description, imageURL, currency, defaultAmount, metadataJSON, req.AllowedTokens); err != nil {
+			return 0, nil, rpcx.E(codes.Internal, "internal_error", "failed to create product checkout link")
 		}
-
 		payload, found, err := s.fetchProduct(r.Context(), reqAuth.MerchantID, productID)
 		if err != nil {
 			return 0, nil, rpcx.E(codes.Internal, "internal_error", "failed to fetch created product")
@@ -283,12 +281,6 @@ func (s *Server) handleUpdateProduct(w http.ResponseWriter, r *http.Request) {
 		if tag.RowsAffected() == 0 {
 			return 0, nil, rpcx.E(codes.NotFound, "not_found", "product not found")
 		}
-		if req.AllowedTokens != nil {
-			if err := s.updateProductPaymentLinkAllowedTokens(r.Context(), reqAuth.MerchantID, id, req.AllowedTokens); err != nil {
-				return 0, nil, rpcx.E(codes.Internal, "internal_error", "failed to update product payment link")
-			}
-		}
-
 		product, found, err := s.fetchProduct(r.Context(), reqAuth.MerchantID, id)
 		if err != nil {
 			return 0, nil, rpcx.E(codes.Internal, "internal_error", "failed to fetch updated product")
@@ -526,7 +518,7 @@ func scanProductRow(scanner interface {
 	}, nil
 }
 
-func (s *Server) createDefaultPaymentLinkForProduct(
+func (s *Server) createProductCheckoutLink(
 	ctx context.Context,
 	merchantID string,
 	productID string,
@@ -538,7 +530,7 @@ func (s *Server) createDefaultPaymentLinkForProduct(
 	metadataJSON string,
 	allowedTokens []paymentLinkAllowedToken,
 ) error {
-	code, err := newProductPaymentLinkCode()
+	code, err := newProductCheckoutCode()
 	if err != nil {
 		return err
 	}
@@ -547,6 +539,10 @@ func (s *Server) createDefaultPaymentLinkForProduct(
 		pricingMode = "open"
 	}
 	allowedTokensJSON, err := productAllowedTokensJSON(allowedTokens)
+	if err != nil {
+		return err
+	}
+	linkMetadataJSON, err := productCheckoutMetadataJSON(metadataJSON)
 	if err != nil {
 		return err
 	}
@@ -562,7 +558,7 @@ func (s *Server) createDefaultPaymentLinkForProduct(
 			TRUE, 'Pay', 'confirmation_page', 'active', $11::jsonb, '[]'::jsonb, '[]'::jsonb, $12::jsonb,
 			NOW(), NOW()
 		)
-	`, linkID, merchantID, productID, code, title, description, imageURL, pricingMode, amount, currency, allowedTokensJSON, metadataJSON)
+	`, linkID, merchantID, productID, code, title, description, imageURL, pricingMode, amount, currency, allowedTokensJSON, linkMetadataJSON)
 	if err != nil {
 		return err
 	}
@@ -570,19 +566,6 @@ func (s *Server) createDefaultPaymentLinkForProduct(
 		INSERT INTO catalog.link_options(payment_link_id, collect_email, metadata)
 		VALUES($1, TRUE, '{}'::jsonb)
 	`, linkID)
-	return err
-}
-
-func (s *Server) updateProductPaymentLinkAllowedTokens(ctx context.Context, merchantID string, productID string, allowedTokens []paymentLinkAllowedToken) error {
-	allowedTokensJSON, err := productAllowedTokensJSON(allowedTokens)
-	if err != nil {
-		return err
-	}
-	_, err = s.db.Exec(ctx, `
-		UPDATE catalog.payment_links
-		SET allowed_tokens=$3::jsonb, updated_at=NOW()
-		WHERE merchant_id=$1 AND product_id::text=$2 AND status!='archived'
-	`, merchantID, productID, allowedTokensJSON)
 	return err
 }
 
@@ -608,7 +591,25 @@ func productAllowedTokensJSON(allowedTokens []paymentLinkAllowedToken) (string, 
 	return string(raw), nil
 }
 
-func newProductPaymentLinkCode() (string, error) {
+func productCheckoutMetadataJSON(productMetadataJSON string) (string, error) {
+	var metadata map[string]any
+	if strings.TrimSpace(productMetadataJSON) != "" {
+		if err := json.Unmarshal([]byte(productMetadataJSON), &metadata); err != nil {
+			return "", err
+		}
+	}
+	if metadata == nil {
+		metadata = map[string]any{}
+	}
+	metadata["entity_type"] = "product_checkout"
+	raw, err := json.Marshal(metadata)
+	if err != nil {
+		return "", err
+	}
+	return string(raw), nil
+}
+
+func newProductCheckoutCode() (string, error) {
 	const alphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 	const length = 16
 	buf := make([]byte, length)
