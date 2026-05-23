@@ -311,6 +311,7 @@ type CreateCheckoutSessionResponse struct {
 	AfterPaymentType        string                 `protobuf:"bytes,14,opt,name=after_payment_type,json=afterPaymentType,proto3" json:"after_payment_type,omitempty"`
 	AfterPaymentRedirectUrl string                 `protobuf:"bytes,15,opt,name=after_payment_redirect_url,json=afterPaymentRedirectUrl,proto3" json:"after_payment_redirect_url,omitempty"`
 	ClientSecret            string                 `protobuf:"bytes,16,opt,name=client_secret,json=clientSecret,proto3" json:"client_secret,omitempty"`
+	ExpectedAmount          float64                `protobuf:"fixed64,17,opt,name=expected_amount,json=expectedAmount,proto3" json:"expected_amount,omitempty"`
 	unknownFields           protoimpl.UnknownFields
 	sizeCache               protoimpl.SizeCache
 }
@@ -455,6 +456,13 @@ func (x *CreateCheckoutSessionResponse) GetClientSecret() string {
 		return x.ClientSecret
 	}
 	return ""
+}
+
+func (x *CreateCheckoutSessionResponse) GetExpectedAmount() float64 {
+	if x != nil {
+		return x.ExpectedAmount
+	}
+	return 0
 }
 
 type CheckoutSession struct {
@@ -2371,7 +2379,7 @@ const file_cpay_v1_checkout_proto_rawDesc = "" +
 	"successUrl\x12$\n" +
 	"\x0eexpires_in_sec\x18\v \x01(\x05R\fexpiresInSec\x12#\n" +
 	"\rmetadata_json\x18\f \x01(\tR\fmetadataJsonB\t\n" +
-	"\a_amount\"\xf9\x04\n" +
+	"\a_amount\"\xa2\x05\n" +
 	"\x1dCreateCheckoutSessionResponse\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12*\n" +
 	"\x11payment_intent_id\x18\x02 \x01(\tR\x0fpaymentIntentId\x12*\n" +
@@ -2390,7 +2398,8 @@ const file_cpay_v1_checkout_proto_rawDesc = "" +
 	"expires_at\x18\r \x01(\tR\texpiresAt\x12,\n" +
 	"\x12after_payment_type\x18\x0e \x01(\tR\x10afterPaymentType\x12;\n" +
 	"\x1aafter_payment_redirect_url\x18\x0f \x01(\tR\x17afterPaymentRedirectUrl\x12#\n" +
-	"\rclient_secret\x18\x10 \x01(\tR\fclientSecret\"\xb8\x04\n" +
+	"\rclient_secret\x18\x10 \x01(\tR\fclientSecret\x12'\n" +
+	"\x0fexpected_amount\x18\x11 \x01(\x01R\x0eexpectedAmount\"\xb8\x04\n" +
 	"\x0fCheckoutSession\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12&\n" +
 	"\x0fpayment_link_id\x18\x02 \x01(\tR\rpaymentLinkId\x12\x16\n" +

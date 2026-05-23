@@ -3,6 +3,7 @@ package gateway
 import (
 	"context"
 	"crypto/rand"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -23,21 +24,23 @@ import (
 const maxProductImageBytes = 5 << 20
 
 type createProductRequest struct {
-	Name            string         `json:"name"`
-	Description     string         `json:"description,omitempty"`
-	ImageURL        string         `json:"image_url,omitempty"`
-	DefaultCurrency string         `json:"default_currency,omitempty"`
-	DefaultAmount   *float64       `json:"default_amount,omitempty"`
-	Metadata        map[string]any `json:"metadata,omitempty"`
+	Name            string                    `json:"name"`
+	Description     string                    `json:"description,omitempty"`
+	ImageURL        string                    `json:"image_url,omitempty"`
+	DefaultCurrency string                    `json:"default_currency,omitempty"`
+	DefaultAmount   *float64                  `json:"default_amount,omitempty"`
+	AllowedTokens   []paymentLinkAllowedToken `json:"allowed_tokens,omitempty"`
+	Metadata        map[string]any            `json:"metadata,omitempty"`
 }
 
 type updateProductRequest struct {
-	Name            *string         `json:"name,omitempty"`
-	Description     *string         `json:"description,omitempty"`
-	ImageURL        *string         `json:"image_url,omitempty"`
-	DefaultCurrency *string         `json:"default_currency,omitempty"`
-	DefaultAmount   *float64        `json:"default_amount,omitempty"`
-	Metadata        *map[string]any `json:"metadata,omitempty"`
+	Name            *string                   `json:"name,omitempty"`
+	Description     *string                   `json:"description,omitempty"`
+	ImageURL        *string                   `json:"image_url,omitempty"`
+	DefaultCurrency *string                   `json:"default_currency,omitempty"`
+	DefaultAmount   *float64                  `json:"default_amount,omitempty"`
+	AllowedTokens   []paymentLinkAllowedToken `json:"allowed_tokens,omitempty"`
+	Metadata        *map[string]any           `json:"metadata,omitempty"`
 }
 
 func (s *Server) handleCreateProduct(w http.ResponseWriter, r *http.Request) {
@@ -84,7 +87,7 @@ func (s *Server) handleCreateProduct(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return 0, nil, rpcx.E(codes.Internal, "internal_error", "failed to create product")
 		}
-		if err := s.createDefaultPaymentLinkForProduct(r.Context(), reqAuth.MerchantID, productID, name, description, imageURL, currency, defaultAmount, metadataJSON); err != nil {
+		if err := s.createDefaultPaymentLinkForProduct(r.Context(), reqAuth.MerchantID, productID, name, description, imageURL, currency, defaultAmount, metadataJSON, req.AllowedTokens); err != nil {
 			return 0, nil, rpcx.E(codes.Internal, "internal_error", "failed to create product payment link")
 		}
 
@@ -120,10 +123,10 @@ func (s *Server) handleListProducts(w http.ResponseWriter, r *http.Request) {
 
 	rows, err := s.db.Query(r.Context(), `
 		SELECT p.id::text, p.name, p.description, p.image_url, p.default_currency, COALESCE(p.default_amount::text, ''), p.metadata, p.created_at, p.updated_at,
-			active_link.code
+			active_link.code, COALESCE(active_link.allowed_tokens, '[]'::jsonb)
 		FROM catalog.products p
 		LEFT JOIN LATERAL (
-			SELECT code
+			SELECT code, allowed_tokens
 			FROM catalog.payment_links pl
 			WHERE pl.product_id=p.id AND pl.status='active' AND (pl.expires_at IS NULL OR pl.expires_at > NOW())
 			ORDER BY pl.created_at DESC
@@ -279,6 +282,11 @@ func (s *Server) handleUpdateProduct(w http.ResponseWriter, r *http.Request) {
 		}
 		if tag.RowsAffected() == 0 {
 			return 0, nil, rpcx.E(codes.NotFound, "not_found", "product not found")
+		}
+		if req.AllowedTokens != nil {
+			if err := s.updateProductPaymentLinkAllowedTokens(r.Context(), reqAuth.MerchantID, id, req.AllowedTokens); err != nil {
+				return 0, nil, rpcx.E(codes.Internal, "internal_error", "failed to update product payment link")
+			}
 		}
 
 		product, found, err := s.fetchProduct(r.Context(), reqAuth.MerchantID, id)
@@ -444,10 +452,10 @@ func (s *Server) handleGetProductImage(w http.ResponseWriter, r *http.Request) {
 func (s *Server) fetchProduct(ctx context.Context, merchantID string, id string) (map[string]any, bool, error) {
 	row := s.db.QueryRow(ctx, `
 		SELECT p.id::text, p.name, p.description, p.image_url, p.default_currency, COALESCE(p.default_amount::text, ''), p.metadata, p.created_at, p.updated_at,
-			active_link.code
+			active_link.code, COALESCE(active_link.allowed_tokens, '[]'::jsonb)
 		FROM catalog.products p
 		LEFT JOIN LATERAL (
-			SELECT code
+			SELECT code, allowed_tokens
 			FROM catalog.payment_links pl
 			WHERE pl.product_id=p.id AND pl.status='active' AND (pl.expires_at IS NULL OR pl.expires_at > NOW())
 			ORDER BY pl.created_at DESC
@@ -469,10 +477,10 @@ func (s *Server) fetchProduct(ctx context.Context, merchantID string, id string)
 func (s *Server) fetchPublicProduct(ctx context.Context, id string) (map[string]any, bool, error) {
 	row := s.db.QueryRow(ctx, `
 		SELECT p.id::text, p.name, p.description, p.image_url, p.default_currency, COALESCE(p.default_amount::text, ''), p.metadata, p.created_at, p.updated_at,
-			active_link.code
+			active_link.code, COALESCE(active_link.allowed_tokens, '[]'::jsonb)
 		FROM catalog.products p
 		LEFT JOIN LATERAL (
-			SELECT code
+			SELECT code, allowed_tokens
 			FROM catalog.payment_links pl
 			WHERE pl.product_id=p.id AND pl.status='active' AND (pl.expires_at IS NULL OR pl.expires_at > NOW())
 			ORDER BY pl.created_at DESC
@@ -496,9 +504,10 @@ func scanProductRow(scanner interface {
 }) (map[string]any, error) {
 	var productID, name, currency, amountRaw string
 	var description, imageURL, activePaymentLinkCode *string
+	var allowedTokensRaw []byte
 	var metadataRaw []byte
 	var createdAt, updatedAt time.Time
-	if err := scanner.Scan(&productID, &name, &description, &imageURL, &currency, &amountRaw, &metadataRaw, &createdAt, &updatedAt, &activePaymentLinkCode); err != nil {
+	if err := scanner.Scan(&productID, &name, &description, &imageURL, &currency, &amountRaw, &metadataRaw, &createdAt, &updatedAt, &activePaymentLinkCode, &allowedTokensRaw); err != nil {
 		return nil, err
 	}
 
@@ -513,6 +522,7 @@ func scanProductRow(scanner interface {
 		"created_at":               createdAt.UTC().Format(time.RFC3339Nano),
 		"updated_at":               updatedAt.UTC().Format(time.RFC3339Nano),
 		"active_payment_link_code": strPtrToAny(activePaymentLinkCode),
+		"allowed_tokens":           parseJSONValue(string(allowedTokensRaw), []any{}),
 	}, nil
 }
 
@@ -526,6 +536,7 @@ func (s *Server) createDefaultPaymentLinkForProduct(
 	currency string,
 	amount any,
 	metadataJSON string,
+	allowedTokens []paymentLinkAllowedToken,
 ) error {
 	code, err := newProductPaymentLinkCode()
 	if err != nil {
@@ -534,6 +545,10 @@ func (s *Server) createDefaultPaymentLinkForProduct(
 	pricingMode := "fixed"
 	if amount == nil {
 		pricingMode = "open"
+	}
+	allowedTokensJSON, err := productAllowedTokensJSON(allowedTokens)
+	if err != nil {
+		return err
 	}
 	linkID := ids.New()
 	_, err = s.db.Exec(ctx, `
@@ -544,10 +559,10 @@ func (s *Server) createDefaultPaymentLinkForProduct(
 		)
 		VALUES(
 			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-			TRUE, 'Pay', 'confirmation_page', 'active', '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, $11::jsonb,
+			TRUE, 'Pay', 'confirmation_page', 'active', $11::jsonb, '[]'::jsonb, '[]'::jsonb, $12::jsonb,
 			NOW(), NOW()
 		)
-	`, linkID, merchantID, productID, code, title, description, imageURL, pricingMode, amount, currency, metadataJSON)
+	`, linkID, merchantID, productID, code, title, description, imageURL, pricingMode, amount, currency, allowedTokensJSON, metadataJSON)
 	if err != nil {
 		return err
 	}
@@ -556,6 +571,41 @@ func (s *Server) createDefaultPaymentLinkForProduct(
 		VALUES($1, TRUE, '{}'::jsonb)
 	`, linkID)
 	return err
+}
+
+func (s *Server) updateProductPaymentLinkAllowedTokens(ctx context.Context, merchantID string, productID string, allowedTokens []paymentLinkAllowedToken) error {
+	allowedTokensJSON, err := productAllowedTokensJSON(allowedTokens)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(ctx, `
+		UPDATE catalog.payment_links
+		SET allowed_tokens=$3::jsonb, updated_at=NOW()
+		WHERE merchant_id=$1 AND product_id::text=$2 AND status!='archived'
+	`, merchantID, productID, allowedTokensJSON)
+	return err
+}
+
+func productAllowedTokensJSON(allowedTokens []paymentLinkAllowedToken) (string, error) {
+	tokens := make([]map[string]any, 0, len(allowedTokens))
+	for _, t := range allowedTokens {
+		chain := strings.TrimSpace(t.Chain)
+		symbol := strings.TrimSpace(t.Symbol)
+		if chain == "" || symbol == "" {
+			continue
+		}
+		tokens = append(tokens, map[string]any{
+			"chain":    chain,
+			"symbol":   strings.ToUpper(symbol),
+			"address":  strings.TrimSpace(t.Address),
+			"decimals": t.Decimals,
+		})
+	}
+	raw, err := json.Marshal(tokens)
+	if err != nil {
+		return "", err
+	}
+	return string(raw), nil
 }
 
 func newProductPaymentLinkCode() (string, error) {

@@ -52,6 +52,7 @@ message CreateCheckoutSessionResponse {
   string after_payment_type = 14;
   string after_payment_redirect_url = 15;
   string client_secret = 16;
+  double expected_amount = 17;
 }
 
 message CheckoutSession {

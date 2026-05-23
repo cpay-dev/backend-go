@@ -156,6 +156,7 @@ func checkoutSessionCreateToResponse(resp *cpayv1.CreateCheckoutSessionResponse)
 		"currency":              resp.GetCurrency(),
 		"chain":                 resp.GetChain(),
 		"token_symbol":          resp.GetTokenSymbol(),
+		"expected_amount":       resp.GetExpectedAmount(),
 		"deposit_address":       resp.GetDepositAddress(),
 		"tolerance_percent":     resp.GetTolerancePercent(),
 		"min_acceptable_amount": resp.GetMinAcceptableAmount(),
@@ -178,8 +179,12 @@ func browserWalletTransaction(resp *cpayv1.CreateCheckoutSessionResponse) (map[s
 	if !ok || !common.IsHexAddress(resp.GetDepositAddress()) {
 		return nil, 0, false
 	}
+	amount := resp.GetExpectedAmount()
+	if amount <= 0 {
+		amount = resp.GetAmount()
+	}
 	if decimals, ok := nativeTokenDecimals(resp.GetChain(), resp.GetTokenSymbol()); ok {
-		value, err := decimalToBaseUnitHex(strconv.FormatFloat(resp.GetAmount(), 'f', -1, 64), decimals)
+		value, err := decimalToBaseUnitHex(formatTokenAmount(amount, decimals), decimals)
 		if err != nil {
 			return nil, 0, false
 		}
@@ -195,7 +200,7 @@ func browserWalletTransaction(resp *cpayv1.CreateCheckoutSessionResponse) (map[s
 	if !ok || !common.IsHexAddress(contract.Address) {
 		return nil, 0, false
 	}
-	amount, err := decimalToBaseUnits(strconv.FormatFloat(resp.GetAmount(), 'f', -1, 64), contract.Decimals)
+	tokenAmount, err := decimalToBaseUnits(formatTokenAmount(amount, contract.Decimals), contract.Decimals)
 	if err != nil {
 		return nil, 0, false
 	}
@@ -203,8 +208,18 @@ func browserWalletTransaction(resp *cpayv1.CreateCheckoutSessionResponse) (map[s
 		"chain_id": chainID,
 		"to":       common.HexToAddress(contract.Address).Hex(),
 		"value":    "0x0",
-		"data":     erc20TransferData(resp.GetDepositAddress(), amount),
+		"data":     erc20TransferData(resp.GetDepositAddress(), tokenAmount),
 	}, contract.Decimals, true
+}
+
+func formatTokenAmount(amount float64, decimals int) string {
+	formatted := strconv.FormatFloat(amount, 'f', decimals, 64)
+	formatted = strings.TrimRight(formatted, "0")
+	formatted = strings.TrimRight(formatted, ".")
+	if formatted == "" {
+		return "0"
+	}
+	return formatted
 }
 
 func evmChainID(chainName string) (string, bool) {

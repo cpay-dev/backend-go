@@ -153,6 +153,25 @@ func TestCreatePublicCheckoutSessionHandlerMapsRequest(t *testing.T) {
 	}
 }
 
+func TestBrowserWalletTransactionUsesExpectedAmount(t *testing.T) {
+	walletTx, decimals, ok := browserWalletTransaction(&cpayv1.CreateCheckoutSessionResponse{
+		Amount:         0.01,
+		ExpectedAmount: 0.0001815293850692081,
+		Chain:          "hyperevm",
+		TokenSymbol:    "HYPE",
+		DepositAddress: "0x1111111111111111111111111111111111111111",
+	})
+	if !ok {
+		t.Fatalf("expected browser wallet transaction")
+	}
+	if decimals != 18 {
+		t.Fatalf("expected 18 decimals, got %d", decimals)
+	}
+	if walletTx["value"] != "0xa5199a836a98" {
+		t.Fatalf("expected quoted HYPE value, got %#v", walletTx["value"])
+	}
+}
+
 func TestGetPublicCheckoutSessionUsesSessionIDOnly(t *testing.T) {
 	var got *cpayv1.GetPublicCheckoutSessionRequest
 	client := newCheckoutTestClient(t, &checkoutHandlerTestServer{

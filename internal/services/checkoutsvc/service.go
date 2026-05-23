@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
@@ -255,8 +256,13 @@ func (s *Service) createSession(ctx context.Context, in createSessionInput) (*cp
 		sessionExpiresAt = *linkExpiresAt
 	}
 
+	expectedAmount, err := settlementAmountForToken(ctx, amount, currency, in.Chain, in.TokenSymbol)
+	if err != nil {
+		return nil, rpcx.E(codes.Unavailable, "quote_unavailable", err.Error())
+	}
+
 	requiredConf := s.cfg.ConfirmationForChain(in.Chain)
-	minAccept, maxAccept := payment.ComputeBounds(amount, s.cfg.DefaultTolerancePercent)
+	minAccept, maxAccept := payment.ComputeBounds(expectedAmount, s.cfg.DefaultTolerancePercent)
 	merchantID, _ := ids.Parse(merchantIDStr)
 	sessionID := ids.New()
 	intentID := ids.New()
@@ -325,7 +331,7 @@ func (s *Service) createSession(ctx context.Context, in createSessionInput) (*cp
 			0, $12, $13, NOW(), NOW()
 	)
 	`, intentID, sessionID, linkIDStr, merchantID, strings.ToLower(in.Chain), strings.ToUpper(in.TokenSymbol), nullIfEmpty(tokenAddress),
-		amount, s.cfg.DefaultTolerancePercent, minAccept, maxAccept, requiredConf, sessionExpiresAt)
+		expectedAmount, s.cfg.DefaultTolerancePercent, minAccept, maxAccept, requiredConf, sessionExpiresAt)
 	if err != nil {
 		return nil, rpcx.E(codes.Internal, "internal_error", "failed to create payment intent")
 	}
@@ -348,7 +354,7 @@ func (s *Service) createSession(ctx context.Context, in createSessionInput) (*cp
 		"payment_link_id":   linkIDStr,
 		"chain":             strings.ToLower(in.Chain),
 		"token_symbol":      strings.ToUpper(in.TokenSymbol),
-		"expected_amount":   amount,
+		"expected_amount":   expectedAmount,
 		"add_invoice_pdf":   addInvoice,
 	}); err != nil {
 		return nil, rpcx.E(codes.Internal, "internal_error", "failed to enqueue outbox event")
@@ -374,6 +380,7 @@ func (s *Service) createSession(ctx context.Context, in createSessionInput) (*cp
 		ExpiresAt:               sessionExpiresAt.UTC().Format(time.RFC3339Nano),
 		AfterPaymentType:        afterType,
 		AfterPaymentRedirectUrl: strValue(redirectURL),
+		ExpectedAmount:          expectedAmount,
 	}
 	if in.IncludeSecret {
 		resp.ClientSecret = clientSecret
@@ -1144,6 +1151,186 @@ func tokenAllowed(allowed []allowedToken, chainName, symbol, address string) boo
 		}
 	}
 	return false
+}
+
+func settlementAmountForToken(ctx context.Context, fiatAmount float64, currency, chainName, symbol string) (float64, error) {
+	if fiatAmount <= 0 {
+		return 0, errors.New("amount must be positive")
+	}
+	currency = strings.ToUpper(strings.TrimSpace(currency))
+	symbol = strings.ToUpper(strings.TrimSpace(symbol))
+	if currency != "USD" {
+		return 0, fmt.Errorf("checkout currency %s cannot be quoted for %s on %s", currency, symbol, strings.TrimSpace(chainName))
+	}
+	if isUSDStableToken(symbol) {
+		return fiatAmount, nil
+	}
+	price, err := tokenUSDPrice(ctx, symbol)
+	if err != nil {
+		return 0, err
+	}
+	if price <= 0 {
+		return 0, fmt.Errorf("invalid %s/USD price", symbol)
+	}
+	return fiatAmount / price, nil
+}
+
+func isUSDStableToken(symbol string) bool {
+	switch strings.ToUpper(strings.TrimSpace(symbol)) {
+	case "USDC", "USDT", "USDT0", "DAI":
+		return true
+	default:
+		return false
+	}
+}
+
+func tokenUSDPrice(ctx context.Context, symbol string) (float64, error) {
+	symbol = strings.ToUpper(strings.TrimSpace(symbol))
+	if symbol == "HYPE" {
+		return firstAvailableTokenUSDPrice(ctx, symbol, []quoteSource{
+			{name: "Hyperliquid", quote: hyperliquidMidPrice},
+			{name: "Bybit linear", quote: func(ctx context.Context, symbol string) (float64, error) {
+				return bybitTickerPrice(ctx, "linear", symbol+"USDT", symbol)
+			}},
+			{name: "Bybit spot", quote: func(ctx context.Context, symbol string) (float64, error) {
+				return bybitTickerPrice(ctx, "spot", symbol+"USDT", symbol)
+			}},
+		})
+	}
+	binanceSymbol, ok := map[string]string{
+		"ETH":   "ETHUSDT",
+		"BNB":   "BNBUSDT",
+		"POL":   "POLUSDT",
+		"MATIC": "MATICUSDT",
+		"OP":    "OPUSDT",
+		"ARB":   "ARBUSDT",
+	}[symbol]
+	if !ok {
+		return 0, fmt.Errorf("no USD quote source for %s", symbol)
+	}
+	return binanceTickerPrice(ctx, binanceSymbol, symbol)
+}
+
+type quoteSource struct {
+	name  string
+	quote func(context.Context, string) (float64, error)
+}
+
+func firstAvailableTokenUSDPrice(ctx context.Context, symbol string, sources []quoteSource) (float64, error) {
+	var failures []string
+	for _, source := range sources {
+		price, err := source.quote(ctx, symbol)
+		if err == nil && price > 0 {
+			return price, nil
+		}
+		if err != nil {
+			failures = append(failures, source.name+": "+err.Error())
+		} else {
+			failures = append(failures, source.name+": invalid non-positive price")
+		}
+	}
+	return 0, fmt.Errorf("no %s/USD quote available (%s)", symbol, strings.Join(failures, "; "))
+}
+
+func hyperliquidMidPrice(ctx context.Context, symbol string) (float64, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.hyperliquid.xyz/info", strings.NewReader(`{"type":"allMids"}`))
+	if err != nil {
+		return 0, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return 0, fmt.Errorf("failed to quote %s/USD from Hyperliquid: %w", symbol, err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		return 0, fmt.Errorf("failed to quote %s/USD from Hyperliquid: status %d", symbol, res.StatusCode)
+	}
+	var mids map[string]string
+	if err := json.NewDecoder(res.Body).Decode(&mids); err != nil {
+		return 0, fmt.Errorf("failed to decode %s/USD quote from Hyperliquid: %w", symbol, err)
+	}
+	price, err := strconv.ParseFloat(mids[symbol], 64)
+	if err != nil || price <= 0 {
+		return 0, fmt.Errorf("missing %s/USD quote in Hyperliquid allMids response", symbol)
+	}
+	return price, nil
+}
+
+func bybitTickerPrice(ctx context.Context, category, pair, symbol string) (float64, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	endpoint := "https://api.bybit.com/v5/market/tickers?category=" + url.QueryEscape(category) + "&symbol=" + url.QueryEscape(pair)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return 0, err
+	}
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return 0, fmt.Errorf("failed to quote %s/USD from Bybit %s: %w", symbol, category, err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		return 0, fmt.Errorf("failed to quote %s/USD from Bybit %s: status %d", symbol, category, res.StatusCode)
+	}
+	var payload struct {
+		RetCode int    `json:"retCode"`
+		RetMsg  string `json:"retMsg"`
+		Result  struct {
+			List []struct {
+				LastPrice  string `json:"lastPrice"`
+				IndexPrice string `json:"indexPrice"`
+			} `json:"list"`
+		} `json:"result"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&payload); err != nil {
+		return 0, fmt.Errorf("failed to decode %s/USD quote from Bybit %s: %w", symbol, category, err)
+	}
+	if payload.RetCode != 0 {
+		return 0, fmt.Errorf("failed to quote %s/USD from Bybit %s: %s", symbol, category, payload.RetMsg)
+	}
+	if len(payload.Result.List) == 0 {
+		return 0, fmt.Errorf("missing %s/USD quote in Bybit %s ticker response", symbol, category)
+	}
+	rawPrice := strings.TrimSpace(payload.Result.List[0].IndexPrice)
+	if rawPrice == "" {
+		rawPrice = strings.TrimSpace(payload.Result.List[0].LastPrice)
+	}
+	price, err := strconv.ParseFloat(rawPrice, 64)
+	if err != nil || price <= 0 {
+		return 0, fmt.Errorf("missing %s/USD quote in Bybit %s ticker response", symbol, category)
+	}
+	return price, nil
+}
+
+func binanceTickerPrice(ctx context.Context, pair, symbol string) (float64, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://api.binance.com/api/v3/ticker/price?symbol="+url.QueryEscape(pair), nil)
+	if err != nil {
+		return 0, err
+	}
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return 0, fmt.Errorf("failed to quote %s/USD from Binance: %w", symbol, err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		return 0, fmt.Errorf("failed to quote %s/USD from Binance: status %d", symbol, res.StatusCode)
+	}
+	var payload struct {
+		Price string `json:"price"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&payload); err != nil {
+		return 0, fmt.Errorf("failed to decode %s/USD quote from Binance: %w", symbol, err)
+	}
+	price, err := strconv.ParseFloat(payload.Price, 64)
+	if err != nil || price <= 0 {
+		return 0, fmt.Errorf("missing %s/USD quote in Binance ticker response", symbol)
+	}
+	return price, nil
 }
 
 func newClientSecret() (string, error) {
