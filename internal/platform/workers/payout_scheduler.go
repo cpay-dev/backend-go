@@ -44,6 +44,12 @@ type payoutItemWork struct {
 	SettlementAddress   string
 }
 
+type payoutItemSchedule struct {
+	IntentID  string
+	Amount    float64
+	AmountRaw string
+}
+
 func (w *PayoutScheduler) Run(ctx context.Context) {
 	if w.Interval <= 0 {
 		w.Interval = 30 * time.Second
@@ -89,10 +95,12 @@ func (w *PayoutScheduler) schedulePayouts(ctx context.Context) {
 	for rows.Next() {
 		var merchantID, chainName, tokenSymbol string
 		if err := rows.Scan(&merchantID, &chainName, &tokenSymbol); err != nil {
+			w.Log.Error().Err(err).Msg("payout: schedule row scan failed")
 			continue
 		}
 		tx, err := w.DB.Begin(ctx)
 		if err != nil {
+			w.Log.Error().Err(err).Msg("payout: schedule begin failed")
 			continue
 		}
 		payoutID := ids.New()
@@ -102,6 +110,7 @@ func (w *PayoutScheduler) schedulePayouts(ctx context.Context) {
 		`, payoutID, merchantID, tokenSymbol, chainName)
 		if err != nil {
 			tx.Rollback(ctx)
+			w.Log.Error().Err(err).Str("merchant_id", merchantID).Str("chain", chainName).Str("token_symbol", tokenSymbol).Msg("payout: insert payout failed")
 			continue
 		}
 
@@ -114,25 +123,65 @@ func (w *PayoutScheduler) schedulePayouts(ctx context.Context) {
 		`, merchantID, chainName, tokenSymbol)
 		if err != nil {
 			tx.Rollback(ctx)
+			w.Log.Error().Err(err).Str("payout_id", payoutID).Msg("payout: schedule item query failed")
 			continue
 		}
 		total := 0.0
+		hadFailure := false
+		items := make([]payoutItemSchedule, 0)
 		for itemRows.Next() {
 			var intentID, amountRaw string
 			if err := itemRows.Scan(&intentID, &amountRaw); err != nil {
+				hadFailure = true
+				w.Log.Error().Err(err).Str("payout_id", payoutID).Msg("payout: schedule item scan failed")
 				continue
 			}
 			amount := parseFloat(amountRaw)
-			total += amount
-			_, _ = tx.Exec(ctx, `
-				INSERT INTO checkout.payout_items(id, payout_id, payment_intent_id, amount, created_at)
-				VALUES($1, $2, $3, $4, NOW())
-			`, ids.New(), payoutID, intentID, amount)
+			items = append(items, payoutItemSchedule{
+				IntentID:  intentID,
+				Amount:    amount,
+				AmountRaw: amountRaw,
+			})
 		}
 		itemRows.Close()
-		_, _ = tx.Exec(ctx, `UPDATE checkout.payouts SET total_amount=$2, updated_at=NOW() WHERE id=$1`, payoutID, total)
+		if err := itemRows.Err(); err != nil {
+			hadFailure = true
+			w.Log.Error().Err(err).Str("payout_id", payoutID).Msg("payout: schedule item rows failed")
+		}
+		if hadFailure || len(items) == 0 {
+			tx.Rollback(ctx)
+			if len(items) == 0 {
+				w.Log.Warn().Str("payout_id", payoutID).Str("merchant_id", merchantID).Str("chain", chainName).Str("token_symbol", tokenSymbol).Msg("payout: schedule produced no items")
+			}
+			continue
+		}
+		for _, item := range items {
+			if _, err := tx.Exec(ctx, `
+				INSERT INTO checkout.payout_items(id, payout_id, payment_intent_id, amount, created_at)
+				VALUES($1, $2, $3, $4, NOW())
+			`, ids.New(), payoutID, item.IntentID, item.Amount); err != nil {
+				hadFailure = true
+				w.Log.Error().Err(err).Str("payout_id", payoutID).Str("payment_intent_id", item.IntentID).Msg("payout: insert payout item failed")
+				continue
+			}
+			total += item.Amount
+		}
+		if hadFailure {
+			tx.Rollback(ctx)
+			continue
+		}
+		if _, err := tx.Exec(ctx, `UPDATE checkout.payouts SET total_amount=$2, updated_at=NOW() WHERE id=$1`, payoutID, total); err != nil {
+			tx.Rollback(ctx)
+			w.Log.Error().Err(err).Str("payout_id", payoutID).Msg("payout: update scheduled total failed")
+			continue
+		}
 
-		_ = tx.Commit(ctx)
+		if err := tx.Commit(ctx); err != nil {
+			w.Log.Error().Err(err).Str("payout_id", payoutID).Msg("payout: schedule commit failed")
+		}
+	}
+	if err := rows.Err(); err != nil {
+		w.Log.Error().Err(err).Msg("payout: schedule rows failed")
 	}
 }
 
@@ -328,14 +377,25 @@ func (w *PayoutScheduler) finishPayoutIfComplete(ctx context.Context, payout pay
 	}
 	defer tx.Rollback(ctx)
 
-	var remaining int64
+	var itemCount, remaining int64
 	var txHash string
 	if err := tx.QueryRow(ctx, `
-		SELECT COUNT(*) FILTER (WHERE status!='completed'), COALESCE(MAX(tx_hash), '')
+		SELECT COUNT(*), COUNT(*) FILTER (WHERE status!='completed'), COALESCE(MAX(tx_hash), '')
 		FROM checkout.payout_items
 		WHERE payout_id=$1
-	`, payout.ID).Scan(&remaining, &txHash); err != nil {
+	`, payout.ID).Scan(&itemCount, &remaining, &txHash); err != nil {
 		return err
+	}
+	if itemCount == 0 {
+		_, err := tx.Exec(ctx, `
+			UPDATE checkout.payouts
+			SET status='failed', last_error='payout has no items', updated_at=NOW()
+			WHERE id=$1 AND status!='completed'
+		`, payout.ID)
+		if err != nil {
+			return err
+		}
+		return tx.Commit(ctx)
 	}
 	if remaining > 0 {
 		return tx.Commit(ctx)
