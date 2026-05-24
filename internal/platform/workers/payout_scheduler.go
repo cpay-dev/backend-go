@@ -5,11 +5,13 @@ import (
 	"strings"
 	"time"
 
-	cryptox "github.com/cpay-dev/cpay/internal/shared/crypto"
+	"github.com/cpay-dev/cpay/internal/shared/chain"
 	"github.com/cpay-dev/cpay/internal/shared/ids"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog"
 )
+
+const legacyEOAPayoutUnsupportedError = "legacy EOA payout unsupported after CREATE2-only mode"
 
 type PayoutScheduler struct {
 	DB         *pgxpool.Pool
@@ -81,10 +83,11 @@ func (w *PayoutScheduler) process(ctx context.Context) {
 
 func (w *PayoutScheduler) schedulePayouts(ctx context.Context) {
 	rows, err := w.DB.Query(ctx, `
-		SELECT merchant_id::text, chain, token_symbol
-		FROM checkout.payment_intents
-		WHERE status IN ('confirmed', 'overpaid') AND id NOT IN (SELECT payment_intent_id FROM checkout.payout_items)
-		GROUP BY merchant_id, chain, token_symbol
+		SELECT i.merchant_id::text, i.chain, i.token_symbol, COALESCE(d.wallet_type, 'eoa')
+		FROM checkout.payment_intents i
+		JOIN checkout.deposit_addresses d ON d.payment_intent_id=i.id
+		WHERE i.status IN ('confirmed', 'overpaid') AND i.id NOT IN (SELECT payment_intent_id FROM checkout.payout_items)
+		GROUP BY i.merchant_id, i.chain, i.token_symbol, COALESCE(d.wallet_type, 'eoa')
 	`)
 	if err != nil {
 		w.Log.Error().Err(err).Msg("payout: schedule query failed")
@@ -93,8 +96,8 @@ func (w *PayoutScheduler) schedulePayouts(ctx context.Context) {
 	defer rows.Close()
 
 	for rows.Next() {
-		var merchantID, chainName, tokenSymbol string
-		if err := rows.Scan(&merchantID, &chainName, &tokenSymbol); err != nil {
+		var merchantID, chainName, tokenSymbol, walletType string
+		if err := rows.Scan(&merchantID, &chainName, &tokenSymbol, &walletType); err != nil {
 			w.Log.Error().Err(err).Msg("payout: schedule row scan failed")
 			continue
 		}
@@ -115,12 +118,14 @@ func (w *PayoutScheduler) schedulePayouts(ctx context.Context) {
 		}
 
 		itemRows, err := tx.Query(ctx, `
-			SELECT id::text, received_amount::text
-			FROM checkout.payment_intents
-			WHERE merchant_id=$1 AND chain=$2 AND token_symbol=$3
-				AND status IN ('confirmed', 'overpaid') AND id NOT IN (SELECT payment_intent_id FROM checkout.payout_items)
-			FOR UPDATE SKIP LOCKED
-		`, merchantID, chainName, tokenSymbol)
+			SELECT i.id::text, i.received_amount::text
+			FROM checkout.payment_intents i
+			JOIN checkout.deposit_addresses d ON d.payment_intent_id=i.id
+			WHERE i.merchant_id=$1 AND i.chain=$2 AND i.token_symbol=$3
+				AND COALESCE(d.wallet_type, 'eoa')=$4
+				AND i.status IN ('confirmed', 'overpaid') AND i.id NOT IN (SELECT payment_intent_id FROM checkout.payout_items)
+			FOR UPDATE OF i SKIP LOCKED
+		`, merchantID, chainName, tokenSymbol, walletType)
 		if err != nil {
 			tx.Rollback(ctx)
 			w.Log.Error().Err(err).Str("payout_id", payoutID).Msg("payout: schedule item query failed")
@@ -253,6 +258,7 @@ func (w *PayoutScheduler) processPayout(ctx context.Context, payout payoutWork) 
 	defer rows.Close()
 
 	hadFailure := false
+	hadUnsupportedLegacy := false
 	for rows.Next() {
 		var item payoutItemWork
 		if err := rows.Scan(
@@ -280,16 +286,13 @@ func (w *PayoutScheduler) processPayout(ctx context.Context, payout payoutWork) 
 			w.markItemFailed(ctx, item.PayoutItemID, "merchant settlement address is not configured")
 			continue
 		}
-		privateKey := ""
-		if !mockMode && strings.ToLower(strings.TrimSpace(item.WalletType)) != "create2" {
-			var err error
-			privateKey, err = cryptox.DecryptString(w.EncryptKey, item.EncryptedPrivateKey)
-			if err != nil {
-				hadFailure = true
-				w.markItemFailed(ctx, item.PayoutItemID, "failed to decrypt deposit private key")
-				continue
-			}
+		if !mockMode && strings.ToLower(strings.TrimSpace(item.WalletType)) != chain.WalletTypeCreate2 {
+			hadFailure = true
+			hadUnsupportedLegacy = true
+			w.markItemFailed(ctx, item.PayoutItemID, legacyEOAPayoutUnsupportedError)
+			continue
 		}
+		privateKey := ""
 
 		_, _ = w.DB.Exec(ctx, `
 			UPDATE checkout.payout_items
@@ -332,6 +335,10 @@ func (w *PayoutScheduler) processPayout(ctx context.Context, payout payoutWork) 
 	if err := w.finishPayoutIfComplete(ctx, payout); err != nil {
 		w.Log.Error().Err(err).Str("payout_id", payout.ID).Msg("payout: finish failed")
 		w.markPayoutRetry(ctx, payout.ID, "failed to finish payout")
+		return
+	}
+	if hadUnsupportedLegacy {
+		w.markPayoutFailed(ctx, payout.ID, legacyEOAPayoutUnsupportedError)
 		return
 	}
 	if hadFailure {
@@ -434,6 +441,14 @@ func (w *PayoutScheduler) markPayoutRetry(ctx context.Context, payoutID, message
 	_, _ = w.DB.Exec(ctx, `
 		UPDATE checkout.payouts
 		SET status='scheduled', last_error=$2, updated_at=NOW()
+		WHERE id=$1 AND status!='completed'
+	`, payoutID, truncateError(message))
+}
+
+func (w *PayoutScheduler) markPayoutFailed(ctx context.Context, payoutID, message string) {
+	_, _ = w.DB.Exec(ctx, `
+		UPDATE checkout.payouts
+		SET status='failed', last_error=$2, updated_at=NOW()
 		WHERE id=$1 AND status!='completed'
 	`, payoutID, truncateError(message))
 }

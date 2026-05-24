@@ -42,7 +42,7 @@ func main() {
 		minioClient = m
 	}
 
-	chainAdapter := chain.NewEVMAdapterWithCreate2(cfg.ChainConfirmations, cfg.EVMChainRPCURLs(), cfg.CheckoutWalletFactories)
+	chainAdapter := chain.NewEVMAdapterWithRequiredCreate2(cfg.ChainConfirmations, cfg.EVMChainRPCURLs(), cfg.CheckoutWalletFactories)
 	svc := checkoutsvc.New(cfg, log, pool, chainAdapter, cryptox.NormalizeKey(cfg.EncryptionKey), minioClient)
 	lis, err := net.Listen("tcp", cfg.GRPCAddr)
 	if err != nil {

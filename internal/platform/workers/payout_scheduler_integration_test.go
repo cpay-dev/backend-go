@@ -31,7 +31,7 @@ func (e *recordingPayoutExecutor) ExecutePayout(_ context.Context, req PayoutExe
 	return PayoutExecutionResult{TxHash: "0xsettled"}, nil
 }
 
-func TestPayoutSchedulerProductionSuccess(t *testing.T) {
+func TestPayoutSchedulerLegacyEOAUnsupported(t *testing.T) {
 	ctx, pool := openPayoutTestDB(t)
 	encryptKey := cryptox.NormalizeKey("test-key")
 	_, intentID := seedConfirmedPayoutIntent(t, ctx, pool, encryptKey, "0xde0B295669a9FD93d5F28D9Ec85E40f4cb697BAe")
@@ -40,24 +40,24 @@ func TestPayoutSchedulerProductionSuccess(t *testing.T) {
 	worker := PayoutScheduler{DB: pool, Log: zerolog.Nop(), Source: "test-payout", Executor: executor, EncryptKey: encryptKey}
 	worker.process(ctx)
 
-	if len(executor.calls) != 1 {
-		t.Fatalf("expected one executor call, got %d", len(executor.calls))
+	if len(executor.calls) != 0 {
+		t.Fatalf("expected no executor calls, got %d", len(executor.calls))
 	}
-	if executor.calls[0].DepositPrivateKeyHex != "0xabc123" {
-		t.Fatalf("expected decrypted private key, got %q", executor.calls[0].DepositPrivateKeyHex)
-	}
-	var intentStatus, itemStatus, addressStatus string
+	var intentStatus, payoutStatus, itemStatus, itemError, payoutError string
 	if err := pool.QueryRow(ctx, `
-		SELECT i.status, pi.status, d.status
+		SELECT i.status, p.status, pi.status, COALESCE(pi.last_error, ''), COALESCE(p.last_error, '')
 		FROM checkout.payment_intents i
 		JOIN checkout.payout_items pi ON pi.payment_intent_id=i.id
-		JOIN checkout.deposit_addresses d ON d.payment_intent_id=i.id
+		JOIN checkout.payouts p ON p.id=pi.payout_id
 		WHERE i.id=$1
-	`, intentID).Scan(&intentStatus, &itemStatus, &addressStatus); err != nil {
+	`, intentID).Scan(&intentStatus, &payoutStatus, &itemStatus, &itemError, &payoutError); err != nil {
 		t.Fatalf("query statuses: %v", err)
 	}
-	if intentStatus != "settled" || itemStatus != "completed" || addressStatus != "swept" {
-		t.Fatalf("unexpected statuses: intent=%s item=%s address=%s", intentStatus, itemStatus, addressStatus)
+	if intentStatus != "confirmed" || payoutStatus != "failed" || itemStatus != "failed" {
+		t.Fatalf("unexpected statuses: intent=%s payout=%s item=%s", intentStatus, payoutStatus, itemStatus)
+	}
+	if !strings.Contains(itemError, legacyEOAPayoutUnsupportedError) || !strings.Contains(payoutError, legacyEOAPayoutUnsupportedError) {
+		t.Fatalf("expected legacy unsupported errors, item=%q payout=%q", itemError, payoutError)
 	}
 }
 

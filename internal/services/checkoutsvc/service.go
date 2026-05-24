@@ -269,7 +269,7 @@ func (s *Service) createSession(ctx context.Context, in createSessionInput) (*cp
 	addressID := ids.New()
 	wallet, err := s.chain.GenerateDepositWallet(ctx, in.Chain, intentID)
 	if err != nil {
-		return nil, rpcx.E(codes.Internal, "internal_error", "failed to generate deposit wallet")
+		return nil, rpcx.E(codes.FailedPrecondition, "checkout_wallet_factory_unavailable", err.Error())
 	}
 	walletType := strings.TrimSpace(wallet.WalletType)
 	if walletType == "" {

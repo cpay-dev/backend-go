@@ -614,11 +614,22 @@ func (s *Server) handleListPayments(w http.ResponseWriter, r *http.Request) {
 			i.expected_amount::text, i.received_amount::text, i.tx_hash,
 			i.confirmations, i.required_confirmations,
 			i.expires_at, i.created_at, i.updated_at,
+			COALESCE(d.wallet_type, ''), COALESCE(latest_payout.payout_status, ''),
+			COALESCE(latest_payout.item_status, ''), COALESCE(latest_payout.last_error, ''),
 			COUNT(*) OVER() AS total
 		FROM checkout.payment_intents i
 		JOIN checkout.checkout_sessions c ON c.id=i.checkout_session_id
 		JOIN catalog.payment_links pl ON pl.id=i.payment_link_id
 		LEFT JOIN catalog.products p ON p.id=pl.product_id
+		LEFT JOIN checkout.deposit_addresses d ON d.payment_intent_id=i.id
+		LEFT JOIN LATERAL (
+			SELECT po.status AS payout_status, pi.status AS item_status, pi.last_error
+			FROM checkout.payout_items pi
+			JOIN checkout.payouts po ON po.id=pi.payout_id
+			WHERE pi.payment_intent_id=i.id
+			ORDER BY pi.created_at DESC
+			LIMIT 1
+		) latest_payout ON true
 		WHERE i.merchant_id::text=$1
 			AND ($2='' OR pl.product_id::text=$2)
 			AND ($3='' OR i.payment_link_id::text=$3)
@@ -635,6 +646,7 @@ func (s *Server) handleListPayments(w http.ResponseWriter, r *http.Request) {
 	total := 0
 	for rows.Next() {
 		var id, checkoutSessionID, linkID, productID, productName, linkTitle, linkCode, currency, customerEmail, status, chainName, tokenSymbol string
+		var walletType, payoutStatus, payoutItemStatus, payoutLastError string
 		var fiatAmountRaw, expectedRaw, receivedRaw string
 		var txHash *string
 		var confirmations, requiredConfirmations int
@@ -648,6 +660,7 @@ func (s *Server) handleListPayments(w http.ResponseWriter, r *http.Request) {
 			&expectedRaw, &receivedRaw, &txHash,
 			&confirmations, &requiredConfirmations,
 			&expiresAt, &createdAt, &updatedAt,
+			&walletType, &payoutStatus, &payoutItemStatus, &payoutLastError,
 			&rowTotal,
 		); err != nil {
 			httpx.WriteError(w, http.StatusInternalServerError, "internal_error", "failed to scan payments", middleware.GetRequestID(r.Context()))
@@ -680,6 +693,10 @@ func (s *Server) handleListPayments(w http.ResponseWriter, r *http.Request) {
 			"expires_at":             expiresAt.UTC().Format(time.RFC3339Nano),
 			"created_at":             createdAt.UTC().Format(time.RFC3339Nano),
 			"updated_at":             updatedAt.UTC().Format(time.RFC3339Nano),
+			"wallet_type":            emptyToNil(walletType),
+			"payout_status":          emptyToNil(payoutStatus),
+			"payout_item_status":     emptyToNil(payoutItemStatus),
+			"payout_last_error":      emptyToNil(payoutLastError),
 		})
 	}
 	if err := rows.Err(); err != nil {

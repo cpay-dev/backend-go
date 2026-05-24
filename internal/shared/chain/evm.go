@@ -10,8 +10,9 @@ import (
 )
 
 type EVMAdapter struct {
-	confirmations map[string]int
-	create2       *Create2WalletProvider
+	confirmations  map[string]int
+	create2        *Create2WalletProvider
+	requireCreate2 bool
 }
 
 func NewEVMAdapter(confirmations map[string]int) *EVMAdapter {
@@ -25,6 +26,14 @@ func NewEVMAdapterWithCreate2(confirmations map[string]int, rpcURLs, factoryAddr
 	}
 }
 
+func NewEVMAdapterWithRequiredCreate2(confirmations map[string]int, rpcURLs, factoryAddresses map[string]string) *EVMAdapter {
+	return &EVMAdapter{
+		confirmations:  confirmations,
+		create2:        NewCreate2WalletProvider(rpcURLs, factoryAddresses),
+		requireCreate2: true,
+	}
+}
+
 func (a *EVMAdapter) GenerateDepositWallet(ctx context.Context, chainName string, paymentIntentID string) (DepositWallet, error) {
 	if a.create2 != nil {
 		wallet, ok, err := a.create2.DepositWallet(ctx, chainName, paymentIntentID)
@@ -34,6 +43,13 @@ func (a *EVMAdapter) GenerateDepositWallet(ctx context.Context, chainName string
 		if ok {
 			return wallet, nil
 		}
+	}
+	if a.requireCreate2 {
+		chainName = normalizeEVMChain(chainName)
+		if a.create2 == nil {
+			return DepositWallet{}, fmt.Errorf("checkout wallet factory addresses are not configured")
+		}
+		return DepositWallet{}, fmt.Errorf("checkout wallet factory for %s is not configured", chainName)
 	}
 	return generateEOADepositWallet()
 }

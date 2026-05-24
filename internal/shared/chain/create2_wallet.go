@@ -25,6 +25,7 @@ var checkoutWalletFactoryParsedABI = mustParseCheckoutWalletFactoryABI()
 type Create2WalletProvider struct {
 	rpcURLs          map[string]string
 	factoryAddresses map[string]string
+	predictWallet    func(ctx context.Context, rpcURL string, factory common.Address, salt [32]byte) (common.Address, error)
 }
 
 func NewCreate2WalletProvider(rpcURLs, factoryAddresses map[string]string) *Create2WalletProvider {
@@ -34,6 +35,7 @@ func NewCreate2WalletProvider(rpcURLs, factoryAddresses map[string]string) *Crea
 	return &Create2WalletProvider{
 		rpcURLs:          normalizeStringMap(rpcURLs),
 		factoryAddresses: normalizeStringMap(factoryAddresses),
+		predictWallet:    predictWithFactory,
 	}
 }
 
@@ -56,7 +58,11 @@ func (p *Create2WalletProvider) DepositWallet(ctx context.Context, chainName str
 	}
 
 	salt := CheckoutWalletSalt(paymentIntentID, chainName)
-	address, err := p.predictWithFactory(ctx, rpcURL, factory, salt)
+	predictWallet := p.predictWallet
+	if predictWallet == nil {
+		predictWallet = predictWithFactory
+	}
+	address, err := predictWallet(ctx, rpcURL, factory, salt)
 	if err != nil {
 		return DepositWallet{}, false, err
 	}
@@ -68,7 +74,7 @@ func (p *Create2WalletProvider) DepositWallet(ctx context.Context, chainName str
 	}, true, nil
 }
 
-func (p *Create2WalletProvider) predictWithFactory(ctx context.Context, rpcURL string, factory common.Address, salt [32]byte) (common.Address, error) {
+func predictWithFactory(ctx context.Context, rpcURL string, factory common.Address, salt [32]byte) (common.Address, error) {
 	client, err := ethclient.DialContext(ctx, rpcURL)
 	if err != nil {
 		return common.Address{}, fmt.Errorf("dial checkout wallet factory rpc: %w", err)
