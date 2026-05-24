@@ -5,25 +5,9 @@ info:
 servers:
   - url: http://localhost:8080
 paths:
-  /v1/auth/login:
-    post:
-      summary: Login and get JWT pair
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [email, password]
-              properties:
-                email: { type: string }
-                password: { type: string }
-      responses:
-        '200':
-          description: Success
   /v1/auth/signup:
     post:
-      summary: Create merchant account
+      summary: Complete wallet or OAuth onboarding
       responses:
         '201':
           description: Created

@@ -92,7 +92,6 @@ services:
       GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-http://localhost:3000/oauth/consume}
       BOOTSTRAP_MERCHANT_NAME: Demo Merchant
       BOOTSTRAP_ADMIN_EMAIL: admin@cpay.dev
-      BOOTSTRAP_ADMIN_PASSWORD: admin123
     depends_on:
       postgres:
         condition: service_healthy

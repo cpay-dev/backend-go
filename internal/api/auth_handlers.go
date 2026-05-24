@@ -2,7 +2,6 @@ package api
 
 import (
 	"encoding/json"
-	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -12,14 +11,7 @@ import (
 	"github.com/cpay-dev/cpay/internal/shared/ids"
 	"github.com/cpay-dev/cpay/internal/shared/middleware"
 	"github.com/go-chi/chi/v5"
-	"github.com/jackc/pgx/v5"
-	"golang.org/x/crypto/bcrypt"
 )
-
-type loginRequest struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
-}
 
 type refreshRequest struct {
 	RefreshToken string `json:"refresh_token"`
@@ -31,59 +23,7 @@ type createAPIKeyRequest struct {
 }
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
-	var req loginRequest
-	if !s.parseJSON(w, r, &req) {
-		return
-	}
-	email := strings.ToLower(strings.TrimSpace(req.Email))
-	if email == "" || req.Password == "" {
-		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "email and password are required", middleware.GetRequestID(r.Context()))
-		return
-	}
-
-	var userIDStr, merchantIDStr, role, passHash string
-	err := s.db.QueryRow(r.Context(), `
-		SELECT id::text, merchant_id::text, role, password_hash
-		FROM users
-		WHERE lower(email)=lower($1)
-		LIMIT 1
-	`, email).Scan(&userIDStr, &merchantIDStr, &role, &passHash)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			httpx.WriteError(w, http.StatusUnauthorized, "invalid_credentials", "invalid credentials", middleware.GetRequestID(r.Context()))
-			return
-		}
-		httpx.WriteError(w, http.StatusInternalServerError, "internal_error", "login lookup failed", middleware.GetRequestID(r.Context()))
-		return
-	}
-
-	if err = bcrypt.CompareHashAndPassword([]byte(passHash), []byte(req.Password)); err != nil {
-		httpx.WriteError(w, http.StatusUnauthorized, "invalid_credentials", "invalid credentials", middleware.GetRequestID(r.Context()))
-		return
-	}
-
-	access, err := auth.GenerateJWT(s.cfg.JWTSecret, "access", userIDStr, merchantIDStr, role, s.cfg.JWTAccessTTL)
-	if err != nil {
-		httpx.WriteError(w, http.StatusInternalServerError, "internal_error", "failed to create access token", middleware.GetRequestID(r.Context()))
-		return
-	}
-	refresh, err := auth.GenerateJWT(s.cfg.JWTSecret, "refresh", userIDStr, merchantIDStr, role, s.cfg.JWTRefreshTTL)
-	if err != nil {
-		httpx.WriteError(w, http.StatusInternalServerError, "internal_error", "failed to create refresh token", middleware.GetRequestID(r.Context()))
-		return
-	}
-
-	httpx.WriteJSON(w, http.StatusOK, map[string]any{
-		"access_token":  access,
-		"refresh_token": refresh,
-		"token_type":    "Bearer",
-		"expires_in":    int(s.cfg.JWTAccessTTL.Seconds()),
-		"user": map[string]any{
-			"id":          userIDStr,
-			"merchant_id": merchantIDStr,
-			"role":        role,
-		},
-	})
+	httpx.WriteError(w, http.StatusGone, "password_login_disabled", "email and password sign-in is disabled; use passkey, wallet, or OAuth", middleware.GetRequestID(r.Context()))
 }
 
 func (s *Server) handleRefresh(w http.ResponseWriter, r *http.Request) {

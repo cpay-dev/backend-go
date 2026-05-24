@@ -121,16 +121,12 @@ func TestM1ServiceFlow_AuthPaymentLinkCheckout(t *testing.T) {
 		t.Fatalf("bootstrap failed: %v", err)
 	}
 
-	loginResp, err := authService.Login(ctx, &cpayv1.LoginRequest{
-		Email:    cfg.BootstrapAdminEmail,
-		Password: cfg.BootstrapAdminPass,
-	})
-	if err != nil {
-		t.Fatalf("login failed: %v", err)
+	var merchantID string
+	if err := pool.QueryRow(ctx, `SELECT merchant_id::text FROM auth.users WHERE lower(email)=lower($1)`, cfg.BootstrapAdminEmail).Scan(&merchantID); err != nil {
+		t.Fatalf("load bootstrap merchant failed: %v", err)
 	}
-	merchantID := loginResp.GetUser().GetMerchantId()
 	if merchantID == "" {
-		t.Fatalf("expected merchant_id from login")
+		t.Fatalf("expected merchant_id from bootstrap user")
 	}
 
 	createdKey, err := authService.CreateApiKey(ctx, &cpayv1.CreateApiKeyRequest{
@@ -335,7 +331,6 @@ func openIntegrationDB(t *testing.T) (*pgxpool.Pool, config.Config) {
 		WebhookMaxRetries:     3,
 		BootstrapMerchantName: "Integration Merchant",
 		BootstrapAdminEmail:   "admin@cpay.dev",
-		BootstrapAdminPass:    "admin123",
 	}
 	return pool, cfg
 }

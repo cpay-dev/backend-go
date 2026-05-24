@@ -62,7 +62,6 @@ type Config struct {
 
 	BootstrapMerchantName string
 	BootstrapAdminEmail   string
-	BootstrapAdminPass    string
 }
 
 var defaultChainConfirmations = map[string]int{
@@ -166,7 +165,6 @@ func Load(serviceName string) Config {
 
 		BootstrapMerchantName: getEnv("BOOTSTRAP_MERCHANT_NAME", "Demo Merchant"),
 		BootstrapAdminEmail:   getEnv("BOOTSTRAP_ADMIN_EMAIL", "admin@cpay.dev"),
-		BootstrapAdminPass:    getEnv("BOOTSTRAP_ADMIN_PASSWORD", "admin123"),
 	}
 	return cfg
 }

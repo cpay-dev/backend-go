@@ -56,6 +56,8 @@ func HTTPFromGRPC(code codes.Code) int {
 		return http.StatusNotFound
 	case codes.AlreadyExists:
 		return http.StatusConflict
+	case codes.FailedPrecondition:
+		return http.StatusPreconditionFailed
 	case codes.ResourceExhausted:
 		return http.StatusTooManyRequests
 	case codes.Unavailable:

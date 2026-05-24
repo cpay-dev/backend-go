@@ -40,8 +40,7 @@ External API is REST on `api-gateway`; internal service-to-service communication
 ## API coverage (M1 + recurring primitives)
 
 - Auth
-  - `POST /v1/auth/login`
-  - `POST /v1/auth/signup`
+  - `POST /v1/auth/signup` (complete wallet/OAuth onboarding)
   - `POST /v1/auth/refresh`
   - `POST /v1/auth/google/start`
   - `POST /v1/auth/google/consume`
@@ -119,14 +118,14 @@ docker compose up -d --build
 - Webhook service: `http://localhost:8082/health`
 - Email service: `http://localhost:8090/health`
 
-### 3. Default bootstrap login
+### 3. Default bootstrap account
 
 - Email: `admin@cpay.dev`
-- Password: `admin123`
 
-You can change them using env vars:
+Password sign-in is disabled. Use wallet, OAuth, or passkey sign-in.
+
+You can change the bootstrap account metadata using env vars:
 - `BOOTSTRAP_ADMIN_EMAIL`
-- `BOOTSTRAP_ADMIN_PASSWORD`
 - `BOOTSTRAP_MERCHANT_NAME`
 
 Google OAuth and passkeys use:

@@ -2,7 +2,6 @@ package authsvc
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -18,7 +17,6 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog"
-	"golang.org/x/crypto/bcrypt"
 	"google.golang.org/grpc/codes"
 )
 
@@ -52,10 +50,6 @@ func (s *Service) EnsureBootstrap(ctx context.Context) error {
 	merchantID := ids.New()
 	userID := ids.New()
 	adminEmail := strings.ToLower(strings.TrimSpace(s.cfg.BootstrapAdminEmail))
-	passHash, err := bcrypt.GenerateFromPassword([]byte(s.cfg.BootstrapAdminPass), bcrypt.DefaultCost)
-	if err != nil {
-		return err
-	}
 
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
@@ -72,7 +66,7 @@ func (s *Service) EnsureBootstrap(ctx context.Context) error {
 	if _, err = tx.Exec(ctx, `
 		INSERT INTO auth.users(id, merchant_id, email, password_hash, role, created_at, updated_at)
 		VALUES($1, $2, $3, $4, 'admin', NOW(), NOW())
-	`, userID, merchantID, adminEmail, string(passHash)); err != nil {
+	`, userID, merchantID, adminEmail, nil); err != nil {
 		return err
 	}
 	if err = s.outbox.EnqueueTx(ctx, tx, "user", userID, &merchantID, "user.signed_up", map[string]any{
@@ -90,52 +84,7 @@ func (s *Service) EnsureBootstrap(ctx context.Context) error {
 }
 
 func (s *Service) Login(ctx context.Context, req *cpayv1.LoginRequest) (*cpayv1.LoginResponse, error) {
-	email := strings.ToLower(strings.TrimSpace(req.GetEmail()))
-	password := req.GetPassword()
-	if email == "" || password == "" {
-		return nil, rpcx.E(codes.InvalidArgument, "invalid_request", "email and password are required")
-	}
-
-	var userID, merchantID, role string
-	var passHash sql.NullString
-	err := s.db.QueryRow(ctx, `
-		SELECT id::text, merchant_id::text, role, password_hash
-		FROM auth.users
-		WHERE lower(email)=lower($1)
-		LIMIT 1
-	`, email).Scan(&userID, &merchantID, &role, &passHash)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, rpcx.E(codes.Unauthenticated, "invalid_credentials", "invalid credentials")
-		}
-		return nil, rpcx.E(codes.Internal, "internal_error", "login lookup failed")
-	}
-
-	if !passHash.Valid || passHash.String == "" {
-		return nil, rpcx.E(codes.Unauthenticated, "invalid_credentials", "password sign-in is not enabled for this account")
-	}
-	if err = bcrypt.CompareHashAndPassword([]byte(passHash.String), []byte(password)); err != nil {
-		return nil, rpcx.E(codes.Unauthenticated, "invalid_credentials", "invalid credentials")
-	}
-
-	access, err := auth.GenerateJWT(s.cfg.JWTSecret, "access", userID, merchantID, role, s.cfg.JWTAccessTTL)
-	if err != nil {
-		return nil, rpcx.E(codes.Internal, "internal_error", "failed to create access token")
-	}
-	refresh, err := auth.GenerateJWT(s.cfg.JWTSecret, "refresh", userID, merchantID, role, s.cfg.JWTRefreshTTL)
-	if err != nil {
-		return nil, rpcx.E(codes.Internal, "internal_error", "failed to create refresh token")
-	}
-
-	return &cpayv1.LoginResponse{
-		Tokens: &cpayv1.TokenPair{
-			AccessToken:  access,
-			RefreshToken: refresh,
-			TokenType:    "Bearer",
-			ExpiresIn:    int32(s.cfg.JWTAccessTTL.Seconds()),
-		},
-		User: &cpayv1.UserInfo{Id: userID, MerchantId: merchantID, Role: role, Email: email},
-	}, nil
+	return nil, rpcx.E(codes.FailedPrecondition, "password_login_disabled", "email and password sign-in is disabled; use passkey, wallet, or OAuth")
 }
 
 func (s *Service) Refresh(ctx context.Context, req *cpayv1.RefreshRequest) (*cpayv1.RefreshResponse, error) {

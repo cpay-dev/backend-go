@@ -27,6 +27,9 @@ func TestHTTPFromGRPC(t *testing.T) {
 	if got := HTTPFromGRPC(codes.NotFound); got != 404 {
 		t.Fatalf("expected 404, got %d", got)
 	}
+	if got := HTTPFromGRPC(codes.FailedPrecondition); got != 412 {
+		t.Fatalf("expected 412, got %d", got)
+	}
 	if got := HTTPFromGRPC(codes.Internal); got != 500 {
 		t.Fatalf("expected 500, got %d", got)
 	}

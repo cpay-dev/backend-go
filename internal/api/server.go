@@ -23,7 +23,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/nats-io/nats.go"
 	"github.com/rs/zerolog"
-	"golang.org/x/crypto/bcrypt"
 )
 
 type authContextKey string
@@ -324,10 +323,6 @@ func (s *Server) EnsureBootstrap(ctx context.Context) error {
 	}
 	merchantID := ids.New()
 	userID := ids.New()
-	passHash, err := bcrypt.GenerateFromPassword([]byte(s.cfg.BootstrapAdminPass), bcrypt.DefaultCost)
-	if err != nil {
-		return err
-	}
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return err
@@ -346,7 +341,7 @@ func (s *Server) EnsureBootstrap(ctx context.Context) error {
 	if _, err = tx.Exec(ctx, `
 		INSERT INTO users(id, merchant_id, email, password_hash, role, created_at, updated_at)
 		VALUES($1, $2, $3, $4, 'admin', NOW(), NOW())
-	`, userID, merchantID, strings.ToLower(strings.TrimSpace(s.cfg.BootstrapAdminEmail)), string(passHash)); err != nil {
+	`, userID, merchantID, strings.ToLower(strings.TrimSpace(s.cfg.BootstrapAdminEmail)), nil); err != nil {
 		return err
 	}
 	err = tx.Commit(ctx)

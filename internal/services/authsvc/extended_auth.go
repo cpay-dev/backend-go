@@ -28,7 +28,6 @@ import (
 	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
-	"golang.org/x/crypto/bcrypt"
 	"google.golang.org/grpc/codes"
 )
 
@@ -68,20 +67,6 @@ func (s *Service) Signup(ctx context.Context, req *cpayv1.SignupRequest) (*cpayv
 		return nil, rpcx.E(codes.InvalidArgument, "invalid_request", "email is required")
 	}
 
-	var passHash *string
-	password := req.GetPassword()
-	if strings.TrimSpace(req.GetOnboardingToken()) == "" {
-		if len(password) < 8 {
-			return nil, rpcx.E(codes.InvalidArgument, "invalid_request", "password must be at least 8 characters")
-		}
-		hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-		if err != nil {
-			return nil, rpcx.E(codes.Internal, "internal_error", "failed to hash password")
-		}
-		hashed := string(hash)
-		passHash = &hashed
-	}
-
 	var payload *onboardingPayload
 	if token := strings.TrimSpace(req.GetOnboardingToken()); token != "" {
 		loaded, err := s.consumeOnboardingToken(ctx, token)
@@ -92,6 +77,8 @@ func (s *Service) Signup(ctx context.Context, req *cpayv1.SignupRequest) (*cpayv
 		if payload.Email != "" {
 			email = strings.ToLower(strings.TrimSpace(payload.Email))
 		}
+	} else {
+		return nil, rpcx.E(codes.FailedPrecondition, "password_signup_disabled", "email and password sign-up is disabled; start with wallet or OAuth")
 	}
 
 	merchantID := ids.New()
@@ -118,7 +105,7 @@ func (s *Service) Signup(ctx context.Context, req *cpayv1.SignupRequest) (*cpayv
 	if _, err = tx.Exec(ctx, `
 		INSERT INTO auth.users(id, merchant_id, email, password_hash, role, created_at, updated_at)
 		VALUES($1, $2, $3, $4, 'admin', NOW(), NOW())
-	`, userID, merchantID, email, passHash); err != nil {
+	`, userID, merchantID, email, nil); err != nil {
 		return nil, rpcx.E(codes.AlreadyExists, "already_exists", "account already exists")
 	}
 	if payload != nil {
@@ -807,14 +794,14 @@ func (s *Service) lookupUserAuth(ctx context.Context, userID string) (string, st
 }
 
 func (s *Service) ensureAlternativeAuthMethod(ctx context.Context, userID, merchantID, deletingKind, deletingID string) error {
-	var passwordEnabled bool
-	if err := s.db.QueryRow(ctx, `SELECT password_hash IS NOT NULL FROM auth.users WHERE id=$1 AND merchant_id=$2`, userID, merchantID).Scan(&passwordEnabled); err != nil {
+	var exists bool
+	if err := s.db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM auth.users WHERE id=$1 AND merchant_id=$2)`, userID, merchantID).Scan(&exists); err != nil || !exists {
 		return rpcx.E(codes.NotFound, "not_found", "user not found")
 	}
 	var identities, passkeys int
 	_ = s.db.QueryRow(ctx, `SELECT COUNT(*) FROM auth.identities WHERE user_id=$1 AND merchant_id=$2 AND ($3 <> 'identity' OR id::text <> $4)`, userID, merchantID, deletingKind, deletingID).Scan(&identities)
 	_ = s.db.QueryRow(ctx, `SELECT COUNT(*) FROM auth.passkey_credentials WHERE user_id=$1 AND merchant_id=$2 AND ($3 <> 'passkey' OR id::text <> $4)`, userID, merchantID, deletingKind, deletingID).Scan(&passkeys)
-	if !passwordEnabled && identities == 0 && passkeys == 0 {
+	if identities == 0 && passkeys == 0 {
 		return rpcx.E(codes.FailedPrecondition, "last_auth_method", "add another sign-in method before removing this one")
 	}
 	return nil

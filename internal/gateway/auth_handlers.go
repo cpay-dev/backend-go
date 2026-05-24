@@ -13,11 +13,6 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-type loginRequest struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
-}
-
 type refreshRequest struct {
 	RefreshToken string `json:"refresh_token"`
 }
@@ -74,27 +69,7 @@ type updateMerchantSettingsRequest struct {
 }
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
-	var req loginRequest
-	if !s.parseJSON(w, r, &req) {
-		return
-	}
-	resp, err := s.authClient.Login(s.rpcContext(r.Context()), &cpayv1.LoginRequest{Email: req.Email, Password: req.Password})
-	if err != nil {
-		s.writeRPCError(w, r, err)
-		return
-	}
-	httpx.WriteJSON(w, http.StatusOK, map[string]any{
-		"access_token":  resp.GetTokens().GetAccessToken(),
-		"refresh_token": resp.GetTokens().GetRefreshToken(),
-		"token_type":    resp.GetTokens().GetTokenType(),
-		"expires_in":    resp.GetTokens().GetExpiresIn(),
-		"user": map[string]any{
-			"id":          resp.GetUser().GetId(),
-			"merchant_id": resp.GetUser().GetMerchantId(),
-			"role":        resp.GetUser().GetRole(),
-			"email":       resp.GetUser().GetEmail(),
-		},
-	})
+	httpx.WriteError(w, http.StatusGone, "password_login_disabled", "email and password sign-in is disabled; use passkey, wallet, or OAuth", middleware.GetRequestID(r.Context()))
 }
 
 func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
