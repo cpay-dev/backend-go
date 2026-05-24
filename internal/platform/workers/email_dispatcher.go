@@ -245,9 +245,9 @@ func (w *EmailDispatcher) handleUserSignedUp(ctx context.Context, env events.Env
 	if email == "" {
 		return nil
 	}
-	subject := "Welcome to CPay"
-	text := "Welcome to CPay. Your account is ready and you can start creating payment links."
-	html := "<p>Welcome to <strong>CPay</strong>.</p><p>Your account is ready and you can start creating payment links.</p>"
+	subject := "Welcome to cpay"
+	text := "Welcome to cpay. Your account is ready, and you can start accepting payments."
+	html := "<p>Welcome to <strong>cpay</strong>.</p><p>Your account is ready, and you can start accepting payments.</p>"
 	return w.dispatch(ctx, env, "user_signup", []string{email}, subject, text, html, nil)
 }
 
