@@ -615,7 +615,8 @@ func (s *Server) handleListPayments(w http.ResponseWriter, r *http.Request) {
 			i.confirmations, i.required_confirmations,
 			i.expires_at, i.created_at, i.updated_at,
 			COALESCE(d.wallet_type, ''), COALESCE(latest_payout.payout_status, ''),
-			COALESCE(latest_payout.item_status, ''), COALESCE(latest_payout.last_error, ''),
+			COALESCE(latest_payout.item_status, ''), COALESCE(latest_payout.tx_hash, ''),
+			COALESCE(latest_payout.last_error, ''),
 			COUNT(*) OVER() AS total
 		FROM checkout.payment_intents i
 		JOIN checkout.checkout_sessions c ON c.id=i.checkout_session_id
@@ -623,7 +624,7 @@ func (s *Server) handleListPayments(w http.ResponseWriter, r *http.Request) {
 		LEFT JOIN catalog.products p ON p.id=pl.product_id
 		LEFT JOIN checkout.deposit_addresses d ON d.payment_intent_id=i.id
 		LEFT JOIN LATERAL (
-			SELECT po.status AS payout_status, pi.status AS item_status, pi.last_error
+			SELECT po.status AS payout_status, pi.status AS item_status, pi.tx_hash, pi.last_error
 			FROM checkout.payout_items pi
 			JOIN checkout.payouts po ON po.id=pi.payout_id
 			WHERE pi.payment_intent_id=i.id
@@ -646,7 +647,7 @@ func (s *Server) handleListPayments(w http.ResponseWriter, r *http.Request) {
 	total := 0
 	for rows.Next() {
 		var id, checkoutSessionID, linkID, productID, productName, linkTitle, linkCode, currency, customerEmail, status, chainName, tokenSymbol string
-		var walletType, payoutStatus, payoutItemStatus, payoutLastError string
+		var walletType, payoutStatus, payoutItemStatus, payoutTxHash, payoutLastError string
 		var fiatAmountRaw, expectedRaw, receivedRaw string
 		var txHash *string
 		var confirmations, requiredConfirmations int
@@ -660,7 +661,7 @@ func (s *Server) handleListPayments(w http.ResponseWriter, r *http.Request) {
 			&expectedRaw, &receivedRaw, &txHash,
 			&confirmations, &requiredConfirmations,
 			&expiresAt, &createdAt, &updatedAt,
-			&walletType, &payoutStatus, &payoutItemStatus, &payoutLastError,
+			&walletType, &payoutStatus, &payoutItemStatus, &payoutTxHash, &payoutLastError,
 			&rowTotal,
 		); err != nil {
 			httpx.WriteError(w, http.StatusInternalServerError, "internal_error", "failed to scan payments", middleware.GetRequestID(r.Context()))
@@ -696,6 +697,7 @@ func (s *Server) handleListPayments(w http.ResponseWriter, r *http.Request) {
 			"wallet_type":            emptyToNil(walletType),
 			"payout_status":          emptyToNil(payoutStatus),
 			"payout_item_status":     emptyToNil(payoutItemStatus),
+			"payout_tx_hash":         emptyToNil(payoutTxHash),
 			"payout_last_error":      emptyToNil(payoutLastError),
 		})
 	}
