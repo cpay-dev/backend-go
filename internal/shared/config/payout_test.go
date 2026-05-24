@@ -10,7 +10,7 @@ func TestParseChainRPCURLs(t *testing.T) {
 	if got["base"] != "https://base.example" {
 		t.Fatalf("unexpected base rpc: %q", got["base"])
 	}
-	if got["hyperevm"] != "https://rpc.hyperliquid.xyz/evm" {
+	if got["hyperevm"] != "https://rpc.hypurrscan.io" {
 		t.Fatalf("unexpected default hyperevm rpc: %q", got["hyperevm"])
 	}
 	if got["polygon"] != "http://polygon.example" {
@@ -37,7 +37,7 @@ func TestEVMChainRPCURLsIncludesDefaultsAndEnvOverrides(t *testing.T) {
 	if got["base"] != "https://base.example" {
 		t.Fatalf("expected base rpc, got %q", got["base"])
 	}
-	if got["hyperevm"] != "https://rpc.hyperliquid.xyz/evm" {
+	if got["hyperevm"] != "https://rpc.hypurrscan.io" {
 		t.Fatalf("expected hyperevm default rpc, got %q", got["hyperevm"])
 	}
 	if _, ok := got["tron"]; ok {
@@ -62,8 +62,23 @@ func TestLoadUsesDefaultRPCURLsWhenEnvIsEmpty(t *testing.T) {
 	if got["base"] != "https://base-rpc.publicnode.com" {
 		t.Fatalf("expected base default rpc, got %q", got["base"])
 	}
-	if got["hyperevm"] != "https://rpc.hyperliquid.xyz/evm" {
+	if got["hyperevm"] != "https://rpc.hypurrscan.io" {
 		t.Fatalf("expected hyperevm default rpc, got %q", got["hyperevm"])
+	}
+}
+
+func TestEVMChainRPCFallbackURLsIncludesHyperEVMDefaults(t *testing.T) {
+	cfg := Config{ChainRPCFallbackURLs: parseChainRPCFallbackURLs("tron=https://tron.example")}
+
+	got := cfg.EVMChainRPCFallbackURLs()
+	want := []string{"https://hyperliquid.drpc.org", "https://rpc.hyperliquid.xyz/evm"}
+	for i, rpcURL := range want {
+		if len(got["hyperevm"]) <= i || got["hyperevm"][i] != rpcURL {
+			t.Fatalf("expected hyperevm fallback %d to be %q, got %#v", i, rpcURL, got["hyperevm"])
+		}
+	}
+	if _, ok := got["tron"]; ok {
+		t.Fatalf("expected tron fallback rpc to be excluded from evm fallback map")
 	}
 }
 

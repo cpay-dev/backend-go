@@ -53,12 +53,13 @@ func main() {
 
 	httpserver.StartHealthServer(ctx, cfg.HTTPAddr, cfg.ServiceName, log)
 	observer := workers.ChainObserver{
-		DB:             pool,
-		CheckoutClient: checkoutClient,
-		ChainRPCURLs:   cfg.EVMChainRPCURLs(),
-		Log:            log,
-		Interval:       cfg.WorkerInterval,
-		Source:         cfg.ServiceName,
+		DB:                   pool,
+		CheckoutClient:       checkoutClient,
+		ChainRPCURLs:         cfg.EVMChainRPCURLs(),
+		ChainRPCFallbackURLs: cfg.EVMChainRPCFallbackURLs(),
+		Log:                  log,
+		Interval:             cfg.WorkerInterval,
+		Source:               cfg.ServiceName,
 	}
 	indexer := workers.MockTransferIndexer{NATS: nc, CheckoutClient: checkoutClient, Log: log}
 

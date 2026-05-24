@@ -49,6 +49,7 @@ type Config struct {
 	DefaultTolerancePercent float64
 	ChainConfirmations      map[string]int
 	ChainRPCURLs            map[string]string
+	ChainRPCFallbackURLs    map[string][]string
 	PayoutMode              string
 	PayoutHotWalletKey      string
 	PayoutGasBufferPercent  float64
@@ -87,10 +88,17 @@ var defaultChainConfirmations = map[string]int{
 var defaultChainRPCURLs = map[string]string{
 	"ethereum": "https://ethereum-rpc.publicnode.com",
 	"base":     "https://base-rpc.publicnode.com",
-	"hyperevm": "https://rpc.hyperliquid.xyz/evm",
+	"hyperevm": "https://rpc.hypurrscan.io",
 	"solana":   "https://api.mainnet.solana.com",
 	"ton":      "https://toncenter.com/api/v2",
 	"tron":     "https://api.trongrid.io",
+}
+
+var defaultChainRPCFallbackURLs = map[string][]string{
+	"hyperevm": {
+		"https://hyperliquid.drpc.org",
+		"https://rpc.hyperliquid.xyz/evm",
+	},
 }
 
 var evmChainRPCNames = map[string]struct{}{
@@ -152,6 +160,7 @@ func Load(serviceName string) Config {
 		DefaultTolerancePercent: getFloat("DEFAULT_TOLERANCE_PERCENT", 0.25),
 		ChainConfirmations:      parseConfirmations(getEnv("CHAIN_CONFIRMATIONS", "")),
 		ChainRPCURLs:            parseChainRPCURLs(getEnv("CHAIN_RPC_URLS", "")),
+		ChainRPCFallbackURLs:    parseChainRPCFallbackURLs(getEnv("CHAIN_RPC_FALLBACK_URLS", "")),
 		PayoutMode:              strings.ToLower(strings.TrimSpace(getEnv("PAYOUT_MODE", "production"))),
 		PayoutHotWalletKey:      getEnv("PAYOUT_HOT_WALLET_PRIVATE_KEY", ""),
 		PayoutGasBufferPercent:  getFloat("PAYOUT_GAS_BUFFER_PERCENT", 15),
@@ -216,6 +225,38 @@ func parseChainRPCURLs(raw string) map[string]string {
 	return out
 }
 
+func parseChainRPCFallbackURLs(raw string) map[string][]string {
+	out := make(map[string][]string, len(defaultChainRPCFallbackURLs))
+	for chainName, urls := range defaultChainRPCFallbackURLs {
+		out[chainName] = append([]string(nil), urls...)
+	}
+	for _, item := range strings.Split(raw, ",") {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		parts := strings.SplitN(item, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		chain := strings.ToLower(strings.TrimSpace(parts[0]))
+		if chain == "" {
+			continue
+		}
+		urls := make([]string, 0)
+		for _, rpcURL := range strings.Split(parts[1], "|") {
+			rpcURL = strings.TrimSpace(rpcURL)
+			if rpcURL != "" {
+				urls = append(urls, rpcURL)
+			}
+		}
+		if len(urls) > 0 {
+			out[chain] = urls
+		}
+	}
+	return out
+}
+
 func (c Config) EVMChainRPCURLs() map[string]string {
 	out := map[string]string{}
 	for chainName, rpcURL := range c.ChainRPCURLs {
@@ -224,6 +265,23 @@ func (c Config) EVMChainRPCURLs() map[string]string {
 			continue
 		}
 		out[chainName] = rpcURL
+	}
+	return out
+}
+
+func (c Config) EVMChainRPCFallbackURLs() map[string][]string {
+	out := map[string][]string{}
+	for chainName, urls := range c.ChainRPCFallbackURLs {
+		chainName = strings.ToLower(strings.TrimSpace(chainName))
+		if _, ok := evmChainRPCNames[chainName]; !ok {
+			continue
+		}
+		for _, rpcURL := range urls {
+			rpcURL = strings.TrimSpace(rpcURL)
+			if rpcURL != "" {
+				out[chainName] = append(out[chainName], rpcURL)
+			}
+		}
 	}
 	return out
 }

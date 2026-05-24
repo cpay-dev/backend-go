@@ -3,6 +3,7 @@ package workers
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"math"
 	"math/big"
 	"strings"
@@ -22,15 +23,18 @@ import (
 )
 
 type ChainObserver struct {
-	DB             *pgxpool.Pool
-	CheckoutClient cpayv1.CheckoutServiceClient
-	ChainRPCURLs   map[string]string
-	Log            zerolog.Logger
-	Interval       time.Duration
-	Source         string
+	DB                   *pgxpool.Pool
+	CheckoutClient       cpayv1.CheckoutServiceClient
+	ChainRPCURLs         map[string]string
+	ChainRPCFallbackURLs map[string][]string
+	Log                  zerolog.Logger
+	Interval             time.Duration
+	Source               string
 
-	clients map[string]*ethclient.Client
+	clients map[string]*chainRPCSet
 }
+
+const hyperEVMLastResortRPCMinInterval = 5 * time.Minute
 
 func (w *ChainObserver) Run(ctx context.Context) {
 	if w.Interval <= 0 {
@@ -92,18 +96,29 @@ func (w *ChainObserver) runDepositObserverLoop(ctx context.Context) {
 }
 
 func (w *ChainObserver) openRPCClients(ctx context.Context) {
-	w.clients = make(map[string]*ethclient.Client, len(w.ChainRPCURLs))
+	w.clients = make(map[string]*chainRPCSet, len(w.ChainRPCURLs))
 	for chainName, rpcURL := range w.ChainRPCURLs {
 		chainName = strings.ToLower(strings.TrimSpace(chainName))
 		if chainName == "" || strings.TrimSpace(rpcURL) == "" {
 			continue
 		}
-		client, err := ethclient.DialContext(ctx, rpcURL)
-		if err != nil {
-			w.Log.Warn().Err(err).Str("chain", chainName).Msg("chain observer: rpc unavailable")
-			continue
+		urls := uniqueRPCURLs(append([]string{rpcURL}, w.ChainRPCFallbackURLs[chainName]...))
+		set := &chainRPCSet{chain: chainName}
+		for index, candidate := range urls {
+			client, err := ethclient.DialContext(ctx, candidate)
+			if err != nil {
+				w.Log.Warn().Err(err).Str("chain", chainName).Str("rpc_url", candidate).Msg("chain observer: rpc unavailable")
+				continue
+			}
+			set.endpoints = append(set.endpoints, &chainRPCEndpoint{
+				url:         candidate,
+				client:      client,
+				minInterval: fallbackMinInterval(chainName, index, candidate),
+			})
 		}
-		w.clients[chainName] = client
+		if len(set.endpoints) > 0 {
+			w.clients[chainName] = set
+		}
 	}
 	if len(w.clients) == 0 {
 		w.Log.Warn().Msg("chain observer: no chain rpc urls configured; real deposits will not be detected")
@@ -112,8 +127,138 @@ func (w *ChainObserver) openRPCClients(ctx context.Context) {
 
 func (w *ChainObserver) closeRPCClients() {
 	for _, client := range w.clients {
-		client.Close()
+		client.close()
 	}
+}
+
+type chainRPCSet struct {
+	chain     string
+	endpoints []*chainRPCEndpoint
+	mu        sync.Mutex
+}
+
+type chainRPCEndpoint struct {
+	url         string
+	client      *ethclient.Client
+	minInterval time.Duration
+	lastAttempt time.Time
+}
+
+func uniqueRPCURLs(urls []string) []string {
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(urls))
+	for _, rpcURL := range urls {
+		rpcURL = strings.TrimSpace(rpcURL)
+		if rpcURL == "" {
+			continue
+		}
+		if _, ok := seen[rpcURL]; ok {
+			continue
+		}
+		seen[rpcURL] = struct{}{}
+		out = append(out, rpcURL)
+	}
+	return out
+}
+
+func fallbackMinInterval(chainName string, index int, rpcURL string) time.Duration {
+	chainName = strings.ToLower(strings.TrimSpace(chainName))
+	rpcURL = strings.ToLower(strings.TrimSpace(rpcURL))
+	if strings.Contains(chainName, "hyper") && index >= 2 && strings.Contains(rpcURL, "rpc.hyperliquid.xyz") {
+		return hyperEVMLastResortRPCMinInterval
+	}
+	return 0
+}
+
+func (s *chainRPCSet) close() {
+	for _, endpoint := range s.endpoints {
+		endpoint.client.Close()
+	}
+}
+
+func (s *chainRPCSet) endpointsForAttempt() []*chainRPCEndpoint {
+	now := time.Now()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	out := make([]*chainRPCEndpoint, 0, len(s.endpoints))
+	for _, endpoint := range s.endpoints {
+		if endpoint.minInterval > 0 && !endpoint.lastAttempt.IsZero() && now.Sub(endpoint.lastAttempt) < endpoint.minInterval {
+			continue
+		}
+		out = append(out, endpoint)
+	}
+	return out
+}
+
+func (s *chainRPCSet) markAttempt(endpoint *chainRPCEndpoint) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	endpoint.lastAttempt = time.Now()
+}
+
+func (s *chainRPCSet) transactionReceipt(ctx context.Context, hash common.Hash) (*types.Receipt, error) {
+	var lastErr error
+	for _, endpoint := range s.endpointsForAttempt() {
+		s.markAttempt(endpoint)
+		receipt, err := endpoint.client.TransactionReceipt(ctx, hash)
+		if err == nil {
+			return receipt, nil
+		}
+		lastErr = fmt.Errorf("%s: %w", endpoint.url, err)
+	}
+	if lastErr == nil {
+		return nil, fmt.Errorf("%s rpc endpoints are cooling down", s.chain)
+	}
+	return nil, lastErr
+}
+
+func (s *chainRPCSet) blockNumber(ctx context.Context) (uint64, error) {
+	var lastErr error
+	for _, endpoint := range s.endpointsForAttempt() {
+		s.markAttempt(endpoint)
+		latest, err := endpoint.client.BlockNumber(ctx)
+		if err == nil {
+			return latest, nil
+		}
+		lastErr = fmt.Errorf("%s: %w", endpoint.url, err)
+	}
+	if lastErr == nil {
+		return 0, fmt.Errorf("%s rpc endpoints are cooling down", s.chain)
+	}
+	return 0, lastErr
+}
+
+func (s *chainRPCSet) filterLogs(ctx context.Context, query ethereum.FilterQuery) ([]types.Log, error) {
+	var lastErr error
+	for _, endpoint := range s.endpointsForAttempt() {
+		s.markAttempt(endpoint)
+		logs, err := endpoint.client.FilterLogs(ctx, query)
+		if err == nil {
+			return logs, nil
+		}
+		lastErr = fmt.Errorf("%s: %w", endpoint.url, err)
+	}
+	if lastErr == nil {
+		return nil, fmt.Errorf("%s rpc endpoints are cooling down", s.chain)
+	}
+	return nil, lastErr
+}
+
+func (s *chainRPCSet) callContract(ctx context.Context, msg ethereum.CallMsg, blockNumber *big.Int) ([]byte, error) {
+	var lastErr error
+	for _, endpoint := range s.endpointsForAttempt() {
+		s.markAttempt(endpoint)
+		out, err := endpoint.client.CallContract(ctx, msg, blockNumber)
+		if err == nil {
+			return out, nil
+		}
+		lastErr = fmt.Errorf("%s: %w", endpoint.url, err)
+	}
+	if lastErr == nil {
+		return nil, fmt.Errorf("%s rpc endpoints are cooling down", s.chain)
+	}
+	return nil, lastErr
 }
 
 type pendingDepositIntent struct {
@@ -185,7 +330,7 @@ func (w *ChainObserver) updateRecordedTransaction(ctx context.Context, item reco
 	if client == nil || !isHexHash(item.TxHash) {
 		return
 	}
-	receipt, err := client.TransactionReceipt(ctx, common.HexToHash(item.TxHash))
+	receipt, err := client.transactionReceipt(ctx, common.HexToHash(item.TxHash))
 	if err != nil {
 		w.Log.Warn().Err(err).Str("chain", item.Chain).Str("tx_hash", item.TxHash).Msg("chain observer: receipt lookup failed")
 		return
@@ -201,7 +346,7 @@ func (w *ChainObserver) updateRecordedTransaction(ctx context.Context, item reco
 	latest, ok := latestBlocks[key]
 	if !ok {
 		var err error
-		latest, err = client.BlockNumber(ctx)
+		latest, err = client.blockNumber(ctx)
 		if err != nil {
 			w.Log.Warn().Err(err).Str("chain", item.Chain).Msg("chain observer: block number failed")
 			return
@@ -305,7 +450,7 @@ func (w *ChainObserver) observeERC20Deposit(ctx context.Context, item pendingDep
 		}
 	}
 
-	latest, err := client.BlockNumber(ctx)
+	latest, err := client.blockNumber(ctx)
 	if err != nil {
 		w.Log.Warn().Err(err).Str("chain", item.Chain).Msg("chain observer: block number failed")
 		return
@@ -359,7 +504,7 @@ func (w *ChainObserver) observeERC20Deposit(ctx context.Context, item pendingDep
 	}
 }
 
-func (w *ChainObserver) filterERC20TransferLogs(ctx context.Context, client *ethclient.Client, chainName string, token, deposit common.Address, latest uint64) ([]types.Log, error) {
+func (w *ChainObserver) filterERC20TransferLogs(ctx context.Context, client *chainRPCSet, chainName string, token, deposit common.Address, latest uint64) ([]types.Log, error) {
 	scanDepth := uint64(50000)
 	chunkSize := uint64(10000)
 	if strings.Contains(strings.ToLower(chainName), "hyper") {
@@ -375,7 +520,7 @@ func (w *ChainObserver) filterERC20TransferLogs(ctx context.Context, client *eth
 		if to > chunkSize && to-chunkSize+1 > fromFloor {
 			from = to - chunkSize + 1
 		}
-		logs, err := client.FilterLogs(ctx, ethereum.FilterQuery{
+		logs, err := client.filterLogs(ctx, ethereum.FilterQuery{
 			FromBlock: new(big.Int).SetUint64(from),
 			ToBlock:   new(big.Int).SetUint64(to),
 			Addresses: []common.Address{token},
@@ -395,11 +540,11 @@ func (w *ChainObserver) filterERC20TransferLogs(ctx context.Context, client *eth
 	}
 }
 
-func (w *ChainObserver) observedERC20Balance(ctx context.Context, client *ethclient.Client, token, deposit common.Address, decimals int) (float64, error) {
+func (w *ChainObserver) observedERC20Balance(ctx context.Context, client *chainRPCSet, token, deposit common.Address, decimals int) (float64, error) {
 	selector := crypto.Keccak256([]byte("balanceOf(address)"))[:4]
 	data := append([]byte{}, selector...)
 	data = append(data, common.BytesToHash(deposit.Bytes()).Bytes()...)
-	out, err := client.CallContract(ctx, ethereum.CallMsg{To: &token, Data: data}, nil)
+	out, err := client.callContract(ctx, ethereum.CallMsg{To: &token, Data: data}, nil)
 	if err != nil {
 		return 0, err
 	}
@@ -465,7 +610,7 @@ func (w *ChainObserver) confirmObservedBalance(ctx context.Context, item pending
 	return statusIsPaid
 }
 
-func (w *ChainObserver) clientForChain(chainName string) *ethclient.Client {
+func (w *ChainObserver) clientForChain(chainName string) *chainRPCSet {
 	chainName = strings.ToLower(strings.TrimSpace(chainName))
 	if client := w.clients[chainName]; client != nil {
 		return client
