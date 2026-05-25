@@ -224,11 +224,11 @@ func formatTokenAmount(amount float64, decimals int) string {
 
 func evmChainID(chainName string) (string, bool) {
 	switch strings.ToLower(strings.TrimSpace(chainName)) {
-	case "ethereum", "ethereum mainnet":
+	case "ethereum", "ethereum mainnet", "mainnet":
 		return "0x1", true
 	case "optimism":
 		return "0xa", true
-	case "bsc", "bnb smart chain":
+	case "bsc", "bnb", "bnb smart chain":
 		return "0x38", true
 	case "polygon":
 		return "0x89", true
@@ -236,7 +236,9 @@ func evmChainID(chainName string) (string, bool) {
 		return "0xa4b1", true
 	case "base":
 		return "0x2105", true
-	case "hyperevm", "hyper evm":
+	case "avalanche", "avalanche c-chain", "avax":
+		return "0xa86a", true
+	case "hyperevm", "hyper evm", "hyperliquid", "hyperliquid evm":
 		return "0x3e7", true
 	default:
 		return "", false
@@ -247,12 +249,14 @@ func nativeTokenDecimals(chainName, symbol string) (int, bool) {
 	chainName = strings.ToLower(strings.TrimSpace(chainName))
 	symbol = strings.ToUpper(strings.TrimSpace(symbol))
 	switch chainName {
-	case "ethereum", "ethereum mainnet", "optimism", "arbitrum", "arbitrum one", "base", "hyperevm", "hyper evm":
+	case "ethereum", "ethereum mainnet", "mainnet", "optimism", "arbitrum", "arbitrum one", "base", "hyperevm", "hyper evm", "hyperliquid", "hyperliquid evm":
 		return 18, symbol == "ETH" || symbol == "HYPE"
-	case "bsc", "bnb smart chain":
+	case "bsc", "bnb", "bnb smart chain":
 		return 18, symbol == "BNB"
 	case "polygon":
 		return 18, symbol == "MATIC" || symbol == "POL"
+	case "avalanche", "avalanche c-chain", "avax":
+		return 18, symbol == "AVAX"
 	default:
 		return 0, false
 	}

@@ -114,6 +114,28 @@ func TestEVMPayoutExecutorSendsNativeTransfer(t *testing.T) {
 	}
 }
 
+func TestEVMPayoutExecutorUsesCanonicalChainAliasClient(t *testing.T) {
+	privateKey, err := crypto.GenerateKey()
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	client := &fakeEVMClient{}
+	executor := &EVMPayoutExecutor{clients: map[string]evmRPCClient{"bsc": client}}
+
+	_, err = executor.ExecutePayout(context.Background(), PayoutExecutionRequest{
+		Chain:                "BNB Smart Chain",
+		AmountRaw:            "0.5",
+		DepositPrivateKeyHex: "0x" + common.Bytes2Hex(crypto.FromECDSA(privateKey)),
+		SettlementAddress:    "0xde0B295669a9FD93d5F28D9Ec85E40f4cb697BAe",
+	})
+	if err != nil {
+		t.Fatalf("ExecutePayout returned error: %v", err)
+	}
+	if client.sentTx == nil {
+		t.Fatalf("expected transaction to be sent")
+	}
+}
+
 func TestEVMPayoutExecutorSendsERC20Transfer(t *testing.T) {
 	privateKey, err := crypto.GenerateKey()
 	if err != nil {

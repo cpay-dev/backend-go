@@ -50,6 +50,36 @@ func TestRequiredCreate2AdapterCreatesCreate2Wallet(t *testing.T) {
 	}
 }
 
+func TestRequiredCreate2AdapterUsesCanonicalChainAliases(t *testing.T) {
+	predicted := common.HexToAddress("0x386d43Ec19E11aE2Ad0d9aB97955c510804Fd510")
+	factory := "0xde0B295669a9FD93d5F28D9Ec85E40f4cb697BAe"
+	adapter := NewEVMAdapterWithRequiredCreate2(
+		map[string]int{"arbitrum": 4800},
+		map[string]string{"arbitrum": "http://127.0.0.1:8545"},
+		map[string]string{"arbitrum": factory},
+	)
+	adapter.create2.predictWallet = func(_ context.Context, rpcURL string, gotFactory common.Address, salt [32]byte) (common.Address, error) {
+		if rpcURL != "http://127.0.0.1:8545" {
+			t.Fatalf("unexpected rpc url: %s", rpcURL)
+		}
+		if gotFactory != common.HexToAddress(factory) {
+			t.Fatalf("unexpected factory: %s", gotFactory.Hex())
+		}
+		if salt != CheckoutWalletSalt("pi_123", "arbitrum") {
+			t.Fatalf("expected canonical arbitrum salt")
+		}
+		return predicted, nil
+	}
+
+	wallet, err := adapter.GenerateDepositWallet(context.Background(), "Arbitrum One", "pi_123")
+	if err != nil {
+		t.Fatalf("generate wallet: %v", err)
+	}
+	if wallet.Address != predicted.Hex() || wallet.WalletType != WalletTypeCreate2 {
+		t.Fatalf("unexpected wallet: %+v", wallet)
+	}
+}
+
 func TestRequiredCreate2AdapterFailsWithoutConfiguredFactories(t *testing.T) {
 	adapter := NewEVMAdapterWithRequiredCreate2(map[string]int{"hyperevm": 1}, map[string]string{"hyperevm": "http://127.0.0.1:8545"}, nil)
 

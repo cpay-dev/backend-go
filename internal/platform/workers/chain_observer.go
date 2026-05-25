@@ -625,6 +625,8 @@ func (w *ChainObserver) clientForChain(chainName string) *chainRPCSet {
 			return client
 		}
 		return w.clients["bnb"]
+	case strings.Contains(chainName, "avalanche") || chainName == "avax":
+		return w.clients["avalanche"]
 	case strings.Contains(chainName, "hyper"):
 		return w.clients["hyperevm"]
 	default:

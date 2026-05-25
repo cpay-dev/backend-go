@@ -123,7 +123,7 @@ func closeEVMClients(clients map[string]evmRPCClient) {
 }
 
 func (e *EVMPayoutExecutor) ExecutePayout(ctx context.Context, req PayoutExecutionRequest) (PayoutExecutionResult, error) {
-	chainName := strings.ToLower(strings.TrimSpace(req.Chain))
+	chainName := canonicalEVMChainName(req.Chain)
 	client := e.clients[chainName]
 	if client == nil {
 		return PayoutExecutionResult{}, fmt.Errorf("rpc client for chain %s is not configured", chainName)
@@ -142,6 +142,23 @@ func (e *EVMPayoutExecutor) ExecutePayout(ctx context.Context, req PayoutExecuti
 		return e.executeCreate2Payout(ctx, client, req)
 	default:
 		return PayoutExecutionResult{}, fmt.Errorf("unsupported payout wallet type %s", walletType)
+	}
+}
+
+func canonicalEVMChainName(chainName string) string {
+	switch strings.ToLower(strings.TrimSpace(chainName)) {
+	case "ethereum mainnet", "mainnet":
+		return "ethereum"
+	case "arbitrum one":
+		return "arbitrum"
+	case "bnb", "bnb smart chain":
+		return "bsc"
+	case "hyper evm", "hyperliquid", "hyperliquid evm":
+		return "hyperevm"
+	case "avalanche c-chain", "avax":
+		return "avalanche"
+	default:
+		return strings.ToLower(strings.TrimSpace(chainName))
 	}
 }
 

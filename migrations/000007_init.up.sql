@@ -398,6 +398,7 @@ SET required_confirmations = CASE
     WHEN lower(chain) = 'polygon' THEN 6
     WHEN lower(chain) IN ('arbitrum', 'arbitrum one') THEN 4800
     WHEN lower(chain) = 'base' THEN 600
+    WHEN lower(chain) IN ('avalanche', 'avalanche c-chain', 'avax') THEN 12
     WHEN lower(chain) IN ('hyperevm', 'hyper evm', 'hyperliquid', 'hyperliquid evm') THEN 3
     WHEN lower(chain) IN ('bnb', 'bsc', 'bnb smart chain') THEN 6
     WHEN lower(chain) = 'optimism' THEN 600
@@ -411,6 +412,7 @@ WHERE status IN ('created', 'awaiting_funds', 'partial', 'expired')
     required_confirmations IN (1, 2, 3, 12, 15, 19, 20, 32, 64, 600, 4800)
     OR lower(chain) IN (
         'polygon',
+        'avalanche', 'avalanche c-chain', 'avax',
         'bnb', 'bsc', 'bnb smart chain',
         'hyperevm', 'hyper evm', 'hyperliquid', 'hyperliquid evm',
         'tron'

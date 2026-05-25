@@ -66,32 +66,40 @@ type Config struct {
 }
 
 var defaultChainConfirmations = map[string]int{
-	"ethereum":         64,
-	"ethereum mainnet": 64,
-	"mainnet":          64,
-	"polygon":          6,
-	"arbitrum":         4800,
-	"arbitrum one":     4800,
-	"base":             600,
-	"hyperevm":         3,
-	"hyper evm":        3,
-	"hyperliquid":      3,
-	"hyperliquid evm":  3,
-	"bnb":              6,
-	"bsc":              6,
-	"bnb smart chain":  6,
-	"optimism":         600,
-	"solana":           32,
-	"tron":             21,
+	"ethereum":          64,
+	"ethereum mainnet":  64,
+	"mainnet":           64,
+	"polygon":           6,
+	"arbitrum":          4800,
+	"arbitrum one":      4800,
+	"base":              600,
+	"avalanche":         12,
+	"avalanche c-chain": 12,
+	"avax":              12,
+	"hyperevm":          3,
+	"hyper evm":         3,
+	"hyperliquid":       3,
+	"hyperliquid evm":   3,
+	"bnb":               6,
+	"bsc":               6,
+	"bnb smart chain":   6,
+	"optimism":          600,
+	"solana":            32,
+	"tron":              21,
 }
 
 var defaultChainRPCURLs = map[string]string{
-	"ethereum": "https://ethereum-rpc.publicnode.com",
-	"base":     "https://base-rpc.publicnode.com",
-	"hyperevm": "https://rpc.hypurrscan.io",
-	"solana":   "https://api.mainnet.solana.com",
-	"ton":      "https://toncenter.com/api/v2",
-	"tron":     "https://api.trongrid.io",
+	"ethereum":  "https://ethereum-rpc.publicnode.com",
+	"polygon":   "https://polygon-bor-rpc.publicnode.com",
+	"arbitrum":  "https://arbitrum-one-rpc.publicnode.com",
+	"base":      "https://base-rpc.publicnode.com",
+	"avalanche": "https://avalanche-c-chain-rpc.publicnode.com",
+	"hyperevm":  "https://rpc.hypurrscan.io",
+	"bsc":       "https://bsc-rpc.publicnode.com",
+	"optimism":  "https://optimism-rpc.publicnode.com",
+	"solana":    "https://api.mainnet.solana.com",
+	"ton":       "https://toncenter.com/api/v2",
+	"tron":      "https://api.trongrid.io",
 }
 
 var defaultChainRPCFallbackURLs = map[string][]string{
@@ -102,21 +110,24 @@ var defaultChainRPCFallbackURLs = map[string][]string{
 }
 
 var evmChainRPCNames = map[string]struct{}{
-	"ethereum":         {},
-	"ethereum mainnet": {},
-	"mainnet":          {},
-	"polygon":          {},
-	"arbitrum":         {},
-	"arbitrum one":     {},
-	"base":             {},
-	"hyperevm":         {},
-	"hyper evm":        {},
-	"hyperliquid":      {},
-	"hyperliquid evm":  {},
-	"bnb":              {},
-	"bsc":              {},
-	"bnb smart chain":  {},
-	"optimism":         {},
+	"ethereum":          {},
+	"ethereum mainnet":  {},
+	"mainnet":           {},
+	"polygon":           {},
+	"arbitrum":          {},
+	"arbitrum one":      {},
+	"base":              {},
+	"avalanche":         {},
+	"avalanche c-chain": {},
+	"avax":              {},
+	"hyperevm":          {},
+	"hyper evm":         {},
+	"hyperliquid":       {},
+	"hyperliquid evm":   {},
+	"bnb":               {},
+	"bsc":               {},
+	"bnb smart chain":   {},
+	"optimism":          {},
 }
 
 func Load(serviceName string) Config {
@@ -196,7 +207,7 @@ func parseConfirmations(raw string) map[string]int {
 		if err != nil || val <= 0 {
 			continue
 		}
-		out[strings.ToLower(strings.TrimSpace(parts[0]))] = val
+		out[canonicalChainName(parts[0])] = val
 	}
 	return out
 }
@@ -215,7 +226,7 @@ func parseChainRPCURLs(raw string) map[string]string {
 		if len(parts) != 2 {
 			continue
 		}
-		chain := strings.ToLower(strings.TrimSpace(parts[0]))
+		chain := canonicalChainName(parts[0])
 		rpcURL := strings.TrimSpace(parts[1])
 		if chain == "" || rpcURL == "" {
 			continue
@@ -239,7 +250,7 @@ func parseChainRPCFallbackURLs(raw string) map[string][]string {
 		if len(parts) != 2 {
 			continue
 		}
-		chain := strings.ToLower(strings.TrimSpace(parts[0]))
+		chain := canonicalChainName(parts[0])
 		if chain == "" {
 			continue
 		}
@@ -260,7 +271,7 @@ func parseChainRPCFallbackURLs(raw string) map[string][]string {
 func (c Config) EVMChainRPCURLs() map[string]string {
 	out := map[string]string{}
 	for chainName, rpcURL := range c.ChainRPCURLs {
-		chainName = strings.ToLower(strings.TrimSpace(chainName))
+		chainName = canonicalChainName(chainName)
 		if _, ok := evmChainRPCNames[chainName]; !ok {
 			continue
 		}
@@ -272,7 +283,7 @@ func (c Config) EVMChainRPCURLs() map[string]string {
 func (c Config) EVMChainRPCFallbackURLs() map[string][]string {
 	out := map[string][]string{}
 	for chainName, urls := range c.ChainRPCFallbackURLs {
-		chainName = strings.ToLower(strings.TrimSpace(chainName))
+		chainName = canonicalChainName(chainName)
 		if _, ok := evmChainRPCNames[chainName]; !ok {
 			continue
 		}
@@ -297,7 +308,7 @@ func parseAddressMap(raw string) map[string]string {
 		if len(parts) != 2 {
 			continue
 		}
-		chain := strings.ToLower(strings.TrimSpace(parts[0]))
+		chain := canonicalChainName(parts[0])
 		address := strings.TrimSpace(parts[1])
 		if chain == "" || address == "" {
 			continue
@@ -308,7 +319,7 @@ func parseAddressMap(raw string) map[string]string {
 }
 
 func (c Config) CheckoutWalletFactoryForChain(chain string) string {
-	return c.CheckoutWalletFactories[strings.ToLower(strings.TrimSpace(chain))]
+	return c.CheckoutWalletFactories[canonicalChainName(chain)]
 }
 
 func ValidateChainRPCURLs(urls map[string]string) error {
@@ -347,11 +358,28 @@ func ValidateProductionCreate2PayoutConfig(rpcURLs, factories map[string]string,
 		return err
 	}
 	for chainName := range rpcURLs {
-		if _, ok := factories[strings.ToLower(strings.TrimSpace(chainName))]; !ok {
+		if _, ok := factories[canonicalChainName(chainName)]; !ok {
 			return fmt.Errorf("CHECKOUT_WALLET_FACTORY_ADDRESSES is missing %s", chainName)
 		}
 	}
 	return nil
+}
+
+func canonicalChainName(chain string) string {
+	switch strings.ToLower(strings.TrimSpace(chain)) {
+	case "ethereum mainnet", "mainnet":
+		return "ethereum"
+	case "arbitrum one":
+		return "arbitrum"
+	case "bnb", "bnb smart chain":
+		return "bsc"
+	case "hyper evm", "hyperliquid", "hyperliquid evm":
+		return "hyperevm"
+	case "avalanche c-chain", "avax":
+		return "avalanche"
+	default:
+		return strings.ToLower(strings.TrimSpace(chain))
+	}
 }
 
 func isHexAddress(address string) bool {
@@ -425,7 +453,7 @@ func getDuration(key string, def time.Duration) time.Duration {
 }
 
 func (c Config) ConfirmationForChain(chain string) int {
-	k := strings.ToLower(strings.TrimSpace(chain))
+	k := canonicalChainName(chain)
 	if v, ok := c.ChainConfirmations[k]; ok {
 		return v
 	}

@@ -13,6 +13,18 @@ func TestParseChainRPCURLs(t *testing.T) {
 	if got["hyperevm"] != "https://rpc.hypurrscan.io" {
 		t.Fatalf("unexpected default hyperevm rpc: %q", got["hyperevm"])
 	}
+	if got["arbitrum"] != "https://arbitrum-one-rpc.publicnode.com" {
+		t.Fatalf("unexpected default arbitrum rpc: %q", got["arbitrum"])
+	}
+	if got["optimism"] != "https://optimism-rpc.publicnode.com" {
+		t.Fatalf("unexpected default optimism rpc: %q", got["optimism"])
+	}
+	if got["bsc"] != "https://bsc-rpc.publicnode.com" {
+		t.Fatalf("unexpected default bsc rpc: %q", got["bsc"])
+	}
+	if got["avalanche"] != "https://avalanche-c-chain-rpc.publicnode.com" {
+		t.Fatalf("unexpected default avalanche rpc: %q", got["avalanche"])
+	}
 	if got["polygon"] != "http://polygon.example" {
 		t.Fatalf("unexpected polygon rpc: %q", got["polygon"])
 	}
@@ -40,6 +52,21 @@ func TestEVMChainRPCURLsIncludesDefaultsAndEnvOverrides(t *testing.T) {
 	if got["hyperevm"] != "https://rpc.hypurrscan.io" {
 		t.Fatalf("expected hyperevm default rpc, got %q", got["hyperevm"])
 	}
+	if got["polygon"] != "https://polygon-bor-rpc.publicnode.com" {
+		t.Fatalf("expected polygon default rpc, got %q", got["polygon"])
+	}
+	if got["arbitrum"] != "https://arbitrum-one-rpc.publicnode.com" {
+		t.Fatalf("expected arbitrum default rpc, got %q", got["arbitrum"])
+	}
+	if got["optimism"] != "https://optimism-rpc.publicnode.com" {
+		t.Fatalf("expected optimism default rpc, got %q", got["optimism"])
+	}
+	if got["bsc"] != "https://bsc-rpc.publicnode.com" {
+		t.Fatalf("expected bsc default rpc, got %q", got["bsc"])
+	}
+	if got["avalanche"] != "https://avalanche-c-chain-rpc.publicnode.com" {
+		t.Fatalf("expected avalanche default rpc, got %q", got["avalanche"])
+	}
 	if _, ok := got["tron"]; ok {
 		t.Fatalf("expected tron rpc to be excluded from evm rpc map")
 	}
@@ -64,6 +91,39 @@ func TestLoadUsesDefaultRPCURLsWhenEnvIsEmpty(t *testing.T) {
 	}
 	if got["hyperevm"] != "https://rpc.hypurrscan.io" {
 		t.Fatalf("expected hyperevm default rpc, got %q", got["hyperevm"])
+	}
+	if got["polygon"] != "https://polygon-bor-rpc.publicnode.com" {
+		t.Fatalf("expected polygon default rpc, got %q", got["polygon"])
+	}
+	if got["arbitrum"] != "https://arbitrum-one-rpc.publicnode.com" {
+		t.Fatalf("expected arbitrum default rpc, got %q", got["arbitrum"])
+	}
+	if got["optimism"] != "https://optimism-rpc.publicnode.com" {
+		t.Fatalf("expected optimism default rpc, got %q", got["optimism"])
+	}
+	if got["bsc"] != "https://bsc-rpc.publicnode.com" {
+		t.Fatalf("expected bsc default rpc, got %q", got["bsc"])
+	}
+	if got["avalanche"] != "https://avalanche-c-chain-rpc.publicnode.com" {
+		t.Fatalf("expected avalanche default rpc, got %q", got["avalanche"])
+	}
+}
+
+func TestEVMChainRPCURLsCanonicalizesAliases(t *testing.T) {
+	cfg := Config{ChainRPCURLs: parseChainRPCURLs("arbitrum one=https://arb.example,bnb smart chain=https://bsc.example,avalanche c-chain=https://avax.example,hyper evm=https://hyper.example")}
+
+	got := cfg.EVMChainRPCURLs()
+	if got["arbitrum"] != "https://arb.example" {
+		t.Fatalf("expected arbitrum alias override, got %q", got["arbitrum"])
+	}
+	if got["bsc"] != "https://bsc.example" {
+		t.Fatalf("expected bsc alias override, got %q", got["bsc"])
+	}
+	if got["avalanche"] != "https://avax.example" {
+		t.Fatalf("expected avalanche alias override, got %q", got["avalanche"])
+	}
+	if got["hyperevm"] != "https://hyper.example" {
+		t.Fatalf("expected hyperevm alias override, got %q", got["hyperevm"])
 	}
 }
 
@@ -101,6 +161,16 @@ func TestParseCheckoutWalletFactories(t *testing.T) {
 	}
 	if got["hyperevm"] != "0x90a546a5fb533d4f168846400656b663F12578d6" {
 		t.Fatalf("unexpected hyperevm factory: %q", got["hyperevm"])
+	}
+}
+
+func TestParseCheckoutWalletFactoriesCanonicalizesAliases(t *testing.T) {
+	got := parseAddressMap("arbitrum one=0xde0B295669a9FD93d5F28D9Ec85E40f4cb697BAe,bnb smart chain=0x90a546a5fb533d4f168846400656b663F12578d6")
+	if got["arbitrum"] != "0xde0B295669a9FD93d5F28D9Ec85E40f4cb697BAe" {
+		t.Fatalf("unexpected arbitrum factory: %q", got["arbitrum"])
+	}
+	if got["bsc"] != "0x90a546a5fb533d4f168846400656b663F12578d6" {
+		t.Fatalf("unexpected bsc factory: %q", got["bsc"])
 	}
 }
 
@@ -147,6 +217,9 @@ func TestConfirmationForChainUsesExplicitChainDefaultsAndOverrides(t *testing.T)
 	}
 	if got := cfg.ConfirmationForChain("BSC"); got != 6 {
 		t.Fatalf("expected BSC default 6, got %d", got)
+	}
+	if got := cfg.ConfirmationForChain("Avalanche C-Chain"); got != 12 {
+		t.Fatalf("expected Avalanche C-Chain default 12, got %d", got)
 	}
 	if got := cfg.ConfirmationForChain("Tron"); got != 21 {
 		t.Fatalf("expected Tron default 21, got %d", got)

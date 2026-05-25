@@ -67,6 +67,12 @@ var evmTokenContracts = map[string]map[string]TokenContract{
 		"DAI":  {Address: "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb", Decimals: 18},
 		"WBTC": {Address: "0x0555E30da8f98308EdB960aa94C0Db47230d2B9c", Decimals: 8},
 	},
+	"avalanche": {
+		"USDC": {Address: "0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E", Decimals: 6},
+		"USDT": {Address: "0xc7198437980c041c805A1EDcbA50c1Ce5db95118", Decimals: 6},
+		"DAI":  {Address: "0xd586E7F844cEa2F87f50152665BCbc2C279D8d70", Decimals: 18},
+		"WBTC": {Address: "0x50b7545627a5162F82A992c33b87aDc75187B218", Decimals: 8},
+	},
 	"hyperevm": {
 		"USDT": {Address: "0xB8CE59FC3717ada4C02eaDF9682A9e934F625ebb", Decimals: 6},
 	},
@@ -76,7 +82,7 @@ var evmTokenContracts = map[string]map[string]TokenContract{
 }
 
 func KnownEVMTokenContract(chainName, symbol string) (TokenContract, bool) {
-	bySymbol, ok := evmTokenContracts[strings.ToLower(strings.TrimSpace(chainName))]
+	bySymbol, ok := evmTokenContracts[normalizeEVMChain(chainName)]
 	if !ok {
 		return TokenContract{}, false
 	}

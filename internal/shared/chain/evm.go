@@ -69,7 +69,7 @@ func generateEOADepositWallet() (DepositWallet, error) {
 }
 
 func (a *EVMAdapter) RequiredConfirmations(chain string) int {
-	if v, ok := a.confirmations[strings.ToLower(chain)]; ok {
+	if v, ok := a.confirmations[normalizeEVMChain(chain)]; ok {
 		return v
 	}
 	return 12
@@ -97,7 +97,20 @@ func commonBytesToHex(b []byte) string {
 }
 
 func normalizeEVMChain(chain string) string {
-	return strings.ToLower(strings.TrimSpace(chain))
+	switch strings.ToLower(strings.TrimSpace(chain)) {
+	case "ethereum mainnet", "mainnet":
+		return "ethereum"
+	case "arbitrum one":
+		return "arbitrum"
+	case "bnb", "bnb smart chain":
+		return "bsc"
+	case "hyper evm", "hyperliquid", "hyperliquid evm":
+		return "hyperevm"
+	case "avalanche c-chain", "avax":
+		return "avalanche"
+	default:
+		return strings.ToLower(strings.TrimSpace(chain))
+	}
 }
 
 func requireHexAddress(label, address string) (common.Address, error) {
