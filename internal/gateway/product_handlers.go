@@ -106,18 +106,7 @@ func (s *Server) handleListProducts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	limit := 20
-	offset := 0
-	if q := r.URL.Query().Get("limit"); q != "" {
-		if v, err := strconv.Atoi(q); err == nil && v > 0 && v <= 100 {
-			limit = v
-		}
-	}
-	if q := r.URL.Query().Get("offset"); q != "" {
-		if v, err := strconv.Atoi(q); err == nil && v >= 0 {
-			offset = v
-		}
-	}
+	limit, offset := parsePagination(r, 20, 100)
 
 	rows, err := s.db.Query(r.Context(), `
 		SELECT p.id::text, p.name, p.description, p.image_url, p.default_currency, COALESCE(p.default_amount::text, ''), p.metadata, p.created_at, p.updated_at,
@@ -228,17 +217,17 @@ func (s *Server) handleUpdateProduct(w http.ResponseWriter, r *http.Request) {
 			if name == "" {
 				return 0, nil, rpcx.E(codes.InvalidArgument, "invalid_request", "name cannot be empty")
 			}
-			setParts = append(setParts, "name=$"+strconv.Itoa(len(args)+1))
+			setParts = append(setParts, nextSetParam("name", args, ""))
 			args = append(args, name)
 		}
 
 		if req.Description != nil {
-			setParts = append(setParts, "description=$"+strconv.Itoa(len(args)+1))
+			setParts = append(setParts, nextSetParam("description", args, ""))
 			args = append(args, nullableText(*req.Description))
 		}
 
 		if req.ImageURL != nil {
-			setParts = append(setParts, "image_url=$"+strconv.Itoa(len(args)+1))
+			setParts = append(setParts, nextSetParam("image_url", args, ""))
 			args = append(args, nullableText(*req.ImageURL))
 		}
 
@@ -247,7 +236,7 @@ func (s *Server) handleUpdateProduct(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				return 0, nil, rpcx.E(codes.InvalidArgument, "invalid_request", err.Error())
 			}
-			setParts = append(setParts, "default_currency=$"+strconv.Itoa(len(args)+1))
+			setParts = append(setParts, nextSetParam("default_currency", args, ""))
 			args = append(args, currency)
 		}
 
@@ -255,12 +244,12 @@ func (s *Server) handleUpdateProduct(w http.ResponseWriter, r *http.Request) {
 			if *req.DefaultAmount < 0 {
 				return 0, nil, rpcx.E(codes.InvalidArgument, "invalid_request", "default_amount must be non-negative")
 			}
-			setParts = append(setParts, "default_amount=$"+strconv.Itoa(len(args)+1))
+			setParts = append(setParts, nextSetParam("default_amount", args, ""))
 			args = append(args, *req.DefaultAmount)
 		}
 
 		if req.Metadata != nil {
-			setParts = append(setParts, "metadata=$"+strconv.Itoa(len(args)+1)+"::jsonb")
+			setParts = append(setParts, nextSetParam("metadata", args, "::jsonb"))
 			args = append(args, mustJSON(*req.Metadata, "{}"))
 		}
 
@@ -640,6 +629,10 @@ func normalizeCurrency(raw string, def string) (string, error) {
 		}
 	}
 	return cur, nil
+}
+
+func nextSetParam(column string, args []any, cast string) string {
+	return column + "=$" + strconv.Itoa(len(args)+1) + cast
 }
 
 func nullableText(v string) any {

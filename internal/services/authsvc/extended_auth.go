@@ -158,41 +158,15 @@ func (s *Service) GoogleStart(ctx context.Context, req *cpayv1.GoogleStartReques
 }
 
 func (s *Service) GoogleConsume(ctx context.Context, req *cpayv1.GoogleConsumeRequest) (*cpayv1.AuthExchangeResponse, error) {
-	state := strings.TrimSpace(req.GetState())
 	redirectURI := strings.TrimSpace(req.GetRedirectUri())
 	if redirectURI == "" {
 		redirectURI = s.cfg.GoogleRedirectURI
 	}
-	if state == "" || strings.TrimSpace(req.GetCode()) == "" {
-		return nil, rpcx.E(codes.InvalidArgument, "invalid_request", "code and state are required")
-	}
-	var challengeID string
-	var statePayload []byte
-	err := s.db.QueryRow(ctx, `
-		SELECT id::text, payload
-		FROM auth.auth_challenges
-		WHERE kind='google_oauth' AND challenge_hash=$1 AND consumed_at IS NULL AND expires_at > NOW()
-		LIMIT 1
-	`, hashString(state)).Scan(&challengeID, &statePayload)
-	if err != nil {
-		return nil, rpcx.E(codes.Unauthenticated, "invalid_state", "google state is invalid or expired")
-	}
-	if !googleStateRedirectMatches(statePayload, redirectURI) {
-		return nil, rpcx.E(codes.Unauthenticated, "invalid_state", "google state is invalid or expired")
-	}
-	claims, err := s.exchangeGoogleCode(ctx, req.GetCode(), redirectURI)
+	payload, err := s.consumeGoogleOAuth(ctx, req.GetState(), req.GetCode(), redirectURI)
 	if err != nil {
 		return nil, err
 	}
-	_, _ = s.db.Exec(ctx, `UPDATE auth.auth_challenges SET consumed_at=NOW() WHERE id=$1`, challengeID)
-
-	payload := onboardingPayload{
-		Provider:        "google",
-		ProviderSubject: claims.Sub,
-		Email:           strings.ToLower(strings.TrimSpace(claims.Email)),
-		DisplayName:     strings.TrimSpace(claims.Name),
-	}
-	return s.authOrOnboard(ctx, payload)
+	return s.authOrOnboard(ctx, *payload)
 }
 
 func (s *Service) WalletChallenge(ctx context.Context, req *cpayv1.WalletChallengeRequest) (*cpayv1.WalletChallengeResponse, error) {
@@ -224,24 +198,10 @@ func (s *Service) WalletVerify(ctx context.Context, req *cpayv1.WalletVerifyRequ
 	if err != nil {
 		return nil, err
 	}
-	if !common.IsHexAddress(req.GetAddress()) {
-		return nil, rpcx.E(codes.InvalidArgument, "invalid_request", "address is invalid")
-	}
-	address := common.HexToAddress(req.GetAddress()).Hex()
-	message := req.GetMessage()
-	var payloadRaw []byte
-	err = s.db.QueryRow(ctx, `
-		SELECT payload
-		FROM auth.auth_challenges
-		WHERE id=$1 AND kind='wallet_login' AND provider_subject=$2 AND challenge_hash=$3 AND consumed_at IS NULL AND expires_at > NOW()
-	`, challengeID, strings.ToLower(address), hashString(message)).Scan(&payloadRaw)
+	address, err := s.consumeWalletChallenge(ctx, challengeID, req.GetAddress(), req.GetMessage(), req.GetSignature())
 	if err != nil {
-		return nil, rpcx.E(codes.Unauthenticated, "invalid_challenge", "wallet challenge is invalid or expired")
+		return nil, err
 	}
-	if !verifyPersonalSignature(address, message, req.GetSignature()) {
-		return nil, rpcx.E(codes.Unauthenticated, "invalid_signature", "wallet signature is invalid")
-	}
-	_, _ = s.db.Exec(ctx, `UPDATE auth.auth_challenges SET consumed_at=NOW() WHERE id=$1`, challengeID)
 	return s.authOrOnboard(ctx, onboardingPayload{
 		Provider:        "wallet",
 		ProviderSubject: strings.ToLower(address),
@@ -392,33 +352,9 @@ func (s *Service) LinkGoogle(ctx context.Context, req *cpayv1.LinkGoogleRequest)
 	if redirectURI == "" {
 		redirectURI = s.cfg.GoogleRedirectURI
 	}
-	if state == "" || strings.TrimSpace(req.GetCode()) == "" {
-		return nil, rpcx.E(codes.InvalidArgument, "invalid_request", "code and state are required")
-	}
-	var challengeID string
-	var statePayload []byte
-	err = s.db.QueryRow(ctx, `
-		SELECT id::text, payload
-		FROM auth.auth_challenges
-		WHERE kind='google_oauth' AND challenge_hash=$1 AND consumed_at IS NULL AND expires_at > NOW()
-		LIMIT 1
-	`, hashString(state)).Scan(&challengeID, &statePayload)
-	if err != nil {
-		return nil, rpcx.E(codes.Unauthenticated, "invalid_state", "google state is invalid or expired")
-	}
-	if !googleStateRedirectMatches(statePayload, redirectURI) {
-		return nil, rpcx.E(codes.Unauthenticated, "invalid_state", "google state is invalid or expired")
-	}
-	claims, err := s.exchangeGoogleCode(ctx, req.GetCode(), redirectURI)
+	payload, err := s.consumeGoogleOAuth(ctx, state, req.GetCode(), redirectURI)
 	if err != nil {
 		return nil, err
-	}
-	_, _ = s.db.Exec(ctx, `UPDATE auth.auth_challenges SET consumed_at=NOW() WHERE id=$1`, challengeID)
-	payload := &onboardingPayload{
-		Provider:        "google",
-		ProviderSubject: claims.Sub,
-		Email:           strings.ToLower(strings.TrimSpace(claims.Email)),
-		DisplayName:     strings.TrimSpace(claims.Name),
 	}
 	if err = s.insertIdentityTx(ctx, s.db, userID, merchantID, payload); err != nil {
 		return nil, err
@@ -439,23 +375,10 @@ func (s *Service) LinkWallet(ctx context.Context, req *cpayv1.LinkWalletRequest)
 	if err != nil {
 		return nil, err
 	}
-	if !common.IsHexAddress(req.GetAddress()) {
-		return nil, rpcx.E(codes.InvalidArgument, "invalid_request", "address is invalid")
-	}
-	address := common.HexToAddress(req.GetAddress()).Hex()
-	message := req.GetMessage()
-	err = s.db.QueryRow(ctx, `
-		SELECT id::text
-		FROM auth.auth_challenges
-		WHERE id=$1 AND kind='wallet_login' AND provider_subject=$2 AND challenge_hash=$3 AND consumed_at IS NULL AND expires_at > NOW()
-	`, challengeID, strings.ToLower(address), hashString(message)).Scan(&challengeID)
+	address, err := s.consumeWalletChallenge(ctx, challengeID, req.GetAddress(), req.GetMessage(), req.GetSignature())
 	if err != nil {
-		return nil, rpcx.E(codes.Unauthenticated, "invalid_challenge", "wallet challenge is invalid or expired")
+		return nil, err
 	}
-	if !verifyPersonalSignature(address, message, req.GetSignature()) {
-		return nil, rpcx.E(codes.Unauthenticated, "invalid_signature", "wallet signature is invalid")
-	}
-	_, _ = s.db.Exec(ctx, `UPDATE auth.auth_challenges SET consumed_at=NOW() WHERE id=$1`, challengeID)
 	payload := &onboardingPayload{
 		Provider:        "wallet",
 		ProviderSubject: strings.ToLower(address),
@@ -815,6 +738,37 @@ type googleClaims struct {
 	Name          string `json:"name"`
 }
 
+func (s *Service) consumeGoogleOAuth(ctx context.Context, state, code, redirectURI string) (*onboardingPayload, error) {
+	state = strings.TrimSpace(state)
+	if state == "" || strings.TrimSpace(code) == "" {
+		return nil, rpcx.E(codes.InvalidArgument, "invalid_request", "code and state are required")
+	}
+
+	var challengeID string
+	var statePayload []byte
+	err := s.db.QueryRow(ctx, `
+		SELECT id::text, payload
+		FROM auth.auth_challenges
+		WHERE kind='google_oauth' AND challenge_hash=$1 AND consumed_at IS NULL AND expires_at > NOW()
+		LIMIT 1
+	`, hashString(state)).Scan(&challengeID, &statePayload)
+	if err != nil || !googleStateRedirectMatches(statePayload, redirectURI) {
+		return nil, rpcx.E(codes.Unauthenticated, "invalid_state", "google state is invalid or expired")
+	}
+
+	claims, err := s.exchangeGoogleCode(ctx, code, redirectURI)
+	if err != nil {
+		return nil, err
+	}
+	_, _ = s.db.Exec(ctx, `UPDATE auth.auth_challenges SET consumed_at=NOW() WHERE id=$1`, challengeID)
+	return &onboardingPayload{
+		Provider:        "google",
+		ProviderSubject: claims.Sub,
+		Email:           strings.ToLower(strings.TrimSpace(claims.Email)),
+		DisplayName:     strings.TrimSpace(claims.Name),
+	}, nil
+}
+
 func (s *Service) exchangeGoogleCode(ctx context.Context, code, redirectURI string) (*googleClaims, error) {
 	if s.cfg.GoogleClientID == "" || s.cfg.GoogleClientSecret == "" {
 		return nil, rpcx.E(codes.FailedPrecondition, "google_not_configured", "google sign-in is not configured")
@@ -871,6 +825,27 @@ func googleStateRedirectMatches(raw []byte, redirectURI string) bool {
 		return false
 	}
 	return strings.TrimSpace(payload.RedirectURI) == strings.TrimSpace(redirectURI)
+}
+
+func (s *Service) consumeWalletChallenge(ctx context.Context, challengeID, rawAddress, message, signature string) (string, error) {
+	if !common.IsHexAddress(rawAddress) {
+		return "", rpcx.E(codes.InvalidArgument, "invalid_request", "address is invalid")
+	}
+	address := common.HexToAddress(rawAddress).Hex()
+
+	err := s.db.QueryRow(ctx, `
+		SELECT id::text
+		FROM auth.auth_challenges
+		WHERE id=$1 AND kind='wallet_login' AND provider_subject=$2 AND challenge_hash=$3 AND consumed_at IS NULL AND expires_at > NOW()
+	`, challengeID, strings.ToLower(address), hashString(message)).Scan(&challengeID)
+	if err != nil {
+		return "", rpcx.E(codes.Unauthenticated, "invalid_challenge", "wallet challenge is invalid or expired")
+	}
+	if !verifyPersonalSignature(address, message, signature) {
+		return "", rpcx.E(codes.Unauthenticated, "invalid_signature", "wallet signature is invalid")
+	}
+	_, _ = s.db.Exec(ctx, `UPDATE auth.auth_challenges SET consumed_at=NOW() WHERE id=$1`, challengeID)
+	return address, nil
 }
 
 func (s *Service) walletMessage(address, chainID, nonce, issuedAt string) string {

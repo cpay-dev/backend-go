@@ -594,18 +594,7 @@ func (s *Server) handleListPayments(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	limit := 50
-	if q := r.URL.Query().Get("limit"); q != "" {
-		if v, err := strconv.Atoi(q); err == nil && v > 0 && v <= 200 {
-			limit = v
-		}
-	}
-	offset := 0
-	if q := r.URL.Query().Get("offset"); q != "" {
-		if v, err := strconv.Atoi(q); err == nil && v >= 0 {
-			offset = v
-		}
-	}
+	limit, offset := parsePagination(r, 50, 200)
 	productID := strings.TrimSpace(r.URL.Query().Get("product_id"))
 	paymentLinkID := strings.TrimSpace(r.URL.Query().Get("payment_link_id"))
 
@@ -650,60 +639,13 @@ func (s *Server) handleListPayments(w http.ResponseWriter, r *http.Request) {
 	items := make([]map[string]any, 0)
 	total := 0
 	for rows.Next() {
-		var id, checkoutSessionID, linkID, productID, productName, linkTitle, linkCode, currency, customerEmail, status, chainName, tokenSymbol string
-		var walletType, payoutStatus, payoutItemStatus, payoutTxHash, payoutLastError string
-		var fiatAmountRaw, expectedRaw, receivedRaw string
-		var txHash *string
-		var confirmations, requiredConfirmations int
-		var expiresAt, createdAt, updatedAt time.Time
-		var rowTotal int
-		if err := rows.Scan(
-			&id, &checkoutSessionID, &linkID,
-			&productID, &productName, &linkTitle, &linkCode,
-			&fiatAmountRaw, &currency, &customerEmail,
-			&status, &chainName, &tokenSymbol,
-			&expectedRaw, &receivedRaw, &txHash,
-			&confirmations, &requiredConfirmations,
-			&expiresAt, &createdAt, &updatedAt,
-			&walletType, &payoutStatus, &payoutItemStatus, &payoutTxHash, &payoutLastError,
-			&rowTotal,
-		); err != nil {
+		item, rowTotal, err := scanPaymentListRow(rows)
+		if err != nil {
 			httpx.WriteError(w, http.StatusInternalServerError, "internal_error", "failed to scan payments", middleware.GetRequestID(r.Context()))
 			return
 		}
 		total = rowTotal
-		var txHashValue any
-		if txHash != nil && strings.TrimSpace(*txHash) != "" {
-			txHashValue = *txHash
-		}
-		items = append(items, map[string]any{
-			"id":                     id,
-			"checkout_session_id":    checkoutSessionID,
-			"payment_link_id":        linkID,
-			"product_id":             emptyToNil(productID),
-			"product_name":           emptyToNil(productName),
-			"payment_link_title":     linkTitle,
-			"payment_link_code":      linkCode,
-			"amount":                 decimalToFloat(fiatAmountRaw),
-			"currency":               currency,
-			"customer_email":         emptyToNil(customerEmail),
-			"status":                 status,
-			"chain":                  chainName,
-			"token_symbol":           tokenSymbol,
-			"expected_amount":        decimalToFloat(expectedRaw),
-			"received_amount":        decimalToFloat(receivedRaw),
-			"tx_hash":                txHashValue,
-			"confirmations":          confirmations,
-			"required_confirmations": requiredConfirmations,
-			"expires_at":             expiresAt.UTC().Format(time.RFC3339Nano),
-			"created_at":             createdAt.UTC().Format(time.RFC3339Nano),
-			"updated_at":             updatedAt.UTC().Format(time.RFC3339Nano),
-			"wallet_type":            emptyToNil(walletType),
-			"payout_status":          emptyToNil(payoutStatus),
-			"payout_item_status":     emptyToNil(payoutItemStatus),
-			"payout_tx_hash":         emptyToNil(payoutTxHash),
-			"payout_last_error":      emptyToNil(payoutLastError),
-		})
+		items = append(items, item)
 	}
 	if err := rows.Err(); err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "internal_error", "failed to list payments", middleware.GetRequestID(r.Context()))
@@ -716,6 +658,58 @@ func (s *Server) handleListPayments(w http.ResponseWriter, r *http.Request) {
 		"offset": offset,
 		"total":  total,
 	})
+}
+
+func scanPaymentListRow(scanner interface{ Scan(dest ...any) error }) (map[string]any, int, error) {
+	var id, checkoutSessionID, linkID, productID, productName, linkTitle, linkCode, currency, customerEmail, status, chainName, tokenSymbol string
+	var walletType, payoutStatus, payoutItemStatus, payoutTxHash, payoutLastError string
+	var fiatAmountRaw, expectedRaw, receivedRaw string
+	var txHash *string
+	var confirmations, requiredConfirmations int
+	var expiresAt, createdAt, updatedAt time.Time
+	var total int
+	if err := scanner.Scan(
+		&id, &checkoutSessionID, &linkID,
+		&productID, &productName, &linkTitle, &linkCode,
+		&fiatAmountRaw, &currency, &customerEmail,
+		&status, &chainName, &tokenSymbol,
+		&expectedRaw, &receivedRaw, &txHash,
+		&confirmations, &requiredConfirmations,
+		&expiresAt, &createdAt, &updatedAt,
+		&walletType, &payoutStatus, &payoutItemStatus, &payoutTxHash, &payoutLastError,
+		&total,
+	); err != nil {
+		return nil, 0, err
+	}
+
+	return map[string]any{
+		"id":                     id,
+		"checkout_session_id":    checkoutSessionID,
+		"payment_link_id":        linkID,
+		"product_id":             emptyToNil(productID),
+		"product_name":           emptyToNil(productName),
+		"payment_link_title":     linkTitle,
+		"payment_link_code":      linkCode,
+		"amount":                 decimalToFloat(fiatAmountRaw),
+		"currency":               currency,
+		"customer_email":         emptyToNil(customerEmail),
+		"status":                 status,
+		"chain":                  chainName,
+		"token_symbol":           tokenSymbol,
+		"expected_amount":        decimalToFloat(expectedRaw),
+		"received_amount":        decimalToFloat(receivedRaw),
+		"tx_hash":                strPtrToAny(txHash),
+		"confirmations":          confirmations,
+		"required_confirmations": requiredConfirmations,
+		"expires_at":             expiresAt.UTC().Format(time.RFC3339Nano),
+		"created_at":             createdAt.UTC().Format(time.RFC3339Nano),
+		"updated_at":             updatedAt.UTC().Format(time.RFC3339Nano),
+		"wallet_type":            emptyToNil(walletType),
+		"payout_status":          emptyToNil(payoutStatus),
+		"payout_item_status":     emptyToNil(payoutItemStatus),
+		"payout_tx_hash":         emptyToNil(payoutTxHash),
+		"payout_last_error":      emptyToNil(payoutLastError),
+	}, total, nil
 }
 
 func decimalToFloat(raw string) float64 {
