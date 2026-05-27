@@ -45,7 +45,7 @@ func (a *EVMAdapter) GenerateDepositWallet(ctx context.Context, chainName string
 		}
 	}
 	if a.requireCreate2 {
-		chainName = normalizeEVMChain(chainName)
+		chainName = NormalizeEVMChain(chainName)
 		if a.create2 == nil {
 			return DepositWallet{}, fmt.Errorf("checkout wallet factory addresses are not configured")
 		}
@@ -69,7 +69,7 @@ func generateEOADepositWallet() (DepositWallet, error) {
 }
 
 func (a *EVMAdapter) RequiredConfirmations(chain string) int {
-	if v, ok := a.confirmations[normalizeEVMChain(chain)]; ok {
+	if v, ok := a.confirmations[NormalizeEVMChain(chain)]; ok {
 		return v
 	}
 	return 12
@@ -96,8 +96,9 @@ func commonBytesToHex(b []byte) string {
 	return string(dst)
 }
 
-func normalizeEVMChain(chain string) string {
-	switch strings.ToLower(strings.TrimSpace(chain)) {
+func NormalizeEVMChain(chain string) string {
+	chain = strings.ToLower(strings.TrimSpace(chain))
+	switch chain {
 	case "ethereum mainnet", "mainnet":
 		return "ethereum"
 	case "arbitrum one":
@@ -109,7 +110,16 @@ func normalizeEVMChain(chain string) string {
 	case "avalanche c-chain", "avax":
 		return "avalanche"
 	default:
-		return strings.ToLower(strings.TrimSpace(chain))
+		return chain
+	}
+}
+
+func IsEVMChain(chain string) bool {
+	switch NormalizeEVMChain(chain) {
+	case "ethereum", "polygon", "arbitrum", "base", "avalanche", "hyperevm", "bsc", "optimism":
+		return true
+	default:
+		return false
 	}
 }
 

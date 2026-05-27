@@ -5,6 +5,7 @@ import (
 	"time"
 
 	cpayv1 "github.com/cpay-dev/cpay/internal/gen/cpay/v1"
+	"github.com/cpay-dev/cpay/internal/shared/format"
 	"github.com/cpay-dev/cpay/internal/shared/rpcx"
 	"google.golang.org/grpc/codes"
 )
@@ -114,7 +115,7 @@ func (s *Service) profileSecurity(ctx context.Context, userID, merchantID string
 			return nil, rpcx.E(codes.Internal, "internal_error", "failed to scan passkey")
 		}
 		item.CreatedAt = createdAt.UTC().Format(time.RFC3339Nano)
-		item.LastUsedAt = formatTimePtr(lastUsedAt)
+		item.LastUsedAt = format.TimePtr(lastUsedAt)
 		passkeys = append(passkeys, &item)
 	}
 	return &cpayv1.ProfileSecurityResponse{Identities: identities, Passkeys: passkeys}, nil

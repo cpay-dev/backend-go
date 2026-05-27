@@ -40,7 +40,7 @@ func NewCreate2WalletProvider(rpcURLs, factoryAddresses map[string]string) *Crea
 }
 
 func (p *Create2WalletProvider) DepositWallet(ctx context.Context, chainName string, paymentIntentID string) (DepositWallet, bool, error) {
-	chainName = normalizeEVMChain(chainName)
+	chainName = NormalizeEVMChain(chainName)
 	factoryAddress := p.factoryAddresses[chainName]
 	if factoryAddress == "" {
 		return DepositWallet{}, false, nil
@@ -107,7 +107,7 @@ func CheckoutWalletSalt(paymentIntentID, chainName string) [32]byte {
 	return crypto.Keccak256Hash(
 		[]byte("cpay.checkout.wallet.v1"),
 		[]byte(strings.TrimSpace(paymentIntentID)),
-		[]byte(normalizeEVMChain(chainName)),
+		[]byte(NormalizeEVMChain(chainName)),
 	)
 }
 
@@ -118,7 +118,7 @@ func PredictCreate2Address(factory common.Address, salt [32]byte, initCodeHash c
 func normalizeStringMap(in map[string]string) map[string]string {
 	out := make(map[string]string, len(in))
 	for k, v := range in {
-		key := normalizeEVMChain(k)
+		key := NormalizeEVMChain(k)
 		val := strings.TrimSpace(v)
 		if key != "" && val != "" {
 			out[key] = val

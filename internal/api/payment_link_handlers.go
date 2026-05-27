@@ -1,7 +1,6 @@
 package api
 
 import (
-	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,16 +13,10 @@ import (
 	"github.com/cpay-dev/cpay/internal/shared/httpx"
 	"github.com/cpay-dev/cpay/internal/shared/ids"
 	"github.com/cpay-dev/cpay/internal/shared/middleware"
+	"github.com/cpay-dev/cpay/internal/shared/random"
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
 )
-
-type allowedToken struct {
-	Chain    string `json:"chain"`
-	Symbol   string `json:"symbol"`
-	Address  string `json:"address,omitempty"`
-	Decimals int    `json:"decimals,omitempty"`
-}
 
 type afterPaymentConfig struct {
 	Type           string `json:"type"`
@@ -45,26 +38,26 @@ type linkOptionsRequest struct {
 }
 
 type createPaymentLinkRequest struct {
-	ProductID      *string            `json:"product_id,omitempty"`
-	Title          string             `json:"title"`
-	Description    string             `json:"description,omitempty"`
-	ImageURL       string             `json:"image_url,omitempty"`
-	PricingMode    string             `json:"pricing_mode"`
-	Amount         *float64           `json:"amount,omitempty"`
-	Currency       string             `json:"currency"`
-	AllowedTokens  []allowedToken     `json:"allowed_tokens"`
-	Reusable       *bool              `json:"reusable,omitempty"`
-	MaxPayments    *int               `json:"max_payments,omitempty"`
-	ExpiresAt      *time.Time         `json:"expires_at,omitempty"`
-	CTAText        string             `json:"cta_text,omitempty"`
-	AfterPayment   afterPaymentConfig `json:"after_payment"`
-	AdjustPercent  *float64           `json:"adjust_percent,omitempty"`
-	MinAmount      *float64           `json:"min_amount,omitempty"`
-	MaxAmount      *float64           `json:"max_amount,omitempty"`
-	CustomerFields []string           `json:"customer_fields,omitempty"`
-	CustomFields   []map[string]any   `json:"custom_fields,omitempty"`
-	Options        linkOptionsRequest `json:"options"`
-	Metadata       map[string]any     `json:"metadata,omitempty"`
+	ProductID      *string                `json:"product_id,omitempty"`
+	Title          string                 `json:"title"`
+	Description    string                 `json:"description,omitempty"`
+	ImageURL       string                 `json:"image_url,omitempty"`
+	PricingMode    string                 `json:"pricing_mode"`
+	Amount         *float64               `json:"amount,omitempty"`
+	Currency       string                 `json:"currency"`
+	AllowedTokens  []payment.AllowedToken `json:"allowed_tokens"`
+	Reusable       *bool                  `json:"reusable,omitempty"`
+	MaxPayments    *int                   `json:"max_payments,omitempty"`
+	ExpiresAt      *time.Time             `json:"expires_at,omitempty"`
+	CTAText        string                 `json:"cta_text,omitempty"`
+	AfterPayment   afterPaymentConfig     `json:"after_payment"`
+	AdjustPercent  *float64               `json:"adjust_percent,omitempty"`
+	MinAmount      *float64               `json:"min_amount,omitempty"`
+	MaxAmount      *float64               `json:"max_amount,omitempty"`
+	CustomerFields []string               `json:"customer_fields,omitempty"`
+	CustomFields   []map[string]any       `json:"custom_fields,omitempty"`
+	Options        linkOptionsRequest     `json:"options"`
+	Metadata       map[string]any         `json:"metadata,omitempty"`
 }
 
 func (s *Server) handleCreatePaymentLink(w http.ResponseWriter, r *http.Request) {
@@ -119,7 +112,7 @@ func (s *Server) handleCreatePaymentLink(w http.ResponseWriter, r *http.Request)
 
 	s.withIdempotency(w, r, reqAuth.MerchantID, "/v1/payment_links", func() (int, any, error) {
 		linkID := ids.New()
-		code, err := newLinkCode()
+		code, err := random.Code("0123456789ABCDEFGHJKMNPQRSTVWXYZ", 16)
 		if err != nil {
 			return 0, nil, err
 		}
@@ -216,18 +209,7 @@ func (s *Server) handleListPaymentLinks(w http.ResponseWriter, r *http.Request) 
 	if !ok {
 		return
 	}
-	limit := 20
-	offset := 0
-	if q := r.URL.Query().Get("limit"); q != "" {
-		if v, err := strconv.Atoi(q); err == nil && v > 0 && v <= 100 {
-			limit = v
-		}
-	}
-	if q := r.URL.Query().Get("offset"); q != "" {
-		if v, err := strconv.Atoi(q); err == nil && v >= 0 {
-			offset = v
-		}
-	}
+	limit, offset := httpx.ParsePagination(r, 20, 100)
 
 	rows, err := s.db.Query(r.Context(), `
 		SELECT id::text, code, title, pricing_mode, COALESCE(amount::text, ''), currency, status, reusable, max_payments, expires_at, created_at
@@ -242,7 +224,7 @@ func (s *Server) handleListPaymentLinks(w http.ResponseWriter, r *http.Request) 
 	}
 	defer rows.Close()
 
-	items := make([]map[string]any, 0)
+	items := make([]map[string]any, 0, limit)
 	for rows.Next() {
 		var id, code, title, mode, amountRaw, currency, status string
 		var reusable bool
@@ -367,12 +349,12 @@ func (s *Server) handleGetPaymentLink(w http.ResponseWriter, r *http.Request) {
 }
 
 type updatePaymentLinkRequest struct {
-	Title         string         `json:"title"`
-	PricingMode   string         `json:"pricing_mode"`
-	Amount        *float64       `json:"amount"`
-	Currency      string         `json:"currency"`
-	AllowedTokens []allowedToken `json:"allowed_tokens"`
-	Metadata      map[string]any `json:"metadata"`
+	Title         string                 `json:"title"`
+	PricingMode   string                 `json:"pricing_mode"`
+	Amount        *float64               `json:"amount"`
+	Currency      string                 `json:"currency"`
+	AllowedTokens []payment.AllowedToken `json:"allowed_tokens"`
+	Metadata      map[string]any         `json:"metadata"`
 }
 
 func (s *Server) handleUpdatePaymentLink(w http.ResponseWriter, r *http.Request) {
@@ -457,20 +439,6 @@ func (s *Server) handleArchivePaymentLink(w http.ResponseWriter, r *http.Request
 	}
 	_ = s.enqueueEvent(r.Context(), "payment_link", id, reqAuth.MerchantID, "payment_link.archived", map[string]any{"payment_link": id})
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{"id": id, "archived": true})
-}
-
-func newLinkCode() (string, error) {
-	const alphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
-	const length = 16
-	buf := make([]byte, length)
-	if _, err := rand.Read(buf); err != nil {
-		return "", err
-	}
-	out := make([]byte, length)
-	for i := range buf {
-		out[i] = alphabet[int(buf[i])%len(alphabet)]
-	}
-	return string(out), nil
 }
 
 func (s *Server) handleGetPublicPaymentLink(w http.ResponseWriter, r *http.Request) {

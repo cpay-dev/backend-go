@@ -11,6 +11,7 @@ import (
 	"github.com/cpay-dev/cpay/internal/platform/outbox"
 	"github.com/cpay-dev/cpay/internal/shared/auth"
 	"github.com/cpay-dev/cpay/internal/shared/config"
+	"github.com/cpay-dev/cpay/internal/shared/format"
 	"github.com/cpay-dev/cpay/internal/shared/ids"
 	"github.com/cpay-dev/cpay/internal/shared/rpcx"
 	"github.com/ethereum/go-ethereum/common"
@@ -198,8 +199,8 @@ func (s *Service) ListApiKeys(ctx context.Context, req *cpayv1.ListApiKeysReques
 			Name:       name,
 			Prefix:     prefix,
 			Scopes:     scopes,
-			RevokedAt:  formatTimePtr(revokedAt),
-			LastUsedAt: formatTimePtr(lastUsedAt),
+			RevokedAt:  format.TimePtr(revokedAt),
+			LastUsedAt: format.TimePtr(lastUsedAt),
 			CreatedAt:  createdAt.UTC().Format(time.RFC3339Nano),
 		})
 	}
@@ -386,11 +387,4 @@ func normalizeSettlementAddress(raw string) (string, error) {
 		return "", rpcx.E(codes.InvalidArgument, "invalid_request", "settlement_address is invalid")
 	}
 	return common.HexToAddress(addr).Hex(), nil
-}
-
-func formatTimePtr(v *time.Time) string {
-	if v == nil {
-		return ""
-	}
-	return v.UTC().Format(time.RFC3339Nano)
 }

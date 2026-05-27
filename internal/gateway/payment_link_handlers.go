@@ -4,11 +4,11 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
 	cpayv1 "github.com/cpay-dev/cpay/internal/gen/cpay/v1"
+	"github.com/cpay-dev/cpay/internal/shared/format"
 	"github.com/cpay-dev/cpay/internal/shared/httpx"
 	"github.com/cpay-dev/cpay/internal/shared/middleware"
 	"github.com/go-chi/chi/v5"
@@ -123,9 +123,9 @@ func (s *Server) handleCreatePaymentLink(w http.ResponseWriter, r *http.Request)
 				AllowPromoCodes:         req.Options.AllowPromoCodes,
 				CollectTaxAutomatically: req.Options.CollectTaxAutomatically,
 				AddInvoicePdf:           req.Options.AddInvoicePDF,
-				MetadataJson:            mustJSON(req.Options.Metadata, "{}"),
+				MetadataJson:            format.JSONStringOrDefault(req.Options.Metadata, "{}"),
 			},
-			MetadataJson: mustJSON(req.Metadata, "{}"),
+			MetadataJson: format.JSONStringOrDefault(req.Metadata, "{}"),
 		}
 		if req.ProductID != nil {
 			rpcReq.ProductId = strings.TrimSpace(*req.ProductID)
@@ -156,18 +156,7 @@ func (s *Server) handleListPaymentLinks(w http.ResponseWriter, r *http.Request) 
 	if !ok {
 		return
 	}
-	limit := 20
-	offset := 0
-	if q := r.URL.Query().Get("limit"); q != "" {
-		if v, err := strconv.Atoi(q); err == nil && v > 0 && v <= 100 {
-			limit = v
-		}
-	}
-	if q := r.URL.Query().Get("offset"); q != "" {
-		if v, err := strconv.Atoi(q); err == nil && v >= 0 {
-			offset = v
-		}
-	}
+	limit, offset := httpx.ParsePagination(r, 20, 100)
 
 	resp, err := s.linkClient.ListPaymentLinks(s.rpcContext(r.Context()), &cpayv1.ListPaymentLinksRequest{
 		MerchantId: reqAuth.MerchantID,
@@ -191,7 +180,7 @@ func (s *Server) handleListPaymentLinks(w http.ResponseWriter, r *http.Request) 
 			"status":       item.GetStatus(),
 			"reusable":     item.GetReusable(),
 			"max_payments": int32PtrValue(item.MaxPayments),
-			"expires_at":   emptyToNil(item.GetExpiresAt()),
+			"expires_at":   format.StringOrNil(item.GetExpiresAt()),
 			"created_at":   item.GetCreatedAt(),
 		})
 	}
@@ -220,32 +209,32 @@ func (s *Server) handleGetPaymentLink(w http.ResponseWriter, r *http.Request) {
 		allowed = append(allowed, map[string]any{
 			"chain":    t.GetChain(),
 			"symbol":   t.GetSymbol(),
-			"address":  emptyToNil(t.GetAddress()),
+			"address":  format.StringOrNil(t.GetAddress()),
 			"decimals": t.GetDecimals(),
 		})
 	}
 	customFields := make([]any, 0, len(resp.GetCustomFieldsJson()))
 	for _, raw := range resp.GetCustomFieldsJson() {
-		customFields = append(customFields, parseJSONValue(raw, map[string]any{}))
+		customFields = append(customFields, format.JSONValueOrDefault(raw, map[string]any{}))
 	}
 
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{
 		"id":           resp.GetId(),
 		"code":         resp.GetCode(),
 		"title":        resp.GetTitle(),
-		"description":  emptyToNil(resp.GetDescription()),
-		"image_url":    emptyToNil(resp.GetImageUrl()),
+		"description":  format.StringOrNil(resp.GetDescription()),
+		"image_url":    format.StringOrNil(resp.GetImageUrl()),
 		"pricing_mode": resp.GetPricingMode(),
 		"amount":       floatPtrValue(resp.Amount),
 		"currency":     resp.GetCurrency(),
 		"reusable":     resp.GetReusable(),
 		"max_payments": int32PtrValue(resp.MaxPayments),
-		"expires_at":   emptyToNil(resp.GetExpiresAt()),
+		"expires_at":   format.StringOrNil(resp.GetExpiresAt()),
 		"cta_text":     resp.GetCtaText(),
 		"after_payment": map[string]any{
 			"type":            resp.GetAfterPayment().GetType(),
-			"success_message": emptyToNil(resp.GetAfterPayment().GetSuccessMessage()),
-			"redirect_url":    emptyToNil(resp.GetAfterPayment().GetRedirectUrl()),
+			"success_message": format.StringOrNil(resp.GetAfterPayment().GetSuccessMessage()),
+			"redirect_url":    format.StringOrNil(resp.GetAfterPayment().GetRedirectUrl()),
 		},
 		"status":          resp.GetStatus(),
 		"adjust_percent":  floatPtrValue(resp.AdjustPercent),
@@ -254,7 +243,7 @@ func (s *Server) handleGetPaymentLink(w http.ResponseWriter, r *http.Request) {
 		"allowed_tokens":  allowed,
 		"customer_fields": resp.GetCustomerFields(),
 		"custom_fields":   customFields,
-		"metadata":        parseJSONValue(resp.GetMetadataJson(), map[string]any{}),
+		"metadata":        format.JSONValueOrDefault(resp.GetMetadataJson(), map[string]any{}),
 		"options": map[string]any{
 			"collect_email":             resp.GetOptions().GetCollectEmail(),
 			"collect_name":              resp.GetOptions().GetCollectName(),
@@ -265,7 +254,7 @@ func (s *Server) handleGetPaymentLink(w http.ResponseWriter, r *http.Request) {
 			"allow_promo_codes":         resp.GetOptions().GetAllowPromoCodes(),
 			"collect_tax_automatically": resp.GetOptions().GetCollectTaxAutomatically(),
 			"add_invoice_pdf":           resp.GetOptions().GetAddInvoicePdf(),
-			"metadata":                  parseJSONValue(resp.GetOptions().GetMetadataJson(), map[string]any{}),
+			"metadata":                  format.JSONValueOrDefault(resp.GetOptions().GetMetadataJson(), map[string]any{}),
 		},
 		"created_at": resp.GetCreatedAt(),
 		"updated_at": resp.GetUpdatedAt(),
@@ -329,7 +318,7 @@ func (s *Server) handleUpdatePaymentLink(w http.ResponseWriter, r *http.Request)
 		PricingMode:         req.PricingMode,
 		Amount:              req.Amount,
 		Currency:            req.Currency,
-		MetadataJson:        mustJSON(req.Metadata, "{}"),
+		MetadataJson:        format.JSONStringOrDefault(req.Metadata, "{}"),
 		AllowedTokens:       allowedTokens,
 		UpdateAllowedTokens: req.AllowedTokens != nil,
 	})
@@ -379,7 +368,7 @@ func (s *Server) handleGetPublicPaymentLink(w http.ResponseWriter, r *http.Reque
 
 	var amount any
 	if amountRaw != "" {
-		amount = parseJSONValue(amountRaw, nil)
+		amount = format.JSONValueOrDefault(amountRaw, nil)
 	}
 
 	payload := map[string]any{
@@ -392,9 +381,9 @@ func (s *Server) handleGetPublicPaymentLink(w http.ResponseWriter, r *http.Reque
 		"amount":          amount,
 		"currency":        currency,
 		"cta_text":        cta,
-		"allowed_tokens":  parseJSONValue(string(allowedRaw), []any{}),
-		"customer_fields": parseJSONValue(string(customerFieldsRaw), []any{}),
-		"custom_fields":   parseJSONValue(string(customFieldsRaw), []any{}),
+		"allowed_tokens":  format.JSONValueOrDefault(string(allowedRaw), []any{}),
+		"customer_fields": format.JSONValueOrDefault(string(customerFieldsRaw), []any{}),
+		"custom_fields":   format.JSONValueOrDefault(string(customFieldsRaw), []any{}),
 		"after_payment": map[string]any{
 			"type":            afterType,
 			"success_message": strPtrToAny(successMessage),
@@ -428,28 +417,6 @@ func (s *Server) handleGetPublicPaymentLink(w http.ResponseWriter, r *http.Reque
 	}
 
 	httpx.WriteJSON(w, http.StatusOK, payload)
-}
-
-func mustJSON(v any, def string) string {
-	if v == nil {
-		return def
-	}
-	b, err := json.Marshal(v)
-	if err != nil {
-		return def
-	}
-	return string(b)
-}
-
-func parseJSONValue(raw string, def any) any {
-	if strings.TrimSpace(raw) == "" {
-		return def
-	}
-	var out any
-	if err := json.Unmarshal([]byte(raw), &out); err != nil {
-		return def
-	}
-	return out
 }
 
 func floatPtrValue(v *float64) any {

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/cpay-dev/cpay/internal/shared/chain"
+	"github.com/cpay-dev/cpay/internal/shared/format"
 	"github.com/cpay-dev/cpay/internal/shared/ids"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog"
@@ -141,7 +142,7 @@ func (w *PayoutScheduler) schedulePayouts(ctx context.Context) {
 				w.Log.Error().Err(err).Str("payout_id", payoutID).Msg("payout: schedule item scan failed")
 				continue
 			}
-			amount := parseFloat(amountRaw)
+			amount := format.Float64OrZero(amountRaw)
 			items = append(items, payoutItemSchedule{
 				IntentID:  intentID,
 				Amount:    amount,
@@ -421,7 +422,7 @@ func (w *PayoutScheduler) finishPayoutIfComplete(ctx context.Context, payout pay
 			"tx_hash":      txHash,
 			"chain":        payout.Chain,
 			"token_symbol": payout.TokenSymbol,
-			"total_amount": parseFloat(payout.TotalRaw),
+			"total_amount": format.Float64OrZero(payout.TotalRaw),
 		}); err != nil {
 			return err
 		}

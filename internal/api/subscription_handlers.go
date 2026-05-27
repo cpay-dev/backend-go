@@ -3,10 +3,10 @@ package api
 import (
 	"encoding/json"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
+	"github.com/cpay-dev/cpay/internal/domain/subscription"
 	"github.com/cpay-dev/cpay/internal/shared/httpx"
 	"github.com/cpay-dev/cpay/internal/shared/ids"
 	"github.com/cpay-dev/cpay/internal/shared/middleware"
@@ -81,9 +81,9 @@ func (s *Server) handleCreateSubscription(w http.ResponseWriter, r *http.Request
 		if req.FirstBillingAt != nil {
 			nextBilling = req.FirstBillingAt.UTC()
 		} else {
-			nextBilling = addInterval(now, req.IntervalUnit, req.IntervalCount)
+			nextBilling = subscription.AddInterval(now, req.IntervalUnit, req.IntervalCount)
 		}
-		periodEnd := addInterval(nextBilling, req.IntervalUnit, req.IntervalCount)
+		periodEnd := subscription.AddInterval(nextBilling, req.IntervalUnit, req.IntervalCount)
 
 		subID := ids.New()
 		vaultID := ids.New()
@@ -232,12 +232,7 @@ func (s *Server) handleGetSubscriptionCycles(w http.ResponseWriter, r *http.Requ
 		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "invalid subscription id", middleware.GetRequestID(r.Context()))
 		return
 	}
-	limit := 20
-	if q := r.URL.Query().Get("limit"); q != "" {
-		if v, err := strconv.Atoi(q); err == nil && v > 0 && v <= 200 {
-			limit = v
-		}
-	}
+	limit := httpx.ParseLimit(r, 20, 200)
 	rows, err := s.db.Query(r.Context(), `
 		SELECT id::text, cycle_index, period_start, period_end, due_at, status, amount::text,
 			payment_intent_id::text, retry_count, last_error, created_at, updated_at
@@ -245,7 +240,7 @@ func (s *Server) handleGetSubscriptionCycles(w http.ResponseWriter, r *http.Requ
 		JOIN subscriptions s ON s.id=c.subscription_id
 		WHERE c.subscription_id=$1 AND s.merchant_id=$2
 		ORDER BY cycle_index DESC
-		LIMIT $2
+		LIMIT $3
 	`, subID, reqAuth.MerchantID, limit)
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "internal_error", "failed to list cycles", middleware.GetRequestID(r.Context()))
@@ -253,7 +248,7 @@ func (s *Server) handleGetSubscriptionCycles(w http.ResponseWriter, r *http.Requ
 	}
 	defer rows.Close()
 
-	items := make([]map[string]any, 0)
+	items := make([]map[string]any, 0, limit)
 	for rows.Next() {
 		var id string
 		var idx int
@@ -283,20 +278,6 @@ func (s *Server) handleGetSubscriptionCycles(w http.ResponseWriter, r *http.Requ
 	}
 
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{"subscription_id": subID, "data": items})
-}
-
-func addInterval(t time.Time, unit string, count int) time.Time {
-	if count <= 0 {
-		count = 1
-	}
-	switch strings.ToLower(unit) {
-	case "day":
-		return t.Add(time.Duration(count) * 24 * time.Hour)
-	case "week":
-		return t.Add(time.Duration(count*7) * 24 * time.Hour)
-	default:
-		return t.AddDate(0, count, 0)
-	}
 }
 
 func jsonMarshal(v any) ([]byte, error) {

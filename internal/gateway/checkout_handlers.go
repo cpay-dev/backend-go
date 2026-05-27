@@ -12,6 +12,7 @@ import (
 
 	cpayv1 "github.com/cpay-dev/cpay/internal/gen/cpay/v1"
 	"github.com/cpay-dev/cpay/internal/shared/chain"
+	"github.com/cpay-dev/cpay/internal/shared/format"
 	"github.com/cpay-dev/cpay/internal/shared/httpx"
 	"github.com/cpay-dev/cpay/internal/shared/middleware"
 	"github.com/ethereum/go-ethereum/common"
@@ -99,10 +100,10 @@ func (s *Server) handleCreateCheckoutSession(w http.ResponseWriter, r *http.Requ
 			CustomerEmail:       req.CustomerEmail,
 			CustomerName:        req.CustomerName,
 			CustomerPhone:       req.CustomerPhone,
-			CustomerAddressJson: mustJSON(req.CustomerAddress, "{}"),
+			CustomerAddressJson: format.JSONStringOrDefault(req.CustomerAddress, "{}"),
 			SuccessUrl:          req.SuccessURL,
 			ExpiresInSec:        int32(req.ExpiresInSec),
-			MetadataJson:        mustJSON(req.Metadata, "{}"),
+			MetadataJson:        format.JSONStringOrDefault(req.Metadata, "{}"),
 		})
 		if err != nil {
 			return 0, nil, err
@@ -131,10 +132,10 @@ func (s *Server) handleCreatePublicCheckoutSession(w http.ResponseWriter, r *htt
 		CustomerEmail:       req.CustomerEmail,
 		CustomerName:        req.CustomerName,
 		CustomerPhone:       req.CustomerPhone,
-		CustomerAddressJson: mustJSON(req.CustomerAddress, "{}"),
+		CustomerAddressJson: format.JSONStringOrDefault(req.CustomerAddress, "{}"),
 		SuccessUrl:          req.SuccessURL,
 		ExpiresInSec:        int32(req.ExpiresInSec),
-		MetadataJson:        mustJSON(req.Metadata, "{}"),
+		MetadataJson:        format.JSONStringOrDefault(req.Metadata, "{}"),
 	})
 	if err != nil {
 		s.writeRPCError(w, r, err)
@@ -164,7 +165,7 @@ func checkoutSessionCreateToResponse(resp *cpayv1.CreateCheckoutSessionResponse)
 		"expires_at":            resp.GetExpiresAt(),
 		"after_payment": map[string]any{
 			"type":         resp.GetAfterPaymentType(),
-			"redirect_url": emptyToNil(resp.GetAfterPaymentRedirectUrl()),
+			"redirect_url": format.StringOrNil(resp.GetAfterPaymentRedirectUrl()),
 		},
 	}
 	if walletTx, decimals, ok := browserWalletTransaction(resp); ok {
@@ -175,7 +176,7 @@ func checkoutSessionCreateToResponse(resp *cpayv1.CreateCheckoutSessionResponse)
 }
 
 func browserWalletTransaction(resp *cpayv1.CreateCheckoutSessionResponse) (map[string]any, int, bool) {
-	chainID, ok := evmChainID(resp.GetChain())
+	chainID, ok := chain.EVMChainID(resp.GetChain())
 	if !ok || !common.IsHexAddress(resp.GetDepositAddress()) {
 		return nil, 0, false
 	}
@@ -183,7 +184,7 @@ func browserWalletTransaction(resp *cpayv1.CreateCheckoutSessionResponse) (map[s
 	if amount <= 0 {
 		amount = resp.GetAmount()
 	}
-	if decimals, ok := nativeTokenDecimals(resp.GetChain(), resp.GetTokenSymbol()); ok {
+	if decimals, ok := chain.NativeEVMTokenDecimals(resp.GetChain(), resp.GetTokenSymbol()); ok {
 		value, err := decimalToBaseUnitHex(formatTokenAmount(amount, decimals), decimals)
 		if err != nil {
 			return nil, 0, false
@@ -220,46 +221,6 @@ func formatTokenAmount(amount float64, decimals int) string {
 		return "0"
 	}
 	return formatted
-}
-
-func evmChainID(chainName string) (string, bool) {
-	switch strings.ToLower(strings.TrimSpace(chainName)) {
-	case "ethereum", "ethereum mainnet", "mainnet":
-		return "0x1", true
-	case "optimism":
-		return "0xa", true
-	case "bsc", "bnb", "bnb smart chain":
-		return "0x38", true
-	case "polygon":
-		return "0x89", true
-	case "arbitrum", "arbitrum one":
-		return "0xa4b1", true
-	case "base":
-		return "0x2105", true
-	case "avalanche", "avalanche c-chain", "avax":
-		return "0xa86a", true
-	case "hyperevm", "hyper evm", "hyperliquid", "hyperliquid evm":
-		return "0x3e7", true
-	default:
-		return "", false
-	}
-}
-
-func nativeTokenDecimals(chainName, symbol string) (int, bool) {
-	chainName = strings.ToLower(strings.TrimSpace(chainName))
-	symbol = strings.ToUpper(strings.TrimSpace(symbol))
-	switch chainName {
-	case "ethereum", "ethereum mainnet", "mainnet", "optimism", "arbitrum", "arbitrum one", "base", "hyperevm", "hyper evm", "hyperliquid", "hyperliquid evm":
-		return 18, symbol == "ETH" || symbol == "HYPE"
-	case "bsc", "bnb", "bnb smart chain":
-		return 18, symbol == "BNB"
-	case "polygon":
-		return 18, symbol == "MATIC" || symbol == "POL"
-	case "avalanche", "avalanche c-chain", "avax":
-		return 18, symbol == "AVAX"
-	default:
-		return 0, false
-	}
 }
 
 func erc20TransferData(to string, amount *big.Int) string {
@@ -336,15 +297,15 @@ func (s *Server) handleGetCheckoutSession(w http.ResponseWriter, r *http.Request
 		"currency":      resp.GetCurrency(),
 		"chain":         resp.GetChain(),
 		"token_symbol":  resp.GetTokenSymbol(),
-		"token_address": emptyToNil(resp.GetTokenAddress()),
+		"token_address": format.StringOrNil(resp.GetTokenAddress()),
 		"customer": map[string]any{
-			"email":   emptyToNil(resp.GetCustomerEmail()),
-			"name":    emptyToNil(resp.GetCustomerName()),
-			"phone":   emptyToNil(resp.GetCustomerPhone()),
-			"address": parseJSONValue(resp.GetCustomerAddressJson(), map[string]any{}),
+			"email":   format.StringOrNil(resp.GetCustomerEmail()),
+			"name":    format.StringOrNil(resp.GetCustomerName()),
+			"phone":   format.StringOrNil(resp.GetCustomerPhone()),
+			"address": format.JSONValueOrDefault(resp.GetCustomerAddressJson(), map[string]any{}),
 		},
 		"expires_at":  resp.GetExpiresAt(),
-		"success_url": emptyToNil(resp.GetSuccessUrl()),
+		"success_url": format.StringOrNil(resp.GetSuccessUrl()),
 		"created_at":  resp.GetCreatedAt(),
 		"payment_intent": map[string]any{
 			"id":                     intent.GetId(),
@@ -356,8 +317,8 @@ func (s *Server) handleGetCheckoutSession(w http.ResponseWriter, r *http.Request
 			"max_acceptable_amount":  intent.GetMaxAcceptableAmount(),
 			"confirmations":          intent.GetConfirmations(),
 			"required_confirmations": intent.GetRequiredConfirmations(),
-			"tx_hash":                emptyToNil(intent.GetTxHash()),
-			"deposit_address":        emptyToNil(intent.GetDepositAddress()),
+			"tx_hash":                format.StringOrNil(intent.GetTxHash()),
+			"deposit_address":        format.StringOrNil(intent.GetDepositAddress()),
 		},
 	})
 }
@@ -390,14 +351,14 @@ func (s *Server) handleGetPublicCheckoutSession(w http.ResponseWriter, r *http.R
 		"deposit_address":        resp.GetDepositAddress(),
 		"link": map[string]any{
 			"title":       resp.GetLinkTitle(),
-			"description": emptyToNil(resp.GetLinkDescription()),
-			"image_url":   emptyToNil(resp.GetLinkImageUrl()),
+			"description": format.StringOrNil(resp.GetLinkDescription()),
+			"image_url":   format.StringOrNil(resp.GetLinkImageUrl()),
 			"cta_text":    resp.GetCtaText(),
 		},
 		"after_payment": map[string]any{
 			"type":            resp.GetAfterPaymentType(),
-			"redirect_url":    emptyToNil(resp.GetAfterPaymentRedirectUrl()),
-			"success_message": emptyToNil(resp.GetAfterPaymentSuccessMessage()),
+			"redirect_url":    format.StringOrNil(resp.GetAfterPaymentRedirectUrl()),
+			"success_message": format.StringOrNil(resp.GetAfterPaymentSuccessMessage()),
 		},
 	})
 }
@@ -571,19 +532,19 @@ func (s *Server) handleGetPaymentIntent(w http.ResponseWriter, r *http.Request) 
 		"status":                 resp.GetStatus(),
 		"chain":                  resp.GetChain(),
 		"token_symbol":           resp.GetTokenSymbol(),
-		"token_address":          emptyToNil(resp.GetTokenAddress()),
+		"token_address":          format.StringOrNil(resp.GetTokenAddress()),
 		"expected_amount":        resp.GetExpectedAmount(),
 		"tolerance_percent":      resp.GetTolerancePercent(),
 		"min_acceptable_amount":  resp.GetMinAcceptableAmount(),
 		"max_acceptable_amount":  resp.GetMaxAcceptableAmount(),
 		"received_amount":        resp.GetReceivedAmount(),
-		"tx_hash":                emptyToNil(resp.GetTxHash()),
+		"tx_hash":                format.StringOrNil(resp.GetTxHash()),
 		"confirmations":          resp.GetConfirmations(),
 		"required_confirmations": resp.GetRequiredConfirmations(),
-		"confirmed_at":           emptyToNil(resp.GetConfirmedAt()),
-		"settled_at":             emptyToNil(resp.GetSettledAt()),
+		"confirmed_at":           format.StringOrNil(resp.GetConfirmedAt()),
+		"settled_at":             format.StringOrNil(resp.GetSettledAt()),
 		"expires_at":             resp.GetExpiresAt(),
-		"deposit_address":        emptyToNil(resp.GetDepositAddress()),
+		"deposit_address":        format.StringOrNil(resp.GetDepositAddress()),
 		"created_at":             resp.GetCreatedAt(),
 		"updated_at":             resp.GetUpdatedAt(),
 	})
@@ -594,7 +555,7 @@ func (s *Server) handleListPayments(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	limit, offset := parsePagination(r, 50, 200)
+	limit, offset := httpx.ParsePagination(r, 50, 200)
 	productID := strings.TrimSpace(r.URL.Query().Get("product_id"))
 	paymentLinkID := strings.TrimSpace(r.URL.Query().Get("payment_link_id"))
 
@@ -636,7 +597,7 @@ func (s *Server) handleListPayments(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	items := make([]map[string]any, 0)
+	items := make([]map[string]any, 0, limit)
 	total := 0
 	for rows.Next() {
 		item, rowTotal, err := scanPaymentListRow(rows)
@@ -686,13 +647,13 @@ func scanPaymentListRow(scanner interface{ Scan(dest ...any) error }) (map[strin
 		"id":                     id,
 		"checkout_session_id":    checkoutSessionID,
 		"payment_link_id":        linkID,
-		"product_id":             emptyToNil(productID),
-		"product_name":           emptyToNil(productName),
+		"product_id":             format.StringOrNil(productID),
+		"product_name":           format.StringOrNil(productName),
 		"payment_link_title":     linkTitle,
 		"payment_link_code":      linkCode,
 		"amount":                 decimalToFloat(fiatAmountRaw),
 		"currency":               currency,
-		"customer_email":         emptyToNil(customerEmail),
+		"customer_email":         format.StringOrNil(customerEmail),
 		"status":                 status,
 		"chain":                  chainName,
 		"token_symbol":           tokenSymbol,
@@ -704,11 +665,11 @@ func scanPaymentListRow(scanner interface{ Scan(dest ...any) error }) (map[strin
 		"expires_at":             expiresAt.UTC().Format(time.RFC3339Nano),
 		"created_at":             createdAt.UTC().Format(time.RFC3339Nano),
 		"updated_at":             updatedAt.UTC().Format(time.RFC3339Nano),
-		"wallet_type":            emptyToNil(walletType),
-		"payout_status":          emptyToNil(payoutStatus),
-		"payout_item_status":     emptyToNil(payoutItemStatus),
-		"payout_tx_hash":         emptyToNil(payoutTxHash),
-		"payout_last_error":      emptyToNil(payoutLastError),
+		"wallet_type":            format.StringOrNil(walletType),
+		"payout_status":          format.StringOrNil(payoutStatus),
+		"payout_item_status":     format.StringOrNil(payoutItemStatus),
+		"payout_tx_hash":         format.StringOrNil(payoutTxHash),
+		"payout_last_error":      format.StringOrNil(payoutLastError),
 	}, total, nil
 }
 
@@ -780,7 +741,7 @@ func (s *Server) handleCreateSubscription(w http.ResponseWriter, r *http.Request
 			VaultCustomerWallet:  req.Vault.CustomerWallet,
 			VaultMaxTotalAmount:  req.Vault.MaxTotalAmount,
 			VaultRemainingAmount: req.Vault.RemainingAmount,
-			MetadataJson:         mustJSON(req.Metadata, "{}"),
+			MetadataJson:         format.JSONStringOrDefault(req.Metadata, "{}"),
 		}
 		if req.PaymentLinkID != nil {
 			rpcReq.PaymentLinkId = strings.TrimSpace(*req.PaymentLinkID)
@@ -860,12 +821,7 @@ func (s *Server) handleGetSubscriptionCycles(w http.ResponseWriter, r *http.Requ
 		httpx.WriteError(w, http.StatusBadRequest, "invalid_request", "id is required", middleware.GetRequestID(r.Context()))
 		return
 	}
-	limit := 20
-	if q := r.URL.Query().Get("limit"); q != "" {
-		if v, err := strconv.Atoi(q); err == nil && v > 0 && v <= 200 {
-			limit = v
-		}
-	}
+	limit := httpx.ParseLimit(r, 20, 200)
 	resp, err := s.checkoutClient.GetSubscriptionCycles(s.rpcContext(r.Context()), &cpayv1.GetSubscriptionCyclesRequest{MerchantId: reqAuth.MerchantID, Id: id, Limit: int32(limit)})
 	if err != nil {
 		s.writeRPCError(w, r, err)
@@ -881,9 +837,9 @@ func (s *Server) handleGetSubscriptionCycles(w http.ResponseWriter, r *http.Requ
 			"due_at":            c.GetDueAt(),
 			"status":            c.GetStatus(),
 			"amount":            c.GetAmount(),
-			"payment_intent_id": emptyToNil(c.GetPaymentIntentId()),
+			"payment_intent_id": format.StringOrNil(c.GetPaymentIntentId()),
 			"retry_count":       c.GetRetryCount(),
-			"last_error":        emptyToNil(c.GetLastError()),
+			"last_error":        format.StringOrNil(c.GetLastError()),
 			"created_at":        c.GetCreatedAt(),
 			"updated_at":        c.GetUpdatedAt(),
 		})

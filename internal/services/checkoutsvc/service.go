@@ -1,19 +1,15 @@
 package checkoutsvc
 
 import (
-	"bytes"
 	"context"
-	"crypto/rand"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/cpay-dev/cpay/internal/domain/payment"
+	"github.com/cpay-dev/cpay/internal/domain/subscription"
 	cpayv1 "github.com/cpay-dev/cpay/internal/gen/cpay/v1"
 	"github.com/cpay-dev/cpay/internal/platform/outbox"
 	"github.com/cpay-dev/cpay/internal/platform/storage"
@@ -21,11 +17,12 @@ import (
 	"github.com/cpay-dev/cpay/internal/shared/chain"
 	"github.com/cpay-dev/cpay/internal/shared/config"
 	cryptox "github.com/cpay-dev/cpay/internal/shared/crypto"
+	"github.com/cpay-dev/cpay/internal/shared/format"
 	"github.com/cpay-dev/cpay/internal/shared/ids"
+	"github.com/cpay-dev/cpay/internal/shared/random"
 	"github.com/cpay-dev/cpay/internal/shared/rpcx"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/jung-kurt/gofpdf/v2"
 	"github.com/rs/zerolog"
 	"google.golang.org/grpc/codes"
 )
@@ -73,13 +70,6 @@ type createSessionInput struct {
 
 type queryer interface {
 	Query(context.Context, string, ...any) (pgx.Rows, error)
-}
-
-type allowedToken struct {
-	Chain    string `json:"chain"`
-	Symbol   string `json:"symbol"`
-	Address  string `json:"address,omitempty"`
-	Decimals int    `json:"decimals,omitempty"`
 }
 
 type paymentLinkSnapshot struct {
@@ -166,11 +156,11 @@ func (s *Service) createSession(ctx context.Context, in createSessionInput) (*cp
 		}
 	}
 
-	allowedTokens := []allowedToken{}
+	allowedTokens := []payment.AllowedToken{}
 	if err := json.Unmarshal(link.AllowedRaw, &allowedTokens); err != nil {
 		return nil, rpcx.E(codes.Internal, "internal_error", "failed to decode allowed tokens")
 	}
-	if !tokenAllowed(allowedTokens, in.Chain, in.TokenSymbol, tokenAddress) {
+	if !payment.TokenAllowed(allowedTokens, in.Chain, in.TokenSymbol, tokenAddress) {
 		return nil, rpcx.E(codes.InvalidArgument, "invalid_request", "token is not allowed for this link")
 	}
 	sessionExpiresAt := checkoutSessionExpiresAt(in.ExpiresInSec, link.ExpiresAt)
@@ -206,17 +196,17 @@ func (s *Service) createSession(ctx context.Context, in createSessionInput) (*cp
 		encryptedPK = encrypted
 	}
 
-	clientSecret, err := newClientSecret()
+	clientSecret, err := random.PrefixedToken("chksec_", 24)
 	if err != nil {
 		return nil, rpcx.E(codes.Internal, "internal_error", "failed to generate client secret")
 	}
 	clientSecretHash := auth.HashToken(clientSecret)
 
-	customerAddressJSON, err := normalizeJSON(in.CustomerAddress, "{}")
+	customerAddressJSON, err := format.JSONOrDefault(in.CustomerAddress, "{}")
 	if err != nil {
 		return nil, rpcx.E(codes.InvalidArgument, "invalid_request", "customer_address_json is invalid")
 	}
-	if _, err := normalizeJSON(in.MetadataJSON, "{}"); err != nil {
+	if _, err := format.JSONOrDefault(in.MetadataJSON, "{}"); err != nil {
 		return nil, rpcx.E(codes.InvalidArgument, "invalid_request", "metadata_json is invalid")
 	}
 
@@ -232,8 +222,8 @@ func (s *Service) createSession(ctx context.Context, in createSessionInput) (*cp
 			amount, currency, chain, token_symbol, token_address, expires_at, success_url, client_secret_hash, created_at, updated_at
 		)
 		VALUES($1, $2, $3, 'awaiting_funds', $4, $5, $6, $7::jsonb, $8, $9, $10, $11, $12, $13, $14, $15, NOW(), NOW())
-	`, sessionID, link.ID, merchantID, nullIfEmpty(in.CustomerEmail), nullIfEmpty(in.CustomerName), nullIfEmpty(in.CustomerPhone), customerAddressJSON,
-		amount, link.Currency, strings.ToLower(in.Chain), strings.ToUpper(in.TokenSymbol), nullIfEmpty(tokenAddress), sessionExpiresAt, nullIfEmpty(in.SuccessURL), clientSecretHash)
+	`, sessionID, link.ID, merchantID, format.StringOrNil(in.CustomerEmail), format.StringOrNil(in.CustomerName), format.StringOrNil(in.CustomerPhone), customerAddressJSON,
+		amount, link.Currency, strings.ToLower(in.Chain), strings.ToUpper(in.TokenSymbol), format.StringOrNil(tokenAddress), sessionExpiresAt, format.StringOrNil(in.SuccessURL), clientSecretHash)
 	if err != nil {
 		return nil, rpcx.E(codes.Internal, "internal_error", "failed to create checkout session")
 	}
@@ -249,7 +239,7 @@ func (s *Service) createSession(ctx context.Context, in createSessionInput) (*cp
 			$8, $9, $10, $11, 0,
 			0, $12, $13, NOW(), NOW()
 	)
-	`, intentID, sessionID, link.ID, merchantID, strings.ToLower(in.Chain), strings.ToUpper(in.TokenSymbol), nullIfEmpty(tokenAddress),
+	`, intentID, sessionID, link.ID, merchantID, strings.ToLower(in.Chain), strings.ToUpper(in.TokenSymbol), format.StringOrNil(tokenAddress),
 		expectedAmount, s.cfg.DefaultTolerancePercent, minAccept, maxAccept, requiredConf, sessionExpiresAt)
 	if err != nil {
 		return nil, rpcx.E(codes.Internal, "internal_error", "failed to create payment intent")
@@ -262,7 +252,7 @@ func (s *Service) createSession(ctx context.Context, in createSessionInput) (*cp
 			)
 			VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'active', NOW())
 		`, addressID, intentID, merchantID, strings.ToLower(in.Chain), wallet.Address, encryptedPK, walletType,
-		nullIfEmpty(wallet.FactoryAddress), nullIfEmpty(wallet.WalletSalt), nullIfEmpty(wallet.InitCodeHash))
+		format.StringOrNil(wallet.FactoryAddress), format.StringOrNil(wallet.WalletSalt), format.StringOrNil(wallet.InitCodeHash))
 	if err != nil {
 		return nil, rpcx.E(codes.Internal, "internal_error", "failed to create deposit address")
 	}
@@ -298,7 +288,7 @@ func (s *Service) createSession(ctx context.Context, in createSessionInput) (*cp
 		MaxAcceptableAmount:     maxAccept,
 		ExpiresAt:               sessionExpiresAt.UTC().Format(time.RFC3339Nano),
 		AfterPaymentType:        link.AfterType,
-		AfterPaymentRedirectUrl: strValue(link.RedirectURL),
+		AfterPaymentRedirectUrl: format.StringPtr(link.RedirectURL),
 		ExpectedAmount:          expectedAmount,
 	}
 	if in.IncludeSecret {
@@ -375,7 +365,7 @@ func (s *Service) validatePaymentLinkUsage(ctx context.Context, linkID string, r
 func checkoutAmount(in createSessionInput, link paymentLinkSnapshot) (float64, error) {
 	amount := 0.0
 	if strings.ToLower(link.PricingMode) == "fixed" {
-		amount = parseFloatValue(link.AmountRaw)
+		amount = format.Float64OrZero(link.AmountRaw)
 		if amount <= 0 {
 			return 0, rpcx.E(codes.InvalidArgument, "invalid_request", "invalid fixed amount")
 		}
@@ -384,14 +374,14 @@ func checkoutAmount(in createSessionInput, link paymentLinkSnapshot) (float64, e
 			return 0, rpcx.E(codes.InvalidArgument, "invalid_request", "amount is required for open links")
 		}
 		amount = *in.Amount
-		if minVal := parseFloatValue(link.MinRaw); minVal > 0 && amount < minVal {
+		if minVal := format.Float64OrZero(link.MinRaw); minVal > 0 && amount < minVal {
 			return 0, rpcx.E(codes.InvalidArgument, "invalid_request", "amount is below min_amount")
 		}
-		if maxVal := parseFloatValue(link.MaxRaw); maxVal > 0 && amount > maxVal {
+		if maxVal := format.Float64OrZero(link.MaxRaw); maxVal > 0 && amount > maxVal {
 			return 0, rpcx.E(codes.InvalidArgument, "invalid_request", "amount is above max_amount")
 		}
 	}
-	if adjustVal := parseFloatValue(link.AdjustRaw); adjustVal != 0 {
+	if adjustVal := format.Float64OrZero(link.AdjustRaw); adjustVal != 0 {
 		amount += amount * adjustVal / 100
 	}
 	return amount, nil
@@ -466,17 +456,17 @@ func (s *Service) GetCheckoutSession(ctx context.Context, req *cpayv1.GetCheckou
 		Id:                  sid,
 		PaymentLinkId:       linkID,
 		Status:              sessStatus,
-		Amount:              parseFloatValue(amountRaw),
+		Amount:              format.Float64OrZero(amountRaw),
 		Currency:            currency,
 		Chain:               chainName,
 		TokenSymbol:         tokenSymbol,
-		TokenAddress:        strValue(tokenAddress),
-		CustomerEmail:       strValue(customerEmail),
-		CustomerName:        strValue(customerName),
-		CustomerPhone:       strValue(customerPhone),
-		CustomerAddressJson: bytesOrDefault(customerAddress, "{}"),
+		TokenAddress:        format.StringPtr(tokenAddress),
+		CustomerEmail:       format.StringPtr(customerEmail),
+		CustomerName:        format.StringPtr(customerName),
+		CustomerPhone:       format.StringPtr(customerPhone),
+		CustomerAddressJson: format.BytesOrDefault(customerAddress, "{}"),
 		ExpiresAt:           expiresAt.UTC().Format(time.RFC3339Nano),
-		SuccessUrl:          strValue(successURL),
+		SuccessUrl:          format.StringPtr(successURL),
 		CreatedAt:           createdAt.UTC().Format(time.RFC3339Nano),
 		PaymentIntent: &cpayv1.PaymentIntent{
 			Id:                    intentID,
@@ -485,17 +475,17 @@ func (s *Service) GetCheckoutSession(ctx context.Context, req *cpayv1.GetCheckou
 			Status:                intentStatus,
 			Chain:                 chainName,
 			TokenSymbol:           tokenSymbol,
-			TokenAddress:          strValue(tokenAddress),
-			ExpectedAmount:        parseFloatValue(expectedRaw),
-			ReceivedAmount:        parseFloatValue(receivedRaw),
-			TolerancePercent:      parseFloatValue(tolRaw),
-			MinAcceptableAmount:   parseFloatValue(minRaw),
-			MaxAcceptableAmount:   parseFloatValue(maxRaw),
-			TxHash:                strValue(txHash),
+			TokenAddress:          format.StringPtr(tokenAddress),
+			ExpectedAmount:        format.Float64OrZero(expectedRaw),
+			ReceivedAmount:        format.Float64OrZero(receivedRaw),
+			TolerancePercent:      format.Float64OrZero(tolRaw),
+			MinAcceptableAmount:   format.Float64OrZero(minRaw),
+			MaxAcceptableAmount:   format.Float64OrZero(maxRaw),
+			TxHash:                format.StringPtr(txHash),
 			Confirmations:         int32(confirmations),
 			RequiredConfirmations: int32(requiredConfs),
-			ConfirmedAt:           formatTimePtr(confirmedAt),
-			SettledAt:             formatTimePtr(settledAt),
+			ConfirmedAt:           format.TimePtr(confirmedAt),
+			SettledAt:             format.TimePtr(settledAt),
 			ExpiresAt:             intentExpiresAt.UTC().Format(time.RFC3339Nano),
 			DepositAddress:        depositAddress,
 			CreatedAt:             intentCreatedAt.UTC().Format(time.RFC3339Nano),
@@ -543,7 +533,7 @@ func (s *Service) GetPublicCheckoutSession(ctx context.Context, req *cpayv1.GetP
 	return &cpayv1.PublicCheckoutSession{
 		Id:                         id,
 		Status:                     status,
-		Amount:                     parseFloatValue(amountRaw),
+		Amount:                     format.Float64OrZero(amountRaw),
 		Currency:                   currency,
 		Chain:                      chainName,
 		TokenSymbol:                tokenSymbol,
@@ -551,17 +541,17 @@ func (s *Service) GetPublicCheckoutSession(ctx context.Context, req *cpayv1.GetP
 		PaymentIntentId:            intentID,
 		DepositAddress:             depositAddress,
 		PaymentIntentStatus:        intentStatus,
-		ReceivedAmount:             parseFloatValue(receivedRaw),
+		ReceivedAmount:             format.Float64OrZero(receivedRaw),
 		Confirmations:              int32(confirmations),
 		RequiredConfirmations:      int32(requiredConfs),
 		Transactions:               transactions,
 		LinkTitle:                  linkTitle,
-		LinkDescription:            strValue(linkDescription),
-		LinkImageUrl:               strValue(linkImage),
+		LinkDescription:            format.StringPtr(linkDescription),
+		LinkImageUrl:               format.StringPtr(linkImage),
 		CtaText:                    ctaText,
 		AfterPaymentType:           afterType,
-		AfterPaymentRedirectUrl:    strValue(redirectURL),
-		AfterPaymentSuccessMessage: strValue(successMessage),
+		AfterPaymentRedirectUrl:    format.StringPtr(redirectURL),
+		AfterPaymentSuccessMessage: format.StringPtr(successMessage),
 	}, nil
 }
 
@@ -587,7 +577,7 @@ func (s *Service) checkoutTransactions(ctx context.Context, q queryer, intentID 
 		}
 		item := &cpayv1.CheckoutTransaction{
 			TxHash:        txHash,
-			Amount:        parseFloatValue(amountRaw),
+			Amount:        format.Float64OrZero(amountRaw),
 			Chain:         chainName,
 			TokenSymbol:   tokenSymbol,
 			Confirmations: int32(confirmations),
@@ -638,8 +628,8 @@ func (s *Service) ConfirmCheckoutSession(ctx context.Context, req *cpayv1.Confir
 		return nil, rpcx.E(codes.Internal, "internal_error", "failed to load payment intent")
 	}
 
-	expected := parseFloatValue(expectedRaw)
-	tolerance := parseFloatValue(toleranceRaw)
+	expected := format.Float64OrZero(expectedRaw)
+	tolerance := format.Float64OrZero(toleranceRaw)
 	txStatus := "detected"
 	if int(req.GetConfirmations()) >= requiredConfs {
 		txStatus = "confirmed"
@@ -650,7 +640,7 @@ func (s *Service) ConfirmCheckoutSession(ctx context.Context, req *cpayv1.Confir
 	if strings.TrimSpace(rawPayload) == "" {
 		rawPayload = "{}"
 	}
-	if _, err := normalizeJSON(rawPayload, "{}"); err != nil {
+	if _, err := format.JSONOrDefault(rawPayload, "{}"); err != nil {
 		return nil, rpcx.E(codes.InvalidArgument, "invalid_request", "raw_payload_json is invalid")
 	}
 
@@ -682,7 +672,7 @@ func (s *Service) ConfirmCheckoutSession(ctx context.Context, req *cpayv1.Confir
 			status=EXCLUDED.status,
 			raw_payload=EXCLUDED.raw_payload,
 			observed_at=NOW()
-	`, ids.New(), intentID, chainName, req.GetTxHash(), blockNumber, nullIfEmpty(req.GetFromAddress()), nullIfEmpty(req.GetToAddress()), req.GetReceivedAmount(),
+	`, ids.New(), intentID, chainName, req.GetTxHash(), blockNumber, format.StringOrNil(req.GetFromAddress()), format.StringOrNil(req.GetToAddress()), req.GetReceivedAmount(),
 		tokenSymbol, req.GetConfirmations(), txStatus, rawPayload)
 	if err != nil {
 		return nil, rpcx.E(codes.Internal, "internal_error", "failed to write chain transaction")
@@ -701,8 +691,8 @@ func (s *Service) ConfirmCheckoutSession(ctx context.Context, req *cpayv1.Confir
 	`, intentID, requiredConfs).Scan(&totalReceivedRaw, &confirmedReceivedRaw, &aggregateConfirmations, &latestTxHash); err != nil {
 		return nil, rpcx.E(codes.Internal, "internal_error", "failed to aggregate chain transactions")
 	}
-	totalReceived := parseFloatValue(totalReceivedRaw)
-	confirmedReceived := parseFloatValue(confirmedReceivedRaw)
+	totalReceived := format.Float64OrZero(totalReceivedRaw)
+	confirmedReceived := format.Float64OrZero(confirmedReceivedRaw)
 	confirmedStatus := payment.ResolveIntentStatus(expected, confirmedReceived, tolerance, requiredConfs, requiredConfs)
 	statusIsPaid := payment.IntentStatusIsPaid(confirmedStatus)
 	newStatus := confirmedStatus
@@ -754,7 +744,7 @@ func (s *Service) ConfirmCheckoutSession(ctx context.Context, req *cpayv1.Confir
 	}
 
 	if statusIsPaid && addInvoice {
-		if objectKey, invErr := s.generateAndStoreInvoice(ctx, merchantID, intentID, req.GetReceivedAmount(), currency, title); invErr == nil && objectKey != "" {
+		if objectKey, invErr := storage.StoreInvoicePDF(ctx, s.minio, merchantID, intentID, req.GetReceivedAmount(), currency, title); invErr == nil && objectKey != "" {
 			invoiceID := ids.New()
 			cmd, insErr := s.db.Exec(ctx, `
 				INSERT INTO checkout.invoices(id, payment_intent_id, merchant_id, object_key, amount, currency, created_at)
@@ -829,19 +819,19 @@ func (s *Service) GetPaymentIntent(ctx context.Context, req *cpayv1.GetPaymentIn
 		Status:                status,
 		Chain:                 chainName,
 		TokenSymbol:           tokenSymbol,
-		TokenAddress:          strValue(tokenAddress),
-		ExpectedAmount:        parseFloatValue(expectedRaw),
-		TolerancePercent:      parseFloatValue(tolRaw),
-		MinAcceptableAmount:   parseFloatValue(minRaw),
-		MaxAcceptableAmount:   parseFloatValue(maxRaw),
-		ReceivedAmount:        parseFloatValue(receivedRaw),
-		TxHash:                strValue(txHash),
+		TokenAddress:          format.StringPtr(tokenAddress),
+		ExpectedAmount:        format.Float64OrZero(expectedRaw),
+		TolerancePercent:      format.Float64OrZero(tolRaw),
+		MinAcceptableAmount:   format.Float64OrZero(minRaw),
+		MaxAcceptableAmount:   format.Float64OrZero(maxRaw),
+		ReceivedAmount:        format.Float64OrZero(receivedRaw),
+		TxHash:                format.StringPtr(txHash),
 		Confirmations:         int32(confs),
 		RequiredConfirmations: int32(requiredConfs),
-		ConfirmedAt:           formatTimePtr(confirmedAt),
-		SettledAt:             formatTimePtr(settledAt),
+		ConfirmedAt:           format.TimePtr(confirmedAt),
+		SettledAt:             format.TimePtr(settledAt),
 		ExpiresAt:             expiresAt.UTC().Format(time.RFC3339Nano),
-		DepositAddress:        strValue(depositAddress),
+		DepositAddress:        format.StringPtr(depositAddress),
 		CreatedAt:             createdAt.UTC().Format(time.RFC3339Nano),
 		UpdatedAt:             updatedAt.UTC().Format(time.RFC3339Nano),
 	}, nil
@@ -873,7 +863,7 @@ func (s *Service) CreateWebhookEndpoint(ctx context.Context, req *cpayv1.CreateW
 		maxRetries = int(req.GetMaxRetries())
 	}
 
-	secret, err := generateWebhookSecret()
+	secret, err := random.PrefixedToken("whsec_", 24)
 	if err != nil {
 		return nil, rpcx.E(codes.Internal, "internal_error", "failed to generate webhook secret")
 	}
@@ -888,7 +878,7 @@ func (s *Service) CreateWebhookEndpoint(ctx context.Context, req *cpayv1.CreateW
 			id, merchant_id, url, description, enabled, events, secret_encrypted, max_retries, created_at, updated_at
 		)
 		VALUES($1, $2, $3, $4, TRUE, $5::jsonb, $6, $7, NOW(), NOW())
-	`, id, merchantID, endpointURL, nullIfEmpty(req.GetDescription()), string(eventsRaw), encryptedSecret, maxRetries)
+	`, id, merchantID, endpointURL, format.StringOrNil(req.GetDescription()), string(eventsRaw), encryptedSecret, maxRetries)
 	if err != nil {
 		return nil, rpcx.E(codes.Internal, "internal_error", "failed to create webhook endpoint")
 	}
@@ -944,7 +934,7 @@ func (s *Service) CreateSubscription(ctx context.Context, req *cpayv1.CreateSubs
 	}
 
 	now := time.Now().UTC()
-	nextBilling := addInterval(now, intervalUnit, intervalCount)
+	nextBilling := subscription.AddInterval(now, intervalUnit, intervalCount)
 	if strings.TrimSpace(req.GetFirstBillingAt()) != "" {
 		t, err := time.Parse(time.RFC3339, strings.TrimSpace(req.GetFirstBillingAt()))
 		if err != nil {
@@ -952,7 +942,7 @@ func (s *Service) CreateSubscription(ctx context.Context, req *cpayv1.CreateSubs
 		}
 		nextBilling = t.UTC()
 	}
-	periodEnd := addInterval(nextBilling, intervalUnit, intervalCount)
+	periodEnd := subscription.AddInterval(nextBilling, intervalUnit, intervalCount)
 
 	var paymentLinkID any
 	if strings.TrimSpace(req.GetPaymentLinkId()) != "" {
@@ -962,7 +952,7 @@ func (s *Service) CreateSubscription(ctx context.Context, req *cpayv1.CreateSubs
 		}
 		paymentLinkID = pid
 	}
-	metadataJSON, err := normalizeJSON(req.GetMetadataJson(), "{}")
+	metadataJSON, err := format.JSONOrDefault(req.GetMetadataJson(), "{}")
 	if err != nil {
 		return nil, rpcx.E(codes.InvalidArgument, "invalid_request", "metadata_json is invalid")
 	}
@@ -993,7 +983,7 @@ func (s *Service) CreateSubscription(ctx context.Context, req *cpayv1.CreateSubs
 			created_at, updated_at
 		)
 		VALUES($1, $2, $3, $4, 'active', $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::jsonb, NOW(), NOW())
-	`, subID, merchantID, paymentLinkID, nullIfEmpty(req.GetCustomerRef()), strings.ToLower(req.GetChain()), strings.ToUpper(req.GetTokenSymbol()), nullIfEmpty(req.GetTokenAddress()),
+	`, subID, merchantID, paymentLinkID, format.StringOrNil(req.GetCustomerRef()), strings.ToLower(req.GetChain()), strings.ToUpper(req.GetTokenSymbol()), format.StringOrNil(req.GetTokenAddress()),
 		req.GetAmount(), currency, intervalUnit, intervalCount, nextBilling, req.GetVaultContractAddress(), metadataJSON)
 	if err != nil {
 		return nil, rpcx.E(codes.Internal, "internal_error", "failed to create subscription")
@@ -1007,7 +997,7 @@ func (s *Service) CreateSubscription(ctx context.Context, req *cpayv1.CreateSubs
 		)
 		VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'active', NOW(), NOW())
 	`, vaultID, merchantID, subID, strings.ToLower(req.GetChain()), req.GetVaultContractAddress(), req.GetVaultCustomerWallet(),
-		strings.ToUpper(req.GetTokenSymbol()), nullIfEmpty(req.GetTokenAddress()), req.GetVaultMaxTotalAmount(), remaining, vaultExpiresAt)
+		strings.ToUpper(req.GetTokenSymbol()), format.StringOrNil(req.GetTokenAddress()), req.GetVaultMaxTotalAmount(), remaining, vaultExpiresAt)
 	if err != nil {
 		return nil, rpcx.E(codes.Internal, "internal_error", "failed to create vault authorization")
 	}
@@ -1125,7 +1115,7 @@ func (s *Service) GetSubscriptionCycles(ctx context.Context, req *cpayv1.GetSubs
 	}
 	defer rows.Close()
 
-	items := make([]*cpayv1.SubscriptionCycle, 0)
+	items := make([]*cpayv1.SubscriptionCycle, 0, limit)
 	for rows.Next() {
 		var id string
 		var idx int
@@ -1144,40 +1134,16 @@ func (s *Service) GetSubscriptionCycles(ctx context.Context, req *cpayv1.GetSubs
 			PeriodEnd:       end.UTC().Format(time.RFC3339Nano),
 			DueAt:           due.UTC().Format(time.RFC3339Nano),
 			Status:          status,
-			Amount:          parseFloatValue(amountRaw),
-			PaymentIntentId: strValue(paymentIntentID),
+			Amount:          format.Float64OrZero(amountRaw),
+			PaymentIntentId: format.StringPtr(paymentIntentID),
 			RetryCount:      int32(retryCount),
-			LastError:       strValue(lastErr),
+			LastError:       format.StringPtr(lastErr),
 			CreatedAt:       createdAt.UTC().Format(time.RFC3339Nano),
 			UpdatedAt:       updatedAt.UTC().Format(time.RFC3339Nano),
 		})
 	}
 
 	return &cpayv1.GetSubscriptionCyclesResponse{SubscriptionId: subID, Data: items}, nil
-}
-
-func tokenAllowed(allowed []allowedToken, chainName, symbol, address string) bool {
-	if len(allowed) == 0 {
-		return true
-	}
-	chainName = strings.ToLower(strings.TrimSpace(chainName))
-	symbol = strings.ToUpper(strings.TrimSpace(symbol))
-	address = strings.ToLower(strings.TrimSpace(address))
-	for _, t := range allowed {
-		if strings.ToLower(strings.TrimSpace(t.Chain)) != chainName {
-			continue
-		}
-		if strings.ToUpper(strings.TrimSpace(t.Symbol)) != symbol {
-			continue
-		}
-		if strings.TrimSpace(t.Address) == "" || address == "" {
-			return true
-		}
-		if strings.ToLower(strings.TrimSpace(t.Address)) == address {
-			return true
-		}
-	}
-	return false
 }
 
 func (s *Service) countPaidPaymentIntents(ctx context.Context, paymentLinkID string) (int, error) {
@@ -1188,116 +1154,4 @@ func (s *Service) countPaidPaymentIntents(ctx context.Context, paymentLinkID str
 		WHERE payment_link_id=$1 AND status IN ('confirmed', 'overpaid', 'settled')
 	`, paymentLinkID).Scan(&count)
 	return count, err
-}
-
-func newClientSecret() (string, error) {
-	buf := make([]byte, 24)
-	if _, err := rand.Read(buf); err != nil {
-		return "", err
-	}
-	return "chksec_" + base64.RawURLEncoding.EncodeToString(buf), nil
-}
-
-func generateWebhookSecret() (string, error) {
-	buf := make([]byte, 24)
-	if _, err := rand.Read(buf); err != nil {
-		return "", err
-	}
-	return "whsec_" + base64.RawURLEncoding.EncodeToString(buf), nil
-}
-
-func normalizeJSON(raw, def string) (string, error) {
-	if strings.TrimSpace(raw) == "" {
-		return def, nil
-	}
-	var dst any
-	if err := json.Unmarshal([]byte(raw), &dst); err != nil {
-		return "", err
-	}
-	return raw, nil
-}
-
-func addInterval(t time.Time, unit string, count int) time.Time {
-	if count <= 0 {
-		count = 1
-	}
-	switch strings.ToLower(strings.TrimSpace(unit)) {
-	case "day":
-		return t.Add(time.Duration(count) * 24 * time.Hour)
-	case "week":
-		return t.Add(time.Duration(count*7) * 24 * time.Hour)
-	default:
-		return t.AddDate(0, count, 0)
-	}
-}
-
-func parseFloatValue(raw string) float64 {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return 0
-	}
-	v, err := strconv.ParseFloat(raw, 64)
-	if err != nil {
-		return 0
-	}
-	return v
-}
-
-func formatTimePtr(v *time.Time) string {
-	if v == nil {
-		return ""
-	}
-	return v.UTC().Format(time.RFC3339Nano)
-}
-
-func strValue(v *string) string {
-	if v == nil {
-		return ""
-	}
-	return *v
-}
-
-func nullIfEmpty(v string) any {
-	v = strings.TrimSpace(v)
-	if v == "" {
-		return nil
-	}
-	return v
-}
-
-func bytesOrDefault(raw []byte, def string) string {
-	if len(raw) == 0 {
-		return def
-	}
-	return string(raw)
-}
-
-func (s *Service) generateAndStoreInvoice(ctx context.Context, merchantID, paymentIntentID string, amount float64, currency, title string) (string, error) {
-	if s.minio == nil {
-		return "", nil
-	}
-	pdf := gofpdf.New("P", "mm", "A4", "")
-	pdf.AddPage()
-	pdf.SetFont("Arial", "B", 18)
-	pdf.Cell(40, 10, "CPay Invoice")
-	pdf.Ln(14)
-	pdf.SetFont("Arial", "", 12)
-	pdf.Cell(80, 8, fmt.Sprintf("Payment Intent: %s", paymentIntentID))
-	pdf.Ln(8)
-	pdf.Cell(80, 8, fmt.Sprintf("Merchant: %s", merchantID))
-	pdf.Ln(8)
-	pdf.Cell(80, 8, fmt.Sprintf("Title: %s", title))
-	pdf.Ln(8)
-	pdf.Cell(80, 8, fmt.Sprintf("Amount: %.8f %s", amount, currency))
-
-	var buf bytes.Buffer
-	if err := pdf.Output(&buf); err != nil {
-		return "", err
-	}
-
-	objectKey := fmt.Sprintf("invoices/%s/%s.pdf", merchantID, paymentIntentID)
-	if err := s.minio.PutObjectBytes(ctx, objectKey, "application/pdf", buf.Bytes()); err != nil {
-		return "", err
-	}
-	return objectKey, nil
 }

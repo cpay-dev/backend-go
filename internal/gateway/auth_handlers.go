@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	cpayv1 "github.com/cpay-dev/cpay/internal/gen/cpay/v1"
+	"github.com/cpay-dev/cpay/internal/shared/format"
 	"github.com/cpay-dev/cpay/internal/shared/httpx"
 	"github.com/cpay-dev/cpay/internal/shared/middleware"
 	"github.com/ethereum/go-ethereum/common"
@@ -381,8 +382,8 @@ func (s *Server) handleListAPIKeys(w http.ResponseWriter, r *http.Request) {
 			"name":         item.GetName(),
 			"prefix":       item.GetPrefix(),
 			"scopes":       item.GetScopes(),
-			"revoked_at":   emptyToNil(item.GetRevokedAt()),
-			"last_used_at": emptyToNil(item.GetLastUsedAt()),
+			"revoked_at":   format.StringOrNil(item.GetRevokedAt()),
+			"last_used_at": format.StringOrNil(item.GetLastUsedAt()),
 			"created_at":   item.GetCreatedAt(),
 		})
 	}
@@ -420,7 +421,7 @@ func (s *Server) handleGetMerchantSettings(w http.ResponseWriter, r *http.Reques
 	settings := resp.GetSettings()
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{
 		"merchant_id":        settings.GetMerchantId(),
-		"settlement_address": emptyToNil(settings.GetSettlementAddress()),
+		"settlement_address": format.StringOrNil(settings.GetSettlementAddress()),
 	})
 }
 
@@ -455,19 +456,12 @@ func (s *Server) handleUpdateMerchantSettings(w http.ResponseWriter, r *http.Req
 	})
 }
 
-func emptyToNil(v string) any {
-	if strings.TrimSpace(v) == "" {
-		return nil
-	}
-	return v
-}
-
 func writeAuthExchange(w http.ResponseWriter, status int, resp *cpayv1.AuthExchangeResponse) {
 	if resp.GetOnboardingRequired() {
 		httpx.WriteJSON(w, http.StatusOK, map[string]any{
 			"onboarding_required": true,
 			"onboarding_token":    resp.GetOnboardingToken(),
-			"email":               emptyToNil(resp.GetEmail()),
+			"email":               format.StringOrNil(resp.GetEmail()),
 			"provider":            resp.GetProvider(),
 		})
 		return
@@ -525,8 +519,8 @@ func writeProfileSecurity(w http.ResponseWriter, resp *cpayv1.ProfileSecurityRes
 			"id":               item.GetId(),
 			"provider":         item.GetProvider(),
 			"provider_subject": item.GetProviderSubject(),
-			"email":            emptyToNil(item.GetEmail()),
-			"display_name":     emptyToNil(item.GetDisplayName()),
+			"email":            format.StringOrNil(item.GetEmail()),
+			"display_name":     format.StringOrNil(item.GetDisplayName()),
 			"created_at":       item.GetCreatedAt(),
 		})
 	}
@@ -535,9 +529,9 @@ func writeProfileSecurity(w http.ResponseWriter, resp *cpayv1.ProfileSecurityRes
 		passkeys = append(passkeys, map[string]any{
 			"id":            item.GetId(),
 			"credential_id": item.GetCredentialId(),
-			"name":          emptyToNil(item.GetName()),
+			"name":          format.StringOrNil(item.GetName()),
 			"created_at":    item.GetCreatedAt(),
-			"last_used_at":  emptyToNil(item.GetLastUsedAt()),
+			"last_used_at":  format.StringOrNil(item.GetLastUsedAt()),
 		})
 	}
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{"identities": identities, "passkeys": passkeys})

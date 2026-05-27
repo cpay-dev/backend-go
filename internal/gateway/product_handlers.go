@@ -2,7 +2,6 @@ package gateway
 
 import (
 	"context"
-	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,9 +11,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cpay-dev/cpay/internal/shared/format"
 	"github.com/cpay-dev/cpay/internal/shared/httpx"
 	"github.com/cpay-dev/cpay/internal/shared/ids"
 	"github.com/cpay-dev/cpay/internal/shared/middleware"
+	"github.com/cpay-dev/cpay/internal/shared/random"
 	"github.com/cpay-dev/cpay/internal/shared/rpcx"
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
@@ -70,7 +71,7 @@ func (s *Server) handleCreateProduct(w http.ResponseWriter, r *http.Request) {
 		productID := ids.New()
 		description := nullableText(req.Description)
 		imageURL := nullableText(req.ImageURL)
-		metadataJSON := mustJSON(req.Metadata, "{}")
+		metadataJSON := format.JSONStringOrDefault(req.Metadata, "{}")
 
 		var defaultAmount any
 		if req.DefaultAmount != nil {
@@ -106,7 +107,7 @@ func (s *Server) handleListProducts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	limit, offset := parsePagination(r, 20, 100)
+	limit, offset := httpx.ParsePagination(r, 20, 100)
 
 	rows, err := s.db.Query(r.Context(), `
 		SELECT p.id::text, p.name, p.description, p.image_url, p.default_currency, COALESCE(p.default_amount::text, ''), p.metadata, p.created_at, p.updated_at,
@@ -129,7 +130,7 @@ func (s *Server) handleListProducts(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	items := make([]map[string]any, 0)
+	items := make([]map[string]any, 0, limit)
 	for rows.Next() {
 		product, scanErr := scanProductRow(rows)
 		if scanErr != nil {
@@ -250,7 +251,7 @@ func (s *Server) handleUpdateProduct(w http.ResponseWriter, r *http.Request) {
 
 		if req.Metadata != nil {
 			setParts = append(setParts, nextSetParam("metadata", args, "::jsonb"))
-			args = append(args, mustJSON(*req.Metadata, "{}"))
+			args = append(args, format.JSONStringOrDefault(*req.Metadata, "{}"))
 		}
 
 		if len(setParts) == 0 {
@@ -499,11 +500,11 @@ func scanProductRow(scanner interface {
 		"image_url":                strPtrToAny(imageURL),
 		"default_currency":         currency,
 		"default_amount":           parseAmount(amountRaw),
-		"metadata":                 parseJSONValue(string(metadataRaw), map[string]any{}),
+		"metadata":                 format.JSONValueOrDefault(string(metadataRaw), map[string]any{}),
 		"created_at":               createdAt.UTC().Format(time.RFC3339Nano),
 		"updated_at":               updatedAt.UTC().Format(time.RFC3339Nano),
 		"active_payment_link_code": strPtrToAny(activePaymentLinkCode),
-		"allowed_tokens":           parseJSONValue(string(allowedTokensRaw), []any{}),
+		"allowed_tokens":           format.JSONValueOrDefault(string(allowedTokensRaw), []any{}),
 	}, nil
 }
 
@@ -519,7 +520,7 @@ func (s *Server) createProductCheckoutLink(
 	metadataJSON string,
 	allowedTokens []paymentLinkAllowedToken,
 ) error {
-	code, err := newProductCheckoutCode()
+	code, err := random.Code("0123456789ABCDEFGHJKMNPQRSTVWXYZ", 16)
 	if err != nil {
 		return err
 	}
@@ -596,20 +597,6 @@ func productCheckoutMetadataJSON(productMetadataJSON string) (string, error) {
 		return "", err
 	}
 	return string(raw), nil
-}
-
-func newProductCheckoutCode() (string, error) {
-	const alphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
-	const length = 16
-	buf := make([]byte, length)
-	if _, err := rand.Read(buf); err != nil {
-		return "", err
-	}
-	out := make([]byte, length)
-	for i := range buf {
-		out[i] = alphabet[int(buf[i])%len(alphabet)]
-	}
-	return string(out), nil
 }
 
 func normalizeCurrency(raw string, def string) (string, error) {

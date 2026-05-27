@@ -13,6 +13,7 @@ import (
 	"github.com/cpay-dev/cpay/internal/domain/payment"
 	cpayv1 "github.com/cpay-dev/cpay/internal/gen/cpay/v1"
 	"github.com/cpay-dev/cpay/internal/shared/chain"
+	"github.com/cpay-dev/cpay/internal/shared/format"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -98,11 +99,16 @@ func (w *ChainObserver) runDepositObserverLoop(ctx context.Context) {
 func (w *ChainObserver) openRPCClients(ctx context.Context) {
 	w.clients = make(map[string]*chainRPCSet, len(w.ChainRPCURLs))
 	for chainName, rpcURL := range w.ChainRPCURLs {
-		chainName = strings.ToLower(strings.TrimSpace(chainName))
+		rawChainName := strings.ToLower(strings.TrimSpace(chainName))
+		chainName = chain.NormalizeEVMChain(chainName)
 		if chainName == "" || strings.TrimSpace(rpcURL) == "" {
 			continue
 		}
-		urls := uniqueRPCURLs(append([]string{rpcURL}, w.ChainRPCFallbackURLs[chainName]...))
+		fallbacks := append([]string(nil), w.ChainRPCFallbackURLs[chainName]...)
+		if rawChainName != "" && rawChainName != chainName {
+			fallbacks = append(fallbacks, w.ChainRPCFallbackURLs[rawChainName]...)
+		}
+		urls := uniqueRPCURLs(append([]string{rpcURL}, fallbacks...))
 		set := &chainRPCSet{chain: chainName}
 		for index, candidate := range urls {
 			client, err := ethclient.DialContext(ctx, candidate)
@@ -162,7 +168,7 @@ func uniqueRPCURLs(urls []string) []string {
 }
 
 func fallbackMinInterval(chainName string, index int, rpcURL string) time.Duration {
-	chainName = strings.ToLower(strings.TrimSpace(chainName))
+	chainName = chain.NormalizeEVMChain(chainName)
 	rpcURL = strings.ToLower(strings.TrimSpace(rpcURL))
 	if strings.Contains(chainName, "hyper") && index >= 2 && strings.Contains(rpcURL, "rpc.hyperliquid.xyz") {
 		return hyperEVMLastResortRPCMinInterval
@@ -362,7 +368,7 @@ func (w *ChainObserver) updateRecordedTransaction(ctx context.Context, item reco
 		MerchantId:     item.MerchantID,
 		SessionId:      item.SessionID,
 		TxHash:         item.TxHash,
-		ReceivedAmount: parseFloat(item.AmountRaw),
+		ReceivedAmount: format.Float64OrZero(item.AmountRaw),
 		Confirmations:  int32(confirmations),
 		HasBlockNumber: true,
 		BlockNumber:    int64(receiptBlock),
@@ -555,8 +561,8 @@ func (w *ChainObserver) observedERC20Balance(ctx context.Context, client *chainR
 }
 
 func (w *ChainObserver) confirmObservedBalance(ctx context.Context, item pendingDepositIntent, receivedAmount float64) bool {
-	expected := parseFloat(item.ExpectedAmountRaw)
-	tolerance := parseFloat(item.TolerancePercentRaw)
+	expected := format.Float64OrZero(item.ExpectedAmountRaw)
+	tolerance := format.Float64OrZero(item.TolerancePercentRaw)
 	status := payment.ResolveIntentStatus(expected, receivedAmount, tolerance, item.RequiredConfirmations, item.RequiredConfirmations)
 	statusIsPaid := payment.IntentStatusIsPaid(status)
 	sessionStatus := "awaiting_funds"
@@ -611,27 +617,7 @@ func (w *ChainObserver) confirmObservedBalance(ctx context.Context, item pending
 }
 
 func (w *ChainObserver) clientForChain(chainName string) *chainRPCSet {
-	chainName = strings.ToLower(strings.TrimSpace(chainName))
-	if client := w.clients[chainName]; client != nil {
-		return client
-	}
-	switch {
-	case strings.Contains(chainName, "arbitrum"):
-		return w.clients["arbitrum"]
-	case strings.Contains(chainName, "ethereum") || chainName == "mainnet":
-		return w.clients["ethereum"]
-	case strings.Contains(chainName, "bnb"):
-		if client := w.clients["bsc"]; client != nil {
-			return client
-		}
-		return w.clients["bnb"]
-	case strings.Contains(chainName, "avalanche") || chainName == "avax":
-		return w.clients["avalanche"]
-	case strings.Contains(chainName, "hyper"):
-		return w.clients["hyperevm"]
-	default:
-		return nil
-	}
+	return w.clients[chain.NormalizeEVMChain(chainName)]
 }
 
 func erc20TransferTopic() common.Hash {

@@ -1,8 +1,6 @@
 package api
 
 import (
-	"crypto/rand"
-	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -11,6 +9,7 @@ import (
 	"github.com/cpay-dev/cpay/internal/shared/httpx"
 	"github.com/cpay-dev/cpay/internal/shared/ids"
 	"github.com/cpay-dev/cpay/internal/shared/middleware"
+	"github.com/cpay-dev/cpay/internal/shared/random"
 )
 
 type createWebhookEndpointRequest struct {
@@ -42,7 +41,7 @@ func (s *Server) handleCreateWebhookEndpoint(w http.ResponseWriter, r *http.Requ
 	}
 
 	s.withIdempotency(w, r, reqAuth.MerchantID, "/v1/webhook_endpoints", func() (int, any, error) {
-		secret, err := generateWebhookSecret()
+		secret, err := random.PrefixedToken("whsec_", 24)
 		if err != nil {
 			return 0, nil, err
 		}
@@ -75,12 +74,4 @@ func (s *Server) handleCreateWebhookEndpoint(w http.ResponseWriter, r *http.Requ
 			"secret":      secret,
 		}, nil
 	})
-}
-
-func generateWebhookSecret() (string, error) {
-	buf := make([]byte, 24)
-	if _, err := rand.Read(buf); err != nil {
-		return "", err
-	}
-	return "whsec_" + base64.RawURLEncoding.EncodeToString(buf), nil
 }

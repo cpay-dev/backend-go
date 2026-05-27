@@ -11,6 +11,7 @@ import (
 
 	"github.com/cpay-dev/cpay/internal/platform/storage"
 	"github.com/cpay-dev/cpay/internal/shared/events"
+	"github.com/cpay-dev/cpay/internal/shared/format"
 	"github.com/cpay-dev/cpay/internal/shared/ids"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -433,8 +434,8 @@ func (w *EmailDispatcher) loadPaymentContext(ctx context.Context, paymentIntentI
 		}
 		return paymentEmailContext{}, err
 	}
-	out.ExpectedAmount = parseFloat(expectedRaw)
-	out.ReceivedAmount = parseFloat(receivedRaw)
+	out.ExpectedAmount = format.Float64OrZero(expectedRaw)
+	out.ReceivedAmount = format.Float64OrZero(receivedRaw)
 	if strings.TrimSpace(out.Currency) == "" {
 		out.Currency = "USD"
 	}

@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/cpay-dev/cpay/internal/shared/chain"
 )
 
 type Config struct {
@@ -109,27 +111,6 @@ var defaultChainRPCFallbackURLs = map[string][]string{
 	},
 }
 
-var evmChainRPCNames = map[string]struct{}{
-	"ethereum":          {},
-	"ethereum mainnet":  {},
-	"mainnet":           {},
-	"polygon":           {},
-	"arbitrum":          {},
-	"arbitrum one":      {},
-	"base":              {},
-	"avalanche":         {},
-	"avalanche c-chain": {},
-	"avax":              {},
-	"hyperevm":          {},
-	"hyper evm":         {},
-	"hyperliquid":       {},
-	"hyperliquid evm":   {},
-	"bnb":               {},
-	"bsc":               {},
-	"bnb smart chain":   {},
-	"optimism":          {},
-}
-
 func Load(serviceName string) Config {
 	cfg := Config{
 		ServiceName: serviceName,
@@ -190,89 +171,41 @@ func Load(serviceName string) Config {
 }
 
 func parseConfirmations(raw string) map[string]int {
-	out := make(map[string]int, len(defaultChainConfirmations))
-	for chainName, confirmations := range defaultChainConfirmations {
-		out[chainName] = confirmations
-	}
-	for _, item := range strings.Split(raw, ",") {
-		item = strings.TrimSpace(item)
-		if item == "" {
-			continue
-		}
-		parts := strings.SplitN(item, ":", 2)
-		if len(parts) != 2 {
-			continue
-		}
-		val, err := strconv.Atoi(strings.TrimSpace(parts[1]))
+	out := cloneIntMap(defaultChainConfirmations)
+	parseConfigPairs(raw, ":", func(chain, value string) {
+		val, err := strconv.Atoi(value)
 		if err != nil || val <= 0 {
-			continue
+			return
 		}
-		out[canonicalChainName(parts[0])] = val
-	}
+		out[chain] = val
+	})
 	return out
 }
 
 func parseChainRPCURLs(raw string) map[string]string {
-	out := make(map[string]string, len(defaultChainRPCURLs))
-	for chainName, rpcURL := range defaultChainRPCURLs {
-		out[chainName] = rpcURL
-	}
-	for _, item := range strings.Split(raw, ",") {
-		item = strings.TrimSpace(item)
-		if item == "" {
-			continue
-		}
-		parts := strings.SplitN(item, "=", 2)
-		if len(parts) != 2 {
-			continue
-		}
-		chain := canonicalChainName(parts[0])
-		rpcURL := strings.TrimSpace(parts[1])
-		if chain == "" || rpcURL == "" {
-			continue
-		}
+	out := cloneStringMap(defaultChainRPCURLs)
+	parseConfigPairs(raw, "=", func(chain, rpcURL string) {
 		out[chain] = rpcURL
-	}
+	})
 	return out
 }
 
 func parseChainRPCFallbackURLs(raw string) map[string][]string {
-	out := make(map[string][]string, len(defaultChainRPCFallbackURLs))
-	for chainName, urls := range defaultChainRPCFallbackURLs {
-		out[chainName] = append([]string(nil), urls...)
-	}
-	for _, item := range strings.Split(raw, ",") {
-		item = strings.TrimSpace(item)
-		if item == "" {
-			continue
-		}
-		parts := strings.SplitN(item, "=", 2)
-		if len(parts) != 2 {
-			continue
-		}
-		chain := canonicalChainName(parts[0])
-		if chain == "" {
-			continue
-		}
-		urls := make([]string, 0)
-		for _, rpcURL := range strings.Split(parts[1], "|") {
-			rpcURL = strings.TrimSpace(rpcURL)
-			if rpcURL != "" {
-				urls = append(urls, rpcURL)
-			}
-		}
+	out := cloneStringSliceMap(defaultChainRPCFallbackURLs)
+	parseConfigPairs(raw, "=", func(chain, value string) {
+		urls := splitNonEmpty(value, "|")
 		if len(urls) > 0 {
 			out[chain] = urls
 		}
-	}
+	})
 	return out
 }
 
 func (c Config) EVMChainRPCURLs() map[string]string {
-	out := map[string]string{}
+	out := make(map[string]string, len(c.ChainRPCURLs))
 	for chainName, rpcURL := range c.ChainRPCURLs {
 		chainName = canonicalChainName(chainName)
-		if _, ok := evmChainRPCNames[chainName]; !ok {
+		if !isEVMChain(chainName) {
 			continue
 		}
 		out[chainName] = rpcURL
@@ -281,17 +214,14 @@ func (c Config) EVMChainRPCURLs() map[string]string {
 }
 
 func (c Config) EVMChainRPCFallbackURLs() map[string][]string {
-	out := map[string][]string{}
+	out := make(map[string][]string, len(c.ChainRPCFallbackURLs))
 	for chainName, urls := range c.ChainRPCFallbackURLs {
 		chainName = canonicalChainName(chainName)
-		if _, ok := evmChainRPCNames[chainName]; !ok {
+		if !isEVMChain(chainName) {
 			continue
 		}
-		for _, rpcURL := range urls {
-			rpcURL = strings.TrimSpace(rpcURL)
-			if rpcURL != "" {
-				out[chainName] = append(out[chainName], rpcURL)
-			}
+		if urls := trimNonEmpty(urls); len(urls) > 0 {
+			out[chainName] = urls
 		}
 	}
 	return out
@@ -299,22 +229,9 @@ func (c Config) EVMChainRPCFallbackURLs() map[string][]string {
 
 func parseAddressMap(raw string) map[string]string {
 	out := map[string]string{}
-	for _, item := range strings.Split(raw, ",") {
-		item = strings.TrimSpace(item)
-		if item == "" {
-			continue
-		}
-		parts := strings.SplitN(item, "=", 2)
-		if len(parts) != 2 {
-			continue
-		}
-		chain := canonicalChainName(parts[0])
-		address := strings.TrimSpace(parts[1])
-		if chain == "" || address == "" {
-			continue
-		}
+	parseConfigPairs(raw, "=", func(chain, address string) {
 		out[chain] = address
-	}
+	})
 	return out
 }
 
@@ -365,21 +282,64 @@ func ValidateProductionCreate2PayoutConfig(rpcURLs, factories map[string]string,
 	return nil
 }
 
-func canonicalChainName(chain string) string {
-	switch strings.ToLower(strings.TrimSpace(chain)) {
-	case "ethereum mainnet", "mainnet":
-		return "ethereum"
-	case "arbitrum one":
-		return "arbitrum"
-	case "bnb", "bnb smart chain":
-		return "bsc"
-	case "hyper evm", "hyperliquid", "hyperliquid evm":
-		return "hyperevm"
-	case "avalanche c-chain", "avax":
-		return "avalanche"
-	default:
-		return strings.ToLower(strings.TrimSpace(chain))
+func canonicalChainName(chainName string) string {
+	return chain.NormalizeEVMChain(chainName)
+}
+
+func isEVMChain(chainName string) bool {
+	return chain.IsEVMChain(chainName)
+}
+
+func parseConfigPairs(raw, sep string, visit func(chain, value string)) {
+	for _, item := range strings.Split(raw, ",") {
+		parts := strings.SplitN(strings.TrimSpace(item), sep, 2)
+		if len(parts) != 2 {
+			continue
+		}
+		chain, value := canonicalChainName(parts[0]), strings.TrimSpace(parts[1])
+		if chain != "" && value != "" {
+			visit(chain, value)
+		}
 	}
+}
+
+func cloneIntMap(in map[string]int) map[string]int {
+	out := make(map[string]int, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
+}
+
+func cloneStringMap(in map[string]string) map[string]string {
+	out := make(map[string]string, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
+}
+
+func cloneStringSliceMap(in map[string][]string) map[string][]string {
+	out := make(map[string][]string, len(in))
+	for k, v := range in {
+		out[k] = append([]string(nil), v...)
+	}
+	return out
+}
+
+func splitNonEmpty(raw, sep string) []string {
+	return trimNonEmpty(strings.Split(raw, sep))
+}
+
+func trimNonEmpty(values []string) []string {
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			out = append(out, value)
+		}
+	}
+	return out
 }
 
 func isHexAddress(address string) bool {

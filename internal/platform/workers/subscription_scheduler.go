@@ -4,6 +4,8 @@ import (
 	"context"
 	"time"
 
+	"github.com/cpay-dev/cpay/internal/domain/subscription"
+	"github.com/cpay-dev/cpay/internal/shared/format"
 	"github.com/cpay-dev/cpay/internal/shared/ids"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog"
@@ -71,15 +73,15 @@ func (w *SubscriptionScheduler) process(ctx context.Context) {
 			&vaultID, &remainingRaw, &vaultStatus); err != nil {
 			continue
 		}
-		amount := parseFloat(amountRaw)
-		remaining := parseFloat(remainingRaw)
+		amount := format.Float64OrZero(amountRaw)
+		remaining := format.Float64OrZero(remainingRaw)
 
 		if vaultStatus == "active" && remaining >= amount {
 			newRemaining := remaining - amount
 			_, _ = tx.Exec(ctx, `UPDATE checkout.vault_authorizations SET remaining_amount=$2, updated_at=NOW() WHERE id=$1`, vaultID, newRemaining)
 			_, _ = tx.Exec(ctx, `UPDATE checkout.subscription_cycles SET status='paid', updated_at=NOW() WHERE id=$1`, cycleID)
-			nextDue := addInterval(dueAt, intervalUnit, intervalCount)
-			nextEnd := addInterval(nextDue, intervalUnit, intervalCount)
+			nextDue := subscription.AddInterval(dueAt, intervalUnit, intervalCount)
+			nextEnd := subscription.AddInterval(nextDue, intervalUnit, intervalCount)
 			_, _ = tx.Exec(ctx, `UPDATE checkout.subscriptions SET next_billing_at=$2, updated_at=NOW() WHERE id=$1`, subID, nextDue)
 			_, _ = tx.Exec(ctx, `
 				INSERT INTO checkout.subscription_cycles(id, subscription_id, cycle_index, period_start, period_end, due_at, status, amount, retry_count, created_at, updated_at)

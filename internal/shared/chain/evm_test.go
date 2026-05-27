@@ -50,6 +50,29 @@ func TestRequiredCreate2AdapterCreatesCreate2Wallet(t *testing.T) {
 	}
 }
 
+func TestNormalizeEVMChainAndMembership(t *testing.T) {
+	cases := map[string]string{
+		" Ethereum Mainnet ": "ethereum",
+		"mainnet":            "ethereum",
+		"Arbitrum One":       "arbitrum",
+		"bnb smart chain":    "bsc",
+		"hyperliquid evm":    "hyperevm",
+		"avax":               "avalanche",
+		"base":               "base",
+	}
+	for raw, want := range cases {
+		if got := NormalizeEVMChain(raw); got != want {
+			t.Fatalf("NormalizeEVMChain(%q) = %q, want %q", raw, got, want)
+		}
+		if !IsEVMChain(raw) {
+			t.Fatalf("expected %q to be recognized as an EVM chain", raw)
+		}
+	}
+	if IsEVMChain("solana") {
+		t.Fatalf("expected solana to be excluded from EVM chains")
+	}
+}
+
 func TestRequiredCreate2AdapterUsesCanonicalChainAliases(t *testing.T) {
 	predicted := common.HexToAddress("0x386d43Ec19E11aE2Ad0d9aB97955c510804Fd510")
 	factory := "0xde0B295669a9FD93d5F28D9Ec85E40f4cb697BAe"

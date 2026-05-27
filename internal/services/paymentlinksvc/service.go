@@ -2,11 +2,9 @@ package paymentlinksvc
 
 import (
 	"context"
-	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -14,7 +12,9 @@ import (
 	cpayv1 "github.com/cpay-dev/cpay/internal/gen/cpay/v1"
 	"github.com/cpay-dev/cpay/internal/platform/outbox"
 	"github.com/cpay-dev/cpay/internal/shared/config"
+	"github.com/cpay-dev/cpay/internal/shared/format"
 	"github.com/cpay-dev/cpay/internal/shared/ids"
+	"github.com/cpay-dev/cpay/internal/shared/random"
 	"github.com/cpay-dev/cpay/internal/shared/rpcx"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -98,7 +98,7 @@ func (s *Service) CreatePaymentLink(ctx context.Context, req *cpayv1.CreatePayme
 	}
 
 	linkID := ids.New()
-	code, err := newLinkCode()
+	code, err := random.Code("0123456789ABCDEFGHJKMNPQRSTVWXYZ", 16)
 	if err != nil {
 		return nil, rpcx.E(codes.Internal, "internal_error", "failed to generate link code")
 	}
@@ -109,11 +109,11 @@ func (s *Service) CreatePaymentLink(ctx context.Context, req *cpayv1.CreatePayme
 	}
 	customerFieldsRaw, _ := json.Marshal(req.GetCustomerFields())
 	customFieldsRaw, _ := json.Marshal(req.GetCustomFieldsJson())
-	metadataJSON, err := normalizeJSON(req.GetMetadataJson(), "{}")
+	metadataJSON, err := format.JSONOrDefault(req.GetMetadataJson(), "{}")
 	if err != nil {
 		return nil, rpcx.E(codes.InvalidArgument, "invalid_request", "metadata_json must be valid JSON")
 	}
-	optMetadataJSON, err := normalizeJSON(req.GetOptions().GetMetadataJson(), "{}")
+	optMetadataJSON, err := format.JSONOrDefault(req.GetOptions().GetMetadataJson(), "{}")
 	if err != nil {
 		return nil, rpcx.E(codes.InvalidArgument, "invalid_request", "options.metadata_json must be valid JSON")
 	}
@@ -231,7 +231,7 @@ func (s *Service) ListPaymentLinks(ctx context.Context, req *cpayv1.ListPaymentL
 	}
 	defer rows.Close()
 
-	items := make([]*cpayv1.PaymentLink, 0)
+	items := make([]*cpayv1.PaymentLink, 0, limit)
 	for rows.Next() {
 		var id, code, title, mode, amountRaw, currency, status string
 		var reusable bool
@@ -249,10 +249,10 @@ func (s *Service) ListPaymentLinks(ctx context.Context, req *cpayv1.ListPaymentL
 			Currency:    currency,
 			Status:      status,
 			Reusable:    reusable,
-			ExpiresAt:   formatTimePtr(expiresAt),
+			ExpiresAt:   format.TimePtr(expiresAt),
 			CreatedAt:   createdAt.UTC().Format(time.RFC3339Nano),
 		}
-		if amount := parseFloat(amountRaw); amount != nil {
+		if amount := format.Float64Ptr(amountRaw); amount != nil {
 			item.Amount = amount
 		}
 		if maxPayments != nil {
@@ -328,23 +328,23 @@ func (s *Service) GetPaymentLink(ctx context.Context, req *cpayv1.GetPaymentLink
 		Id:          linkID,
 		Code:        code,
 		Title:       title,
-		Description: strValue(description),
-		ImageUrl:    strValue(imageURL),
+		Description: format.StringPtr(description),
+		ImageUrl:    format.StringPtr(imageURL),
 		PricingMode: mode,
 		Currency:    currency,
 		Reusable:    reusable,
-		ExpiresAt:   formatTimePtr(expiresAt),
+		ExpiresAt:   format.TimePtr(expiresAt),
 		CtaText:     cta,
 		AfterPayment: &cpayv1.AfterPaymentConfig{
 			Type:           afterType,
-			RedirectUrl:    strValue(redirectURL),
-			SuccessMessage: strValue(successMsg),
+			RedirectUrl:    format.StringPtr(redirectURL),
+			SuccessMessage: format.StringPtr(successMsg),
 		},
 		Status:           status,
 		AllowedTokens:    allowedTokens,
 		CustomerFields:   customerFields,
 		CustomFieldsJson: customFieldsJSON,
-		MetadataJson:     bytesOrDefault(metaRaw, "{}"),
+		MetadataJson:     format.BytesOrDefault(metaRaw, "{}"),
 		Options: &cpayv1.LinkOptions{
 			CollectEmail:            collectEmail,
 			CollectName:             collectName,
@@ -355,21 +355,21 @@ func (s *Service) GetPaymentLink(ctx context.Context, req *cpayv1.GetPaymentLink
 			AllowPromoCodes:         allowPromo,
 			CollectTaxAutomatically: collectTax,
 			AddInvoicePdf:           addInvoice,
-			MetadataJson:            bytesOrDefault(optsMetaRaw, "{}"),
+			MetadataJson:            format.BytesOrDefault(optsMetaRaw, "{}"),
 		},
 		CreatedAt: createdAt.UTC().Format(time.RFC3339Nano),
 		UpdatedAt: updatedAt.UTC().Format(time.RFC3339Nano),
 	}
-	if amount := parseFloat(amountRaw); amount != nil {
+	if amount := format.Float64Ptr(amountRaw); amount != nil {
 		resp.Amount = amount
 	}
-	if adjust := parseFloat(adjustRaw); adjust != nil {
+	if adjust := format.Float64Ptr(adjustRaw); adjust != nil {
 		resp.AdjustPercent = adjust
 	}
-	if min := parseFloat(minRaw); min != nil {
+	if min := format.Float64Ptr(minRaw); min != nil {
 		resp.MinAmount = min
 	}
-	if max := parseFloat(maxRaw); max != nil {
+	if max := format.Float64Ptr(maxRaw); max != nil {
 		resp.MaxAmount = max
 	}
 	if maxPayments != nil {
@@ -423,7 +423,7 @@ func (s *Service) UpdatePaymentLink(ctx context.Context, req *cpayv1.UpdatePayme
 	if pricingMode == "" {
 		pricingMode = "fixed"
 	}
-	metadataJSON, err := normalizeJSON(req.GetMetadataJson(), "{}")
+	metadataJSON, err := format.JSONOrDefault(req.GetMetadataJson(), "{}")
 	if err != nil {
 		return nil, rpcx.E(codes.InvalidArgument, "invalid_request", "metadata is invalid")
 	}
@@ -462,63 +462,6 @@ func (s *Service) UpdatePaymentLink(ctx context.Context, req *cpayv1.UpdatePayme
 		return nil, rpcx.E(codes.NotFound, "not_found", "payment link not found")
 	}
 	return &cpayv1.UpdatePaymentLinkResponse{Id: id, Updated: true}, nil
-}
-
-func newLinkCode() (string, error) {
-	const alphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
-	const length = 16
-	buf := make([]byte, length)
-	if _, err := rand.Read(buf); err != nil {
-		return "", err
-	}
-	out := make([]byte, length)
-	for i := range buf {
-		out[i] = alphabet[int(buf[i])%len(alphabet)]
-	}
-	return string(out), nil
-}
-
-func normalizeJSON(raw, def string) (string, error) {
-	if strings.TrimSpace(raw) == "" {
-		return def, nil
-	}
-	var dst any
-	if err := json.Unmarshal([]byte(raw), &dst); err != nil {
-		return "", err
-	}
-	return raw, nil
-}
-
-func parseFloat(v string) *float64 {
-	if strings.TrimSpace(v) == "" {
-		return nil
-	}
-	f, err := strconv.ParseFloat(v, 64)
-	if err != nil {
-		return nil
-	}
-	return &f
-}
-
-func formatTimePtr(v *time.Time) string {
-	if v == nil {
-		return ""
-	}
-	return v.UTC().Format(time.RFC3339Nano)
-}
-
-func strValue(v *string) string {
-	if v == nil {
-		return ""
-	}
-	return *v
-}
-
-func bytesOrDefault(raw []byte, def string) string {
-	if len(raw) == 0 {
-		return def
-	}
-	return string(raw)
 }
 
 func parseCustomFields(raw []byte) []string {

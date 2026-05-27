@@ -1,4 +1,4 @@
-package api
+package storage
 
 import (
 	"bytes"
@@ -8,8 +8,8 @@ import (
 	"github.com/jung-kurt/gofpdf/v2"
 )
 
-func (s *Server) generateAndStoreInvoice(ctx context.Context, merchantID, paymentIntentID string, amount float64, currency, title string) (string, error) {
-	if s.minio == nil {
+func StoreInvoicePDF(ctx context.Context, minio *MinIO, merchantID, paymentIntentID string, amount float64, currency, title string) (string, error) {
+	if minio == nil {
 		return "", nil
 	}
 
@@ -33,7 +33,7 @@ func (s *Server) generateAndStoreInvoice(ctx context.Context, merchantID, paymen
 	}
 
 	objectKey := fmt.Sprintf("invoices/%s/%s.pdf", merchantID, paymentIntentID)
-	if err := s.minio.PutObjectBytes(ctx, objectKey, "application/pdf", buf.Bytes()); err != nil {
+	if err := minio.PutObjectBytes(ctx, objectKey, "application/pdf", buf.Bytes()); err != nil {
 		return "", err
 	}
 	return objectKey, nil

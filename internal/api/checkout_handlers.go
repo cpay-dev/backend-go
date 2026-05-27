@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/cpay-dev/cpay/internal/domain/payment"
+	"github.com/cpay-dev/cpay/internal/platform/storage"
 	"github.com/cpay-dev/cpay/internal/shared/chain"
 	cryptox "github.com/cpay-dev/cpay/internal/shared/crypto"
 	"github.com/cpay-dev/cpay/internal/shared/httpx"
@@ -139,11 +140,11 @@ func (s *Server) handleCreateCheckoutSession(w http.ResponseWriter, r *http.Requ
 			amount = amount + (amount * adjustVal / 100)
 		}
 
-		var allowedTokens []allowedToken
+		var allowedTokens []payment.AllowedToken
 		if err := json.Unmarshal(allowedRaw, &allowedTokens); err != nil {
 			return 0, nil, err
 		}
-		if !tokenAllowed(allowedTokens, req.Chain, req.TokenSymbol, req.TokenAddress) {
+		if !payment.TokenAllowed(allowedTokens, req.Chain, req.TokenSymbol, req.TokenAddress) {
 			return 0, nil, badRequest("token is not allowed for this link")
 		}
 
@@ -480,7 +481,7 @@ func (s *Server) handleConfirmCheckoutSession(w http.ResponseWriter, r *http.Req
 	}
 
 	if statusIsPaid && addInvoice {
-		if objectKey, invErr := s.generateAndStoreInvoice(r.Context(), reqAuth.MerchantID, intentID, req.ReceivedAmount, currency, title); invErr == nil && objectKey != "" {
+		if objectKey, invErr := storage.StoreInvoicePDF(r.Context(), s.minio, reqAuth.MerchantID, intentID, req.ReceivedAmount, currency, title); invErr == nil && objectKey != "" {
 			_, _ = s.db.Exec(r.Context(), `
 				INSERT INTO invoices(id, payment_intent_id, merchant_id, object_key, amount, currency, created_at)
 				VALUES($1, $2, $3, $4, $5, $6, NOW())
@@ -561,28 +562,4 @@ func (s *Server) handleGetPaymentIntent(w http.ResponseWriter, r *http.Request) 
 		"created_at":             createdAt,
 		"updated_at":             updatedAt,
 	})
-}
-
-func tokenAllowed(allowed []allowedToken, chainName, symbol, address string) bool {
-	if len(allowed) == 0 {
-		return true
-	}
-	chainName = strings.ToLower(strings.TrimSpace(chainName))
-	symbol = strings.ToUpper(strings.TrimSpace(symbol))
-	address = strings.ToLower(strings.TrimSpace(address))
-	for _, t := range allowed {
-		if strings.ToLower(strings.TrimSpace(t.Chain)) != chainName {
-			continue
-		}
-		if strings.ToUpper(strings.TrimSpace(t.Symbol)) != symbol {
-			continue
-		}
-		if strings.TrimSpace(t.Address) == "" || address == "" {
-			return true
-		}
-		if strings.ToLower(strings.TrimSpace(t.Address)) == address {
-			return true
-		}
-	}
-	return false
 }
