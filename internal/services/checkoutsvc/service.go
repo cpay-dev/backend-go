@@ -82,6 +82,24 @@ type allowedToken struct {
 	Decimals int    `json:"decimals,omitempty"`
 }
 
+type paymentLinkSnapshot struct {
+	ID          string
+	MerchantID  string
+	Code        string
+	Title       string
+	PricingMode string
+	AmountRaw   string
+	MinRaw      string
+	MaxRaw      string
+	AdjustRaw   string
+	Currency    string
+	ExpiresAt   *time.Time
+	AllowedRaw  []byte
+	AfterType   string
+	RedirectURL *string
+	AddInvoice  bool
+}
+
 func (s *Service) CreateCheckoutSession(ctx context.Context, req *cpayv1.CreateCheckoutSessionRequest) (*cpayv1.CreateCheckoutSessionResponse, error) {
 	merchantID, err := ids.Parse(strings.TrimSpace(req.GetMerchantId()))
 	if err != nil {
@@ -133,89 +151,13 @@ func (s *Service) createSession(ctx context.Context, in createSessionInput) (*cp
 		return nil, rpcx.E(codes.InvalidArgument, "invalid_request", "chain and token_symbol are required")
 	}
 
-	query := `
-		SELECT p.id::text, p.merchant_id::text, p.code, p.title, p.pricing_mode, COALESCE(p.amount::text, ''), COALESCE(p.min_amount::text, ''),
-			COALESCE(p.max_amount::text, ''), COALESCE(p.adjust_percent::text, '0'), p.currency, p.reusable, p.max_payments,
-			p.expires_at, p.status, p.allowed_tokens, p.after_payment_type, p.redirect_url,
-			COALESCE(l.add_invoice_pdf, false)
-		FROM catalog.payment_links p
-		LEFT JOIN catalog.link_options l ON l.payment_link_id = p.id
-		WHERE `
-	args := []any{}
-	if in.MerchantID != nil {
-		query += `p.merchant_id=$1 AND (p.id::text=$2 OR p.code=$2)`
-		args = append(args, *in.MerchantID, linkIdentifier)
-	} else {
-		query += `(p.id::text=$1 OR p.code=$1)`
-		args = append(args, linkIdentifier)
+	link, err := s.loadPaymentLinkForSession(ctx, in, linkIdentifier)
+	if err != nil {
+		return nil, err
 	}
-
-	var linkIDStr, merchantIDStr, code, title, pricingMode, amountRaw, minRaw, maxRaw, adjustRaw, currency, afterType string
-	var reusable bool
-	var maxPayments *int
-	var linkExpiresAt *time.Time
-	var linkStatus string
-	var allowedRaw []byte
-	var redirectURL *string
-	var addInvoice bool
-	if err := s.db.QueryRow(ctx, query, args...).Scan(
-		&linkIDStr, &merchantIDStr, &code, &title, &pricingMode, &amountRaw, &minRaw,
-		&maxRaw, &adjustRaw, &currency, &reusable, &maxPayments,
-		&linkExpiresAt, &linkStatus, &allowedRaw, &afterType, &redirectURL, &addInvoice,
-	); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, rpcx.E(codes.NotFound, "not_found", "payment link not found")
-		}
-		return nil, rpcx.E(codes.Internal, "internal_error", "failed to load payment link")
-	}
-	if linkStatus != "active" {
-		return nil, rpcx.E(codes.InvalidArgument, "invalid_request", "payment link is not active")
-	}
-	if linkExpiresAt != nil && linkExpiresAt.Before(time.Now().UTC()) {
-		return nil, rpcx.E(codes.InvalidArgument, "invalid_request", "payment link is expired")
-	}
-
-	if !reusable {
-		usedCount, err := s.countPaidPaymentIntents(ctx, linkIDStr)
-		if err != nil {
-			return nil, rpcx.E(codes.Internal, "internal_error", "failed to validate reusable option")
-		}
-		if usedCount > 0 {
-			return nil, rpcx.E(codes.InvalidArgument, "invalid_request", "payment link has already been paid")
-		}
-	}
-
-	if maxPayments != nil {
-		paidCount, err := s.countPaidPaymentIntents(ctx, linkIDStr)
-		if err != nil {
-			return nil, rpcx.E(codes.Internal, "internal_error", "failed to validate max payments")
-		}
-		if paidCount >= *maxPayments {
-			return nil, rpcx.E(codes.InvalidArgument, "invalid_request", "payment link has reached max payments")
-		}
-	}
-
-	amount := 0.0
-	if strings.ToLower(pricingMode) == "fixed" {
-		amountVal := parseFloatValue(amountRaw)
-		if amountVal <= 0 {
-			return nil, rpcx.E(codes.InvalidArgument, "invalid_request", "invalid fixed amount")
-		}
-		amount = amountVal
-	} else {
-		if in.Amount == nil || *in.Amount <= 0 {
-			return nil, rpcx.E(codes.InvalidArgument, "invalid_request", "amount is required for open links")
-		}
-		amount = *in.Amount
-		if minVal := parseFloatValue(minRaw); minVal > 0 && amount < minVal {
-			return nil, rpcx.E(codes.InvalidArgument, "invalid_request", "amount is below min_amount")
-		}
-		if maxVal := parseFloatValue(maxRaw); maxVal > 0 && amount > maxVal {
-			return nil, rpcx.E(codes.InvalidArgument, "invalid_request", "amount is above max_amount")
-		}
-	}
-	if adjustVal := parseFloatValue(adjustRaw); adjustVal != 0 {
-		amount = amount + (amount * adjustVal / 100)
+	amount, err := checkoutAmount(in, link)
+	if err != nil {
+		return nil, err
 	}
 	tokenAddress := strings.TrimSpace(in.TokenAddress)
 	if tokenAddress == "" {
@@ -225,36 +167,22 @@ func (s *Service) createSession(ctx context.Context, in createSessionInput) (*cp
 	}
 
 	allowedTokens := []allowedToken{}
-	if err := json.Unmarshal(allowedRaw, &allowedTokens); err != nil {
+	if err := json.Unmarshal(link.AllowedRaw, &allowedTokens); err != nil {
 		return nil, rpcx.E(codes.Internal, "internal_error", "failed to decode allowed tokens")
 	}
 	if !tokenAllowed(allowedTokens, in.Chain, in.TokenSymbol, tokenAddress) {
 		return nil, rpcx.E(codes.InvalidArgument, "invalid_request", "token is not allowed for this link")
 	}
+	sessionExpiresAt := checkoutSessionExpiresAt(in.ExpiresInSec, link.ExpiresAt)
 
-	expiresIn := 30 * time.Minute
-	if in.ExpiresInSec > 0 {
-		if in.ExpiresInSec < 60 {
-			in.ExpiresInSec = 60
-		}
-		if in.ExpiresInSec > 86400 {
-			in.ExpiresInSec = 86400
-		}
-		expiresIn = time.Duration(in.ExpiresInSec) * time.Second
-	}
-	sessionExpiresAt := time.Now().UTC().Add(expiresIn)
-	if linkExpiresAt != nil && linkExpiresAt.Before(sessionExpiresAt) {
-		sessionExpiresAt = *linkExpiresAt
-	}
-
-	expectedAmount, err := settlementAmountForToken(ctx, amount, currency, in.Chain, in.TokenSymbol)
+	expectedAmount, err := settlementAmountForToken(ctx, amount, link.Currency, in.Chain, in.TokenSymbol)
 	if err != nil {
 		return nil, rpcx.E(codes.Unavailable, "quote_unavailable", err.Error())
 	}
 
 	requiredConf := s.cfg.ConfirmationForChain(in.Chain)
 	minAccept, maxAccept := payment.ComputeBounds(expectedAmount, s.cfg.DefaultTolerancePercent)
-	merchantID, _ := ids.Parse(merchantIDStr)
+	merchantID, _ := ids.Parse(link.MerchantID)
 	sessionID := ids.New()
 	intentID := ids.New()
 	addressID := ids.New()
@@ -304,8 +232,8 @@ func (s *Service) createSession(ctx context.Context, in createSessionInput) (*cp
 			amount, currency, chain, token_symbol, token_address, expires_at, success_url, client_secret_hash, created_at, updated_at
 		)
 		VALUES($1, $2, $3, 'awaiting_funds', $4, $5, $6, $7::jsonb, $8, $9, $10, $11, $12, $13, $14, $15, NOW(), NOW())
-	`, sessionID, linkIDStr, merchantID, nullIfEmpty(in.CustomerEmail), nullIfEmpty(in.CustomerName), nullIfEmpty(in.CustomerPhone), customerAddressJSON,
-		amount, currency, strings.ToLower(in.Chain), strings.ToUpper(in.TokenSymbol), nullIfEmpty(tokenAddress), sessionExpiresAt, nullIfEmpty(in.SuccessURL), clientSecretHash)
+	`, sessionID, link.ID, merchantID, nullIfEmpty(in.CustomerEmail), nullIfEmpty(in.CustomerName), nullIfEmpty(in.CustomerPhone), customerAddressJSON,
+		amount, link.Currency, strings.ToLower(in.Chain), strings.ToUpper(in.TokenSymbol), nullIfEmpty(tokenAddress), sessionExpiresAt, nullIfEmpty(in.SuccessURL), clientSecretHash)
 	if err != nil {
 		return nil, rpcx.E(codes.Internal, "internal_error", "failed to create checkout session")
 	}
@@ -321,7 +249,7 @@ func (s *Service) createSession(ctx context.Context, in createSessionInput) (*cp
 			$8, $9, $10, $11, 0,
 			0, $12, $13, NOW(), NOW()
 	)
-	`, intentID, sessionID, linkIDStr, merchantID, strings.ToLower(in.Chain), strings.ToUpper(in.TokenSymbol), nullIfEmpty(tokenAddress),
+	`, intentID, sessionID, link.ID, merchantID, strings.ToLower(in.Chain), strings.ToUpper(in.TokenSymbol), nullIfEmpty(tokenAddress),
 		expectedAmount, s.cfg.DefaultTolerancePercent, minAccept, maxAccept, requiredConf, sessionExpiresAt)
 	if err != nil {
 		return nil, rpcx.E(codes.Internal, "internal_error", "failed to create payment intent")
@@ -342,11 +270,11 @@ func (s *Service) createSession(ctx context.Context, in createSessionInput) (*cp
 	if err = s.outbox.EnqueueTx(ctx, tx, "payment_intent", intentID, &merchantID, "payment_intent.created", map[string]any{
 		"payment_intent_id": intentID,
 		"checkout_session":  sessionID,
-		"payment_link_id":   linkIDStr,
+		"payment_link_id":   link.ID,
 		"chain":             strings.ToLower(in.Chain),
 		"token_symbol":      strings.ToUpper(in.TokenSymbol),
 		"expected_amount":   expectedAmount,
-		"add_invoice_pdf":   addInvoice,
+		"add_invoice_pdf":   link.AddInvoice,
 	}); err != nil {
 		return nil, rpcx.E(codes.Internal, "internal_error", "failed to enqueue outbox event")
 	}
@@ -358,10 +286,10 @@ func (s *Service) createSession(ctx context.Context, in createSessionInput) (*cp
 	resp := &cpayv1.CreateCheckoutSessionResponse{
 		Id:                      sessionID,
 		PaymentIntentId:         intentID,
-		PaymentLinkCode:         code,
+		PaymentLinkCode:         link.Code,
 		Status:                  "awaiting_funds",
 		Amount:                  amount,
-		Currency:                currency,
+		Currency:                link.Currency,
 		Chain:                   strings.ToLower(in.Chain),
 		TokenSymbol:             strings.ToUpper(in.TokenSymbol),
 		DepositAddress:          wallet.Address,
@@ -369,14 +297,122 @@ func (s *Service) createSession(ctx context.Context, in createSessionInput) (*cp
 		MinAcceptableAmount:     minAccept,
 		MaxAcceptableAmount:     maxAccept,
 		ExpiresAt:               sessionExpiresAt.UTC().Format(time.RFC3339Nano),
-		AfterPaymentType:        afterType,
-		AfterPaymentRedirectUrl: strValue(redirectURL),
+		AfterPaymentType:        link.AfterType,
+		AfterPaymentRedirectUrl: strValue(link.RedirectURL),
 		ExpectedAmount:          expectedAmount,
 	}
 	if in.IncludeSecret {
 		resp.ClientSecret = clientSecret
 	}
 	return resp, nil
+}
+
+func (s *Service) loadPaymentLinkForSession(ctx context.Context, in createSessionInput, linkIdentifier string) (paymentLinkSnapshot, error) {
+	query := `
+		SELECT p.id::text, p.merchant_id::text, p.code, p.title, p.pricing_mode, COALESCE(p.amount::text, ''), COALESCE(p.min_amount::text, ''),
+			COALESCE(p.max_amount::text, ''), COALESCE(p.adjust_percent::text, '0'), p.currency, p.reusable, p.max_payments,
+			p.expires_at, p.status, p.allowed_tokens, p.after_payment_type, p.redirect_url,
+			COALESCE(l.add_invoice_pdf, false)
+		FROM catalog.payment_links p
+		LEFT JOIN catalog.link_options l ON l.payment_link_id = p.id
+		WHERE `
+	args := []any{}
+	if in.MerchantID != nil {
+		query += `p.merchant_id=$1 AND (p.id::text=$2 OR p.code=$2)`
+		args = append(args, *in.MerchantID, linkIdentifier)
+	} else {
+		query += `(p.id::text=$1 OR p.code=$1)`
+		args = append(args, linkIdentifier)
+	}
+
+	var link paymentLinkSnapshot
+	var reusable bool
+	var maxPayments *int
+	var status string
+	err := s.db.QueryRow(ctx, query, args...).Scan(
+		&link.ID, &link.MerchantID, &link.Code, &link.Title, &link.PricingMode, &link.AmountRaw, &link.MinRaw,
+		&link.MaxRaw, &link.AdjustRaw, &link.Currency, &reusable, &maxPayments,
+		&link.ExpiresAt, &status, &link.AllowedRaw, &link.AfterType, &link.RedirectURL, &link.AddInvoice,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return paymentLinkSnapshot{}, rpcx.E(codes.NotFound, "not_found", "payment link not found")
+		}
+		return paymentLinkSnapshot{}, rpcx.E(codes.Internal, "internal_error", "failed to load payment link")
+	}
+	if status != "active" {
+		return paymentLinkSnapshot{}, rpcx.E(codes.InvalidArgument, "invalid_request", "payment link is not active")
+	}
+	if link.ExpiresAt != nil && link.ExpiresAt.Before(time.Now().UTC()) {
+		return paymentLinkSnapshot{}, rpcx.E(codes.InvalidArgument, "invalid_request", "payment link is expired")
+	}
+	if err := s.validatePaymentLinkUsage(ctx, link.ID, reusable, maxPayments); err != nil {
+		return paymentLinkSnapshot{}, err
+	}
+	return link, nil
+}
+
+func (s *Service) validatePaymentLinkUsage(ctx context.Context, linkID string, reusable bool, maxPayments *int) error {
+	if reusable && maxPayments == nil {
+		return nil
+	}
+	paidCount, err := s.countPaidPaymentIntents(ctx, linkID)
+	if err != nil {
+		if !reusable {
+			return rpcx.E(codes.Internal, "internal_error", "failed to validate reusable option")
+		}
+		return rpcx.E(codes.Internal, "internal_error", "failed to validate max payments")
+	}
+	if !reusable && paidCount > 0 {
+		return rpcx.E(codes.InvalidArgument, "invalid_request", "payment link has already been paid")
+	}
+	if maxPayments != nil && paidCount >= *maxPayments {
+		return rpcx.E(codes.InvalidArgument, "invalid_request", "payment link has reached max payments")
+	}
+	return nil
+}
+
+func checkoutAmount(in createSessionInput, link paymentLinkSnapshot) (float64, error) {
+	amount := 0.0
+	if strings.ToLower(link.PricingMode) == "fixed" {
+		amount = parseFloatValue(link.AmountRaw)
+		if amount <= 0 {
+			return 0, rpcx.E(codes.InvalidArgument, "invalid_request", "invalid fixed amount")
+		}
+	} else {
+		if in.Amount == nil || *in.Amount <= 0 {
+			return 0, rpcx.E(codes.InvalidArgument, "invalid_request", "amount is required for open links")
+		}
+		amount = *in.Amount
+		if minVal := parseFloatValue(link.MinRaw); minVal > 0 && amount < minVal {
+			return 0, rpcx.E(codes.InvalidArgument, "invalid_request", "amount is below min_amount")
+		}
+		if maxVal := parseFloatValue(link.MaxRaw); maxVal > 0 && amount > maxVal {
+			return 0, rpcx.E(codes.InvalidArgument, "invalid_request", "amount is above max_amount")
+		}
+	}
+	if adjustVal := parseFloatValue(link.AdjustRaw); adjustVal != 0 {
+		amount += amount * adjustVal / 100
+	}
+	return amount, nil
+}
+
+func checkoutSessionExpiresAt(expiresInSec int, linkExpiresAt *time.Time) time.Time {
+	expiresIn := 30 * time.Minute
+	if expiresInSec > 0 {
+		if expiresInSec < 60 {
+			expiresInSec = 60
+		}
+		if expiresInSec > 86400 {
+			expiresInSec = 86400
+		}
+		expiresIn = time.Duration(expiresInSec) * time.Second
+	}
+	sessionExpiresAt := time.Now().UTC().Add(expiresIn)
+	if linkExpiresAt != nil && linkExpiresAt.Before(sessionExpiresAt) {
+		return *linkExpiresAt
+	}
+	return sessionExpiresAt
 }
 
 func (s *Service) GetCheckoutSession(ctx context.Context, req *cpayv1.GetCheckoutSessionRequest) (*cpayv1.CheckoutSession, error) {
